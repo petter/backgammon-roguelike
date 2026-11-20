@@ -46,6 +46,33 @@ function cardButton(card: CardId, onClick: () => void): HTMLButtonElement {
   return button;
 }
 
+interface ChipModel {
+  player: Player;
+  name: string;
+  you: boolean;
+  active: boolean;
+  hand: number;
+  shielded: boolean;
+}
+
+/** One player's colour, name and state. The player on turn is outlined. */
+function playerChip(model: ChipModel): HTMLElement {
+  const chip = document.createElement("div");
+  chip.className = `player${model.active ? " active" : ""}`;
+  const dot = document.createElement("span");
+  dot.className = `dot ${model.player}`;
+  const label = document.createElement("strong");
+  label.textContent = model.you ? `${model.name} (you)` : model.name;
+  const colour = document.createElement("span");
+  colour.textContent = model.player === "white" ? "White" : "Black";
+  const details = document.createElement("span");
+  details.className = "quiet";
+  const cards = `${model.hand} ${model.hand === 1 ? "card" : "cards"}`;
+  details.textContent = model.shielded ? `${cards}, shielded` : cards;
+  chip.append(dot, label, colour, details);
+  return chip;
+}
+
 function turnText(model: HudModel, name: (player: Player) => string): string {
   const { view, myTurn, local } = model;
   if (view.phase === "over" && view.winner) {
@@ -61,7 +88,7 @@ export function createHud(): Hud {
   const turn = el("turn");
   const dice = el("dice");
   const message = el("message");
-  const opponent = el("opponent");
+  const players = el("players");
   const status = el("status");
   const roll = el<HTMLButtonElement>("roll");
   const end = el<HTMLButtonElement>("end");
@@ -81,10 +108,20 @@ export function createHud(): Hud {
       dice.textContent = view.dice.map((d) => String.fromCodePoint(0x267f + d)).join("");
       message.textContent = model.message;
       status.textContent = model.status;
-      const shield = (player: Player) => (view.shielded[player] ? ", shielded" : "");
-      opponent.textContent = model.local
-        ? ""
-        : `${name(other)}: ${view.counts[other].hand} in hand${shield(other)}`;
+      // Your own chip first; in hot-seat play the order stays fixed.
+      const order: Player[] = model.local ? ["white", "black"] : [view.you, other];
+      players.replaceChildren(
+        ...order.map((player) =>
+          playerChip({
+            player,
+            name: name(player),
+            you: !model.local && player === view.you,
+            active: view.phase !== "over" && view.current === player,
+            hand: view.counts[player].hand,
+            shielded: view.shielded[player],
+          }),
+        ),
+      );
 
       roll.disabled = !(myTurn && view.phase === "roll");
       end.disabled = !model.canEnd;

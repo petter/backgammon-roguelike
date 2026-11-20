@@ -7,7 +7,7 @@ import { CHECKER_H, CHECKER_R, type Place, slotPosition } from "./layout.ts";
 const geometry = new THREE.CylinderGeometry(CHECKER_R, CHECKER_R, CHECKER_H, 48);
 const materials: Record<Player, THREE.Material> = {
   white: new THREE.MeshStandardMaterial({ color: 0xefe6d2, roughness: 0.45 }),
-  black: new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.45 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 0.6 }),
 };
 
 const PLAYERS = ["white", "black"] as const;

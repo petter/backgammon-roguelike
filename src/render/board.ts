@@ -1,7 +1,10 @@
+import gsap from "gsap";
 import * as THREE from "three";
 import { POINT_COUNT } from "../core/board.ts";
 import {
   BAR_W,
+  CHECKER_H,
+  CHECKER_R,
   FIELD_HALF_D,
   FIELD_HALF_W,
   pointSide,
@@ -9,6 +12,7 @@ import {
   TRAY_W,
   TRAY_X,
   TRIANGLE_LEN,
+  type Vec3,
 } from "./layout.ts";
 
 const RIM = 0.5;
@@ -21,12 +25,53 @@ const felt = new THREE.MeshStandardMaterial({ color: 0x1f4d3a, roughness: 1 });
 const pointColors = [0xc9a56b, 0x7a2e2e].map(
   (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 }),
 );
-const glow = new THREE.MeshBasicMaterial({
-  color: 0xffd75e,
-  transparent: true,
-  opacity: 0.55,
-  depthWrite: false,
-});
+/** Where a selected checker can go: bright mint, far from every colour on the board. */
+const TARGET_COLOR = 0x35ffb0;
+/** Which checkers can move: gold. */
+const SOURCE_COLOR = 0xffd24a;
+
+const overlay = (color: number, opacity: number) =>
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+const targetFill = overlay(TARGET_COLOR, 0.5);
+const targetSpot = overlay(TARGET_COLOR, 0.9);
+const targetEdge = overlay(0xffffff, 0.95);
+const sourceRing = overlay(SOURCE_COLOR, 0.95);
+// One slow pulse shared by every hint, so they draw the eye without flickering.
+for (const [material, low] of [
+  [targetFill, 0.22],
+  [targetSpot, 0.45],
+  [sourceRing, 0.4],
+] as const) {
+  gsap.to(material, { opacity: low, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: -1 });
+}
+
+const MAX_TARGETS = 8;
+const MAX_SOURCES = 16;
+
+/** A flat disc with a white rim, marking the exact spot a checker would land on. */
+function targetMarker(): THREE.Group {
+  const marker = new THREE.Group();
+  const spot = new THREE.Mesh(new THREE.CircleGeometry(CHECKER_R * 0.92, 40), targetSpot);
+  const edge = new THREE.Mesh(
+    new THREE.RingGeometry(CHECKER_R * 0.92, CHECKER_R * 1.12, 40),
+    targetEdge,
+  );
+  marker.add(spot, edge);
+  marker.rotation.x = -Math.PI / 2;
+  marker.visible = false;
+  return marker;
+}
+
+/** A ring drawn on top of a checker that is able to move. */
+function sourceMarker(): THREE.Mesh {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(CHECKER_R * 0.5, CHECKER_R * 0.78, 40),
+    sourceRing,
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.visible = false;
+  return ring;
+}
 
 function box(w: number, h: number, d: number, material: THREE.Material): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -54,10 +99,19 @@ function triangle(point: number, y: number, material: THREE.Material): THREE.Mes
   return mesh;
 }
 
+export interface BoardHints {
+  /** Rest positions of the top checker on every stack that can move. */
+  sources: Vec3[];
+  /** Points the selected checker can reach, each with the spot it would land on. */
+  targets: { point: number; at: Vec3 }[];
+  /** Whether the selected checker can be borne off. */
+  off: boolean;
+}
+
 export interface BoardView {
   group: THREE.Group;
-  /** Lights up the points (and optionally the tray) a selected checker can move to. */
-  setTargets(points: number[], off: boolean): void;
+  /** Shows what the player can do right now. Pass nothing to clear every hint. */
+  setHints(hints?: BoardHints): void;
 }
 
 export function createBoard(): BoardView {
@@ -83,7 +137,7 @@ export function createBoard(): BoardView {
 
   const tray = box(TRAY_W, BASE_H, outerD, darkWood);
   tray.position.set(TRAY_X, -BASE_H / 2, 0);
-  const trayGlow = new THREE.Mesh(new THREE.PlaneGeometry(TRAY_W, outerD), glow);
+  const trayGlow = new THREE.Mesh(new THREE.PlaneGeometry(TRAY_W, outerD), targetFill);
   trayGlow.rotation.x = -Math.PI / 2;
   trayGlow.position.set(TRAY_X, 0.01, 0);
   trayGlow.visible = false;
@@ -92,20 +146,36 @@ export function createBoard(): BoardView {
   const pointGlows: THREE.Mesh[] = [];
   for (let p = 0; p < POINT_COUNT; p++) {
     group.add(triangle(p, 0.012, pointColors[p % 2]));
-    const pointGlow = triangle(p, 0.016, glow);
+    const pointGlow = triangle(p, 0.016, targetFill);
     pointGlow.receiveShadow = false;
     pointGlow.visible = false;
     pointGlows.push(pointGlow);
     group.add(pointGlow);
   }
 
+  const targetMarkers = Array.from({ length: MAX_TARGETS }, targetMarker);
+  const sourceMarkers = Array.from({ length: MAX_SOURCES }, sourceMarker);
+  group.add(...targetMarkers, ...sourceMarkers);
+
   return {
     group,
-    setTargets(points, off) {
+    setHints(hints = { sources: [], targets: [], off: false }) {
       pointGlows.forEach((mesh, p) => {
-        mesh.visible = points.includes(p);
+        mesh.visible = hints.targets.some((target) => target.point === p);
       });
-      trayGlow.visible = off;
+      trayGlow.visible = hints.off;
+      targetMarkers.forEach((marker, i) => {
+        const target = hints.targets[i];
+        marker.visible = target !== undefined;
+        // Just above whatever the checker would rest on: the felt, or the checker below.
+        if (target)
+          marker.position.set(target.at.x, target.at.y - CHECKER_H / 2 + 0.03, target.at.z);
+      });
+      sourceMarkers.forEach((marker, i) => {
+        const at = hints.sources[i];
+        marker.visible = at !== undefined;
+        if (at) marker.position.set(at.x, at.y + CHECKER_H / 2 + 0.012, at.z);
+      });
     },
   };
 }

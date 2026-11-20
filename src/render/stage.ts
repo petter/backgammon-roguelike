@@ -67,6 +67,8 @@ export function createStage(container: HTMLElement): Stage {
     world,
     setSeat(player) {
       side = player === "white" ? 1 : -1;
+      // The light moves with the camera, so both players see the checkers lit the same way.
+      sun.position.set(-6 * side, 14, 6 * side);
       resize();
     },
     pick(clientX, clientY) {

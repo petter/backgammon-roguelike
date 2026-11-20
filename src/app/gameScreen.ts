@@ -7,8 +7,11 @@ import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts"
 import type { BoardView } from "../render/board.ts";
 import { CheckersView } from "../render/checkers.ts";
 import { shake, tossAll } from "../render/effects.ts";
+import { slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
 import type { Hud } from "../ui/hud.ts";
+
+const COLOR_NAMES = { white: "White", black: "Black" } as const;
 
 export interface GameScreenDeps {
   stageEl: HTMLElement;
@@ -52,10 +55,28 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (moves.length > 0 && view.board.bar[view.current] > 0) selected = "bar";
     if (!moves.some((m) => m.from === selected)) selected = null;
     const targets = moves.filter((m) => m.from === selected);
-    board.setTargets(
-      targets.flatMap((m) => (typeof m.to === "number" ? [m.to] : [])),
-      targets.some((m) => m.to === "off"),
-    );
+    const { board: state, current } = view;
+    // A checker lands on top of its own colour, or on the felt after a hit or on an empty point.
+    const landing = (point: number) => {
+      const there = state.points[point];
+      return slotPosition(
+        { kind: "point", index: point },
+        there.owner === current ? there.count : 0,
+      );
+    };
+    const top = (from: number | "bar") =>
+      from === "bar"
+        ? slotPosition({ kind: "bar", player: current }, state.bar[current] - 1)
+        : slotPosition({ kind: "point", index: from }, state.points[from].count - 1);
+    const reachable = [
+      ...new Set(targets.flatMap((m) => (typeof m.to === "number" ? [m.to] : []))),
+    ];
+    board.setHints({
+      // Until a checker is picked, show which ones can move at all.
+      sources: selected === null ? [...new Set(moves.map((m) => m.from))].map(top) : [],
+      targets: reachable.map((point) => ({ point, at: landing(point) })),
+      off: targets.some((m) => m.to === "off"),
+    });
     if (selected === null) checkers.lift(null);
     else if (selected === "bar") checkers.lift({ kind: "bar", player: view.current });
     else checkers.lift({ kind: "point", index: selected });
@@ -103,7 +124,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       options.onWaiting(update.lobby);
       return;
     }
-    if (!view) {
+    const starting = !view;
+    if (starting) {
       options.onStarted();
       if (!options.local) stage.setSeat(update.view.you);
     }
@@ -114,6 +136,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     } else {
       message = play(update.events, checkers, update.view.you);
     }
+    if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
     if (!checkers.matches(update.view.board)) checkers.reset(update.view.board);
     view = update.view;
@@ -194,7 +217,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     session.close();
     listeners.abort();
     hud.actions = null;
-    board.setTargets([], false);
+    board.setHints();
     if (checkers) stage.world.remove(checkers.group);
     stage.setSeat("white");
   };
