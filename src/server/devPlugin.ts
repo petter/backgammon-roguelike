@@ -39,6 +39,12 @@ export function gameServer(): Plugin {
   const attach = (middlewares: Connect.Server, httpServer: Server | null) => {
     middlewares.use((req, res, next) => {
       const path = (req.url ?? "").split("?")[0];
+      if (path.startsWith("/g/")) {
+        // Invite links are client routes: always serve the app and let it read the code.
+        // Left to Vite's own fallback, a malformed path such as `/g/%` would be a bare 404.
+        req.url = "/";
+        return next();
+      }
       if (!path.startsWith("/api/")) return next();
       readText(req)
         .then((body) => handleApi(store, req.method ?? "GET", path, body))
