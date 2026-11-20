@@ -27,8 +27,8 @@ const pointColors = [0xc9a56b, 0x7a2e2e].map(
 );
 /** Where a selected checker can go: bright mint, far from every colour on the board. */
 const TARGET_COLOR = 0x35ffb0;
-/** Which checkers can move: gold. */
-const SOURCE_COLOR = 0xffd24a;
+/** Which checkers can move: orange, which reads on both the cream and the black checkers. */
+const SOURCE_COLOR = 0xff6a00;
 
 const overlay = (color: number, opacity: number) =>
   new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
