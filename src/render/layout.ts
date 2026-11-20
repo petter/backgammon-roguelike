@@ -1,4 +1,4 @@
-import type { Player } from "../core/board";
+import type { Player } from "../core/board.ts";
 
 /** World units. X runs left to right, Z towards the camera, Y up. Playfield top is y = 0. */
 export const FIELD_HALF_W = 6.5;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { POINT_COUNT } from "../core/board";
+import { POINT_COUNT } from "../core/board.ts";
 import {
   BAR_W,
   FIELD_HALF_D,
@@ -9,7 +9,7 @@ import {
   TRAY_W,
   TRAY_X,
   TRIANGLE_LEN,
-} from "./layout";
+} from "./layout.ts";
 
 const RIM = 0.5;
 const RIM_H = 0.3;

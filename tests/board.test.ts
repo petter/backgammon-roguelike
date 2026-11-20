@@ -7,7 +7,7 @@ import {
   legalMovesForDie,
   type Player,
   place,
-} from "../src/core/board";
+} from "../src/core/board.ts";
 
 function countFor(board: BoardState, player: Player): number {
   const onPoints = board.points

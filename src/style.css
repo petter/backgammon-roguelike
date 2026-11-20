@@ -10,9 +10,18 @@ body {
     sans-serif;
 }
 
+/* The ids and classes below set `display`, which would otherwise beat the hidden attribute. */
+#hud[hidden],
+#menu[hidden],
+#waiting[hidden],
+.overlay[hidden] {
+  display: none;
+}
+
+/* Leaves the top and bottom strips to the HUD, so cards never cover the board. */
 #stage {
   position: fixed;
-  inset: 0;
+  inset: 52px 0 148px;
 }
 
 #stage canvas {
@@ -35,6 +44,18 @@ body {
   gap: 14px;
 }
 
+#hud .row.bottom {
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+#hud .buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 #turn {
   font-weight: 600;
 }
@@ -46,17 +67,16 @@ body {
 }
 
 #message,
-#seed {
+#status,
+.quiet {
   opacity: 0.7;
 }
 
-#seed {
+#opponent {
   margin-left: auto;
-  font-variant-numeric: tabular-nums;
 }
 
-#hud button {
-  pointer-events: auto;
+button {
   padding: 8px 14px;
   border: 1px solid #6b5137;
   border-radius: 8px;
@@ -64,15 +84,22 @@ body {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  pointer-events: auto;
 }
 
-#hud button:hover:not(:disabled) {
+button:hover:not(:disabled) {
   background: #5a3a22;
 }
 
-#hud button:disabled {
+button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+button.quiet {
+  border-color: transparent;
+  background: none;
+  text-decoration: underline;
 }
 
 kbd {
@@ -83,4 +110,115 @@ kbd {
   font:
     12px ui-monospace,
     monospace;
+}
+
+#hand,
+#offer-cards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+#offer-cards {
+  justify-content: center;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 132px;
+  min-height: 112px;
+  padding: 10px;
+  border-color: #c9a56b;
+  background: #2a1d12;
+  text-align: left;
+}
+
+.card span {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.card:hover:not(:disabled) {
+  transform: translateY(-4px);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #0c0a09b3;
+}
+
+.panel {
+  width: min(340px, 100%);
+  padding: 24px;
+  border: 1px solid #6b5137;
+  border-radius: 14px;
+  background: #1c1612;
+}
+
+.panel.wide {
+  width: auto;
+  text-align: center;
+}
+
+.panel h1,
+.panel h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+}
+
+#menu,
+#waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+input {
+  padding: 8px 10px;
+  border: 1px solid #6b5137;
+  border-radius: 8px;
+  background: #14110f;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+}
+
+#code {
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+
+.or,
+#waiting p {
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+#share-code {
+  font:
+    600 40px ui-monospace,
+    monospace;
+  letter-spacing: 8px;
+  text-align: center;
+}
+
+#lobby-error {
+  min-height: 1.4em;
+  margin: 12px 0 0;
+  color: #ff9d8a;
 }

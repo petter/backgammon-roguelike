@@ -1,0 +1,190 @@
+import type { Player } from "../core/board.ts";
+import { applyCommand, type Command, GameError, type GameEvent, newGame } from "../core/game.ts";
+import { redactEvent, viewFor } from "../core/view.ts";
+import {
+  CODE_ALPHABET,
+  CODE_LENGTH,
+  type LobbyView,
+  NAME_MAX,
+  type SeatGrant,
+  type ServerMessage,
+} from "../net/protocol.ts";
+import type { GameStore, Room } from "./store.ts";
+
+const SAVE_ATTEMPTS = 5;
+
+export type RoomErrorKind = "not_found" | "full" | "bad_token" | "busy";
+
+/** A lobby-level failure. The message is safe to show to the player. */
+export class RoomError extends Error {
+  constructor(
+    readonly kind: RoomErrorKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Source of secrets: seat tokens, room codes and game seeds. Injectable for tests. */
+export interface Entropy {
+  token(): string;
+  /** Integer in [0, n). */
+  int(n: number): number;
+}
+
+export const cryptoEntropy: Entropy = {
+  token: () => crypto.randomUUID(),
+  int: (n) => {
+    // Rejection sampling, so every value is equally likely.
+    const limit = Math.floor(0x1_0000_0000 / n) * n;
+    const buffer = new Uint32Array(1);
+    do crypto.getRandomValues(buffer);
+    while (buffer[0] >= limit);
+    return buffer[0] % n;
+  },
+};
+
+function cleanName(raw: unknown, fallback: string): string {
+  const name = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, NAME_MAX) : "";
+  return name || fallback;
+}
+
+function randomCode(entropy: Entropy): string {
+  return Array.from(
+    { length: CODE_LENGTH },
+    () => CODE_ALPHABET[entropy.int(CODE_ALPHABET.length)],
+  ).join("");
+}
+
+function seatOf(room: Room, token: string): Player | null {
+  if (!token) return null;
+  if (room.seats.white?.token === token) return "white";
+  if (room.seats.black?.token === token) return "black";
+  return null;
+}
+
+function lobbyView(room: Room, you: Player): LobbyView {
+  const player = (seat: Player) => {
+    const taken = room.seats[seat];
+    return taken ? { name: taken.name } : null;
+  };
+  return { code: room.code, you, players: { white: player("white"), black: player("black") } };
+}
+
+/** What one seat is told about a room: its own view and events redacted for it. */
+export function stateMessage(room: Room, seat: Player, events: GameEvent[]): ServerMessage {
+  return {
+    type: "state",
+    version: room.version,
+    lobby: lobbyView(room, seat),
+    view: room.game ? viewFor(room.game, seat) : null,
+    events: events.map((event) => redactEvent(event, seat)),
+  };
+}
+
+/** Opens a room with the host in the white seat. */
+export async function createRoom(
+  store: GameStore,
+  name: unknown,
+  entropy: Entropy = cryptoEntropy,
+): Promise<SeatGrant> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const code = randomCode(entropy);
+    const token = entropy.token();
+    const seats = { white: { token, name: cleanName(name, "Host") } };
+    if (await store.create({ code, version: 0, seats, game: null })) return { code, token };
+  }
+  throw new RoomError("busy", "Could not find a free room code, try again");
+}
+
+/** Takes the second seat and starts the game. */
+export async function joinRoom(
+  store: GameStore,
+  code: string,
+  name: unknown,
+  entropy: Entropy = cryptoEntropy,
+): Promise<SeatGrant> {
+  for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
+    const room = await store.load(code);
+    if (!room) throw new RoomError("not_found", "No game with that code");
+    if (room.seats.black) throw new RoomError("full", "That game already has two players");
+
+    const token = entropy.token();
+    const started = newGame(entropy.int(0x1_0000_0000));
+    const next: Room = {
+      ...room,
+      version: room.version + 1,
+      seats: { ...room.seats, black: { token, name: cleanName(name, "Guest") } },
+      game: started.state,
+    };
+    if (await store.save(next, room.version)) {
+      await store.publish(code, { room: next, events: started.events });
+      return { code, token };
+    }
+  }
+  throw new RoomError("busy", "The game is busy, try again");
+}
+
+export interface Connection {
+  /** Applies a command from this seat. Rule violations come back as error messages. */
+  command(command: Command): Promise<void>;
+  close(): void;
+}
+
+/**
+ * Binds a seat to a way of sending messages. Sends the current state at once, then every
+ * later change. Throws `RoomError` if the room or token is not valid.
+ */
+export async function openConnection(
+  store: GameStore,
+  code: string,
+  token: string,
+  send: (message: ServerMessage) => void,
+): Promise<Connection> {
+  const found = await store.load(code);
+  if (!found) throw new RoomError("not_found", "That game no longer exists");
+  const seat = seatOf(found, token);
+  if (!seat) throw new RoomError("bad_token", "You do not have a seat in that game");
+
+  // Subscribe before taking the snapshot, so no change can fall between the two.
+  const unsubscribe = await store.subscribe(code, (update) => {
+    send(stateMessage(update.room, seat, update.events));
+  });
+  const snapshot = await store.load(code);
+  if (!snapshot) {
+    unsubscribe();
+    throw new RoomError("not_found", "That game no longer exists");
+  }
+  send(stateMessage(snapshot, seat, []));
+
+  return {
+    async command(command) {
+      for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
+        const room = await store.load(code);
+        if (!room) {
+          send({ type: "error", message: "That game no longer exists", fatal: true });
+          return;
+        }
+        if (!room.game) {
+          send({ type: "error", message: "The game has not started yet", fatal: false });
+          return;
+        }
+        let result: ReturnType<typeof applyCommand>;
+        try {
+          result = applyCommand(room.game, seat, command);
+        } catch (error) {
+          if (!(error instanceof GameError)) throw error;
+          send({ type: "error", message: error.message, fatal: false });
+          return;
+        }
+        const next: Room = { ...room, version: room.version + 1, game: result.state };
+        if (await store.save(next, room.version)) {
+          await store.publish(code, { room: next, events: result.events });
+          return;
+        }
+      }
+      send({ type: "error", message: "The game is busy, try again", fatal: false });
+    },
+    close: unsubscribe,
+  };
+}

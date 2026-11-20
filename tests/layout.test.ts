@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { POINT_COUNT } from "../src/core/board";
-import { pickAt, slotPosition, TRAY_X } from "../src/render/layout";
+import { POINT_COUNT } from "../src/core/board.ts";
+import { pickAt, slotPosition, TRAY_X } from "../src/render/layout.ts";
 
 describe("layout", () => {
   it("picks back the point a checker stands on", () => {

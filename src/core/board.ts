@@ -70,9 +70,16 @@ function distanceToOff(player: Player, point: number): number {
   return player === "white" ? point + 1 : POINT_COUNT - point;
 }
 
-function isOpen(board: BoardState, player: Player, point: number): boolean {
+/** Whether `point` is in the player's home board, the last six points of their journey. */
+export function isHome(player: Player, point: number): boolean {
+  return distanceToOff(player, point) <= 6;
+}
+
+/** A point is open unless the opponent holds it, or their lone checker there is shielded. */
+function isOpen(board: BoardState, player: Player, point: number, shielded: boolean): boolean {
   const target = board.points[point];
-  return target.owner !== opponent(player) || target.count <= 1;
+  if (target.owner !== opponent(player) || target.count === 0) return true;
+  return target.count === 1 && !shielded;
 }
 
 /** Farthest distance from bearing off among the player's checkers on the board. */
@@ -86,13 +93,23 @@ function farthestDistance(board: BoardState, player: Player): number {
   return farthest;
 }
 
-/** Every legal single-checker move for one die. Ignores how the rest of the roll is used. */
-export function legalMovesForDie(board: BoardState, player: Player, die: number): Move[] {
+/**
+ * Every legal single-checker move for one die. Ignores how the rest of the roll is used.
+ * `opponentShielded` makes the opponent's lone checkers unhittable.
+ */
+export function legalMovesForDie(
+  board: BoardState,
+  player: Player,
+  die: number,
+  opponentShielded = false,
+): Move[] {
   const step = player === "white" ? -1 : 1;
 
   if (board.bar[player] > 0) {
     const entry = player === "white" ? POINT_COUNT - die : die - 1;
-    return isOpen(board, player, entry) ? [{ player, from: "bar", to: entry, die }] : [];
+    return isOpen(board, player, entry, opponentShielded)
+      ? [{ player, from: "bar", to: entry, die }]
+      : [];
   }
 
   const farthest = farthestDistance(board, player);
@@ -104,7 +121,7 @@ export function legalMovesForDie(board: BoardState, player: Player, die: number)
     const distance = distanceToOff(player, from);
     if (die < distance) {
       const to = from + step * die;
-      if (isOpen(board, player, to)) moves.push({ player, from, to, die });
+      if (isOpen(board, player, to, opponentShielded)) moves.push({ player, from, to, die });
     } else if (canBearOff && (die === distance || distance === farthest)) {
       // Exact roll, or an overshoot from the rearmost checker.
       moves.push({ player, from, to: "off", die });
@@ -144,5 +161,23 @@ export function applyMove(
   }
 
   events.push({ type: "pieceMoved", player, from, to });
+  return { board: next, events };
+}
+
+/** Sends every lone opposing checker in the player's home board to the bar. */
+export function sweepHome(
+  board: BoardState,
+  player: Player,
+): { board: BoardState; events: BoardEvent[] } {
+  const next = cloneBoard(board);
+  const events: BoardEvent[] = [];
+  const victim = opponent(player);
+  next.points.forEach((point, index) => {
+    if (point.owner !== victim || point.count !== 1 || !isHome(player, index)) return;
+    point.owner = null;
+    point.count = 0;
+    next.bar[victim] += 1;
+    events.push({ type: "hit", player: victim, point: index });
+  });
   return { board: next, events };
 }

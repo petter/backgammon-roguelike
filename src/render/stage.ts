@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { type PickTarget, pickAt, TRAY_W, TRAY_X } from "./layout";
+import type { Player } from "../core/board.ts";
+import { type PickTarget, pickAt, TRAY_W, TRAY_X } from "./layout.ts";
 
-const VIEW_DIR = new THREE.Vector3(0, 1, 0.4).normalize();
 const VIEW_TARGET = new THREE.Vector3((TRAY_X + TRAY_W / 2 - 7) / 2, 0, 0);
 const VIEW_HALF_W = 8.4;
 const VIEW_HALF_H = 7.2;
@@ -9,6 +9,8 @@ const VIEW_HALF_H = 7.2;
 export interface Stage {
   /** Everything that shakes together: board and checkers. */
   world: THREE.Group;
+  /** Puts the camera on that player's side of the board, so their home is nearest. */
+  setSeat(player: Player): void;
   /** What sits on the playfield under a pointer position, if anything. */
   pick(clientX: number, clientY: number): PickTarget | null;
 }
@@ -39,13 +41,17 @@ export function createStage(container: HTMLElement): Stage {
   const world = new THREE.Group();
   scene.add(world);
 
+  const viewDir = new THREE.Vector3();
+  let side = 1;
+
   const resize = () => {
+    viewDir.set(0, 1, 0.4 * side).normalize();
     const { clientWidth: w, clientHeight: h } = container;
     renderer.setSize(w, h);
     camera.aspect = w / h;
     const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const distance = Math.max(VIEW_HALF_H / tan, VIEW_HALF_W / (tan * camera.aspect));
-    camera.position.copy(VIEW_TARGET).addScaledVector(VIEW_DIR, distance);
+    camera.position.copy(VIEW_TARGET).addScaledVector(viewDir, distance);
     camera.lookAt(VIEW_TARGET);
     camera.updateProjectionMatrix();
   };
@@ -59,6 +65,10 @@ export function createStage(container: HTMLElement): Stage {
 
   return {
     world,
+    setSeat(player) {
+      side = player === "white" ? 1 : -1;
+      resize();
+    },
     pick(clientX, clientY) {
       const rect = renderer.domElement.getBoundingClientRect();
       const ndc = new THREE.Vector2(

@@ -1,13 +1,16 @@
+import gsap from "gsap";
 import * as THREE from "three";
-import type { BoardEvent, BoardState, Player } from "../core/board";
-import { hopToRest, setLifted, setRest } from "./effects";
-import { CHECKER_H, CHECKER_R, type Place, slotPosition } from "./layout";
+import type { BoardEvent, BoardState, Player } from "../core/board.ts";
+import { hopToRest, setLifted, setRest } from "./effects.ts";
+import { CHECKER_H, CHECKER_R, type Place, slotPosition } from "./layout.ts";
 
 const geometry = new THREE.CylinderGeometry(CHECKER_R, CHECKER_R, CHECKER_H, 48);
 const materials: Record<Player, THREE.Material> = {
   white: new THREE.MeshStandardMaterial({ color: 0xefe6d2, roughness: 0.45 }),
   black: new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.45 }),
 };
+
+const PLAYERS = ["white", "black"] as const;
 
 function keyOf(place: Place): string {
   return place.kind === "point" ? `point:${place.index}` : `${place.kind}:${place.player}`;
@@ -27,14 +30,41 @@ export class CheckersView {
   private lifted: THREE.Mesh | null = null;
 
   constructor(board: BoardState) {
+    this.reset(board);
+  }
+
+  /** Rebuilds every checker from a board, with no animation. */
+  reset(board: BoardState): void {
+    for (const mesh of this.all()) {
+      gsap.killTweensOf([mesh.position, mesh.rotation]);
+      this.group.remove(mesh);
+    }
+    this.stacks.clear();
+    this.lifted = null;
     board.points.forEach((point, index) => {
       if (!point.owner) return;
       for (let i = 0; i < point.count; i++) this.spawn(point.owner, { kind: "point", index });
     });
-    for (const player of ["white", "black"] as const) {
+    for (const player of PLAYERS) {
       for (let i = 0; i < board.bar[player]; i++) this.spawn(player, { kind: "bar", player });
       for (let i = 0; i < board.off[player]; i++) this.spawn(player, { kind: "off", player });
     }
+  }
+
+  /** Whether the checkers on screen agree with a board, place by place and colour by colour. */
+  matches(board: BoardState): boolean {
+    const agrees = (place: Place, owner: Player | null, count: number) => {
+      const stack = this.stack(place);
+      return stack.length === count && stack.every((mesh) => mesh.userData.player === owner);
+    };
+    return (
+      board.points.every((p, index) => agrees({ kind: "point", index }, p.owner, p.count)) &&
+      PLAYERS.every(
+        (player) =>
+          agrees({ kind: "bar", player }, player, board.bar[player]) &&
+          agrees({ kind: "off", player }, player, board.off[player]),
+      )
+    );
   }
 
   all(): THREE.Mesh[] {
@@ -78,6 +108,7 @@ export class CheckersView {
     const mesh = new THREE.Mesh(geometry, materials[player]);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.player = player;
     const stack = this.stack(place);
     const rest = slotPosition(place, stack.length);
     setRest(mesh, rest);
@@ -88,7 +119,8 @@ export class CheckersView {
 
   private move(from: Place, to: Place, delay: number): number {
     const mesh = this.stack(from).pop();
-    if (!mesh) throw new Error(`No checker to move at ${keyOf(from)}`);
+    // Out of step with the core. The caller notices through `matches` and resets.
+    if (!mesh) return 0;
     const target = this.stack(to);
     setRest(mesh, slotPosition(to, target.length));
     target.push(mesh);

@@ -1,105 +1,131 @@
 import "./style.css";
-import { legalMoves, newGame, playMove, type Result, roll } from "./core/game";
-import { createRng } from "./core/rng";
-import { createBoard } from "./render/board";
-import { CheckersView } from "./render/checkers";
-import { shake, tossAll } from "./render/effects";
-import { createStage } from "./render/stage";
-import { createHud, playerName } from "./ui/hud";
+import { runGame } from "./app/gameScreen.ts";
+import { createLocalSession } from "./net/localSession.ts";
+import { isRoomCode, normalizeCode, type SeatGrant } from "./net/protocol.ts";
+import { createRemoteSession } from "./net/remoteSession.ts";
+import { createBoard } from "./render/board.ts";
+import { createStage } from "./render/stage.ts";
+import { el } from "./ui/dom.ts";
+import { createHud } from "./ui/hud.ts";
+import { createLobbyUi } from "./ui/lobby.ts";
 
-const stageEl = document.getElementById("stage");
-if (!stageEl) throw new Error("Missing #stage");
-
-const seed = Number(new URLSearchParams(location.search).get("seed")) || Date.now() % 1_000_000_000;
-const rng = createRng(seed);
-
-let state = newGame();
-let selected: number | "bar" | null = null;
-let message = "";
-
+const stageEl = el("stage");
 const stage = createStage(stageEl);
 const board = createBoard();
-const checkers = new CheckersView(state.board);
-stage.world.add(board.group, checkers.group);
-const hud = createHud(seed, rollDice, quake);
+stage.world.add(board.group);
+const hud = createHud();
+const deps = { stageEl, stage, board, hud };
 
-/** Redraws everything that depends on state and selection. */
-function refresh(): void {
-  const moves = legalMoves(state);
-  if (state.phase === "move" && state.board.bar[state.current] > 0) selected = "bar";
-  const options = moves.filter((m) => m.from === selected);
-  board.setTargets(
-    options.flatMap((m) => (typeof m.to === "number" ? [m.to] : [])),
-    options.some((m) => m.to === "off"),
-  );
-  if (selected === null) checkers.lift(null);
-  else if (selected === "bar") checkers.lift({ kind: "bar", player: state.current });
-  else checkers.lift({ kind: "point", index: selected });
-  hud.update(state, message);
-}
+let stopGame: (() => void) | null = null;
 
-/** Adopts a core result and plays its events back as animation. */
-function run(result: Result): void {
-  state = result.state;
-  selected = null;
-  message = "";
-  let rolled = "";
-  for (const event of result.events) {
-    if (event.type === "pieceMoved") {
-      checkers.apply(event);
-    } else if (event.type === "hit") {
-      checkers.apply(event);
-      shake(stage.world, 0.6, 0.4);
-    } else if (event.type === "diceRolled") {
-      rolled = event.dice.slice(0, 2).join("-");
-    } else if (event.type === "turnEnded" && event.reason === "blocked") {
-      const prefix = rolled ? `${playerName(event.player)} rolled ${rolled}: ` : "";
-      message = `${prefix}no legal move, turn passes`;
+/** Seat tokens live in sessionStorage: per tab, so two tabs can be two players. */
+const seats = {
+  get(code: string): string | null {
+    try {
+      return sessionStorage.getItem(`seat:${code}`);
+    } catch {
+      return null;
     }
-  }
-  refresh();
+  },
+  set(code: string, token: string): void {
+    try {
+      sessionStorage.setItem(`seat:${code}`, token);
+    } catch {
+      // Without storage the seat still works until the tab is reloaded.
+    }
+  },
+  forget(code: string): void {
+    try {
+      sessionStorage.removeItem(`seat:${code}`);
+    } catch {
+      // Nothing to forget.
+    }
+  },
+};
+
+function codeFromUrl(): string | null {
+  const match = /^\/g\/([^/]+)\/?$/.exec(location.pathname);
+  const code = match ? normalizeCode(decodeURIComponent(match[1])) : "";
+  return isRoomCode(code) ? code : null;
 }
 
-function rollDice(): void {
-  if (state.phase === "roll") run(roll(state, rng));
+function leaveGame(): void {
+  stopGame?.();
+  stopGame = null;
+  hud.hide();
 }
 
-/** Stand-in for a card effect: purely visual, to tune the feel. */
-function quake(): void {
-  shake(stage.world, 1.4);
-  tossAll(checkers.all());
+function startRemote(code: string, token: string): void {
+  leaveGame();
+  stopGame = runGame(deps, {
+    local: false,
+    connect: (handlers) => createRemoteSession(code, token, handlers),
+    onWaiting: () => lobby.showWaiting(code, `${location.origin}/g/${code}`),
+    onStarted: () => {
+      lobby.hide();
+      hud.show();
+    },
+    onFatal: (message) => {
+      seats.forget(code);
+      leaveGame();
+      history.replaceState(null, "", "/");
+      lobby.showMenu({ error: message });
+    },
+  });
 }
 
-stageEl.addEventListener("pointerdown", (event) => {
-  if (state.phase !== "move") return;
-  const target = stage.pick(event.clientX, event.clientY);
-  const moves = legalMoves(state);
+function startLocal(): void {
+  leaveGame();
+  const seed = Number(new URLSearchParams(location.search).get("seed")) || Date.now();
+  stopGame = runGame(deps, {
+    local: true,
+    connect: (handlers) => createLocalSession(handlers, seed),
+    onWaiting: () => {},
+    onStarted: () => {
+      lobby.hide();
+      hud.show();
+    },
+    onFatal: (message) => lobby.showMenu({ error: message }),
+  });
+}
 
-  if (selected !== null && target && target.kind !== "bar") {
-    const to = target.kind === "point" ? target.index : "off";
-    // With several dice reaching the same spot, spend the smallest.
-    const [move] = moves
-      .filter((m) => m.from === selected && m.to === to)
-      .sort((a, b) => a.die - b.die);
-    if (move) {
-      run(playMove(state, move));
+/** Asks the server for a seat, then enters the room. */
+async function takeSeat(path: string, name: string): Promise<void> {
+  lobby.setBusy(true);
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
+    if (!response.ok || !body.code || !body.token) {
+      lobby.showMenu({ error: body.error ?? "Could not reach the game server" });
       return;
     }
+    seats.set(body.code, body.token);
+    history.pushState(null, "", `/g/${body.code}`);
+    startRemote(body.code, body.token);
+  } catch {
+    lobby.showMenu({ error: "Could not reach the game server" });
+  } finally {
+    lobby.setBusy(false);
   }
+}
 
-  const from = target?.kind === "point" ? target.index : null;
-  selected = from !== null && moves.some((m) => m.from === from) ? from : null;
-  refresh();
+const lobby = createLobbyUi({
+  onCreate: (name) => void takeSeat("/api/rooms", name),
+  onJoin: (code, name) => void takeSeat(`/api/rooms/${code}/join`, name),
+  onLocal: startLocal,
 });
 
-window.addEventListener("keydown", (event) => {
-  if (event.repeat) return;
-  if (event.code === "Space") {
-    event.preventDefault();
-    rollDice();
-  } else if (event.code === "KeyQ") {
-    quake();
-  }
-});
+function route(): void {
+  leaveGame();
+  const code = codeFromUrl();
+  const token = code ? seats.get(code) : null;
+  if (code && token) startRemote(code, token);
+  else lobby.showMenu({ code: code ?? undefined });
+}
 
-refresh();
+window.addEventListener("popstate", route);
+route();

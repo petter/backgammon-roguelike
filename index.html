@@ -8,18 +8,58 @@
   </head>
   <body>
     <div id="stage"></div>
-    <div id="hud">
+
+    <div id="hud" hidden>
       <div class="row">
         <span id="turn"></span>
         <span id="dice"></span>
         <span id="message"></span>
+        <span id="opponent"></span>
       </div>
-      <div class="row">
-        <button id="roll" type="button">Roll <kbd>Space</kbd></button>
-        <button id="quake" type="button">Quake <kbd>Q</kbd></button>
-        <span id="seed"></span>
+      <div class="row bottom">
+        <div class="buttons">
+          <button id="roll" type="button">Roll <kbd>Space</kbd></button>
+          <button id="end" type="button">End turn <kbd>E</kbd></button>
+          <span id="status"></span>
+        </div>
+        <div id="hand"></div>
       </div>
     </div>
+
+    <div id="offer" class="overlay" hidden>
+      <div class="panel wide">
+        <h2>Pick a card</h2>
+        <div id="offer-cards"></div>
+      </div>
+    </div>
+
+    <div id="lobby" class="overlay" hidden>
+      <div class="panel">
+        <h1>Backgammon Roguelike</h1>
+        <form id="menu">
+          <label>
+            Your name
+            <input id="name" maxlength="20" autocomplete="nickname" />
+          </label>
+          <button id="create" type="button">Start a game</button>
+          <p class="or">or join a friend</p>
+          <label>
+            Game code
+            <input id="code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          </label>
+          <button id="join" type="submit">Join game</button>
+          <button id="local" type="button" class="quiet">Play both sides on this device</button>
+        </form>
+        <div id="waiting" hidden>
+          <p>Share this code with your friend</p>
+          <div id="share-code"></div>
+          <button id="copy-link" type="button">Copy invite link</button>
+          <p class="quiet">Waiting for them to join…</p>
+        </div>
+        <p id="lobby-error" role="alert"></p>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
