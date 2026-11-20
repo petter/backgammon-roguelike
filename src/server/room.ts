@@ -12,6 +12,7 @@ import {
 import type { GameStore, Room } from "./store.ts";
 
 const SAVE_ATTEMPTS = 5;
+const SEED_RANGE = 0x1_0000_0000;
 
 export type RoomErrorKind = "not_found" | "full" | "bad_token" | "busy";
 
@@ -110,7 +111,11 @@ export async function joinRoom(
     if (room.seats.black) throw new RoomError("full", "That game already has two players");
 
     const token = entropy.token();
-    const started = newGame(entropy.int(0x1_0000_0000));
+    const started = newGame({
+      white: entropy.int(SEED_RANGE),
+      black: entropy.int(SEED_RANGE),
+      play: entropy.int(SEED_RANGE),
+    });
     const next: Room = {
       ...room,
       version: room.version + 1,
@@ -140,6 +145,7 @@ export async function openConnection(
   code: string,
   token: string,
   send: (message: ServerMessage) => void,
+  entropy: Entropy = cryptoEntropy,
 ): Promise<Connection> {
   const found = await store.load(code);
   if (!found) throw new RoomError("not_found", "That game no longer exists");
@@ -171,7 +177,10 @@ export async function openConnection(
         }
         let result: ReturnType<typeof applyCommand>;
         try {
-          result = applyCommand(room.game, seat, command);
+          // Fresh randomness for every command. The stored RNG state is small enough to
+          // brute-force from the dice a player sees, so it must never run on as a sequence.
+          const game = { ...room.game, rng: entropy.int(SEED_RANGE) };
+          result = applyCommand(game, seat, command);
         } catch (error) {
           if (!(error instanceof GameError)) throw error;
           send({ type: "error", message: error.message, fatal: false });

@@ -39,7 +39,11 @@ export interface GameState {
   cards: Record<Player, PlayerCards>;
   /** A shielded player's lone checkers cannot be hit. Lasts until their next turn. */
   shielded: Record<Player, boolean>;
-  /** RNG state. Secret: whoever knows it can predict every roll and draw. */
+  /**
+   * RNG state. Secret: whoever knows it can predict every roll and draw. It is only 32 bits,
+   * so a server must also replace it with fresh entropy before each command; otherwise a
+   * player could recover it from the dice they see.
+   */
   rng: number;
 }
 
@@ -145,10 +149,34 @@ function beginTurn(state: GameState, player: Player): Result {
   };
 }
 
-/** A new match. The seed decides the shuffles, who starts and every roll after. */
-export function newGame(seed: number): Result {
+/**
+ * Independent sources for what each player may not learn about the other. With one shared
+ * seed, a player could work back from their own deck to the opponent's.
+ */
+export interface GameSeeds {
+  white: number;
+  black: number;
+  /** Decides who starts, then every roll and reshuffle, unless the state is reseeded. */
+  play: number;
+}
+
+function expandSeed(seed: number): GameSeeds {
   const rng = createRng(seed);
-  const cards = { white: freshCards(rng), black: freshCards(rng) };
+  const part = () => rng.int(0x1_0000_0000);
+  return { white: part(), black: part(), play: part() };
+}
+
+/**
+ * A new match. A single number gives a fully reproducible game, for local play and tests.
+ * A server should pass three unrelated secrets instead.
+ */
+export function newGame(seed: number | GameSeeds): Result {
+  const seeds = typeof seed === "number" ? expandSeed(seed) : seed;
+  const cards = {
+    white: freshCards(createRng(seeds.white)),
+    black: freshCards(createRng(seeds.black)),
+  };
+  const rng = createRng(seeds.play);
   const first: Player = rng.int(2) === 0 ? "white" : "black";
   return beginTurn(
     {

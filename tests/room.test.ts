@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Command, canPlayCard, legalMoves } from "../src/core/game.ts";
+import { applyCommand, type Command, canPlayCard, legalMoves, newGame } from "../src/core/game.ts";
 import { isRoomCode, type ServerMessage } from "../src/net/protocol.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createRoom, joinRoom, openConnection, RoomError } from "../src/server/room.ts";
@@ -172,6 +172,33 @@ describe("playing", () => {
 
     expect((await store.load(code))?.version).toBe(before);
     expect(second.inbox.length).toBe(sent + 1);
+  });
+
+  it("draws fresh randomness for every command instead of running a stored sequence", async () => {
+    const store = createMemoryStore();
+    const seeds = [11, 22, 33];
+    let next = 500;
+    const entropy = { token: () => `t${next}`, int: () => seeds.shift() ?? next++ };
+    const host = await createRoom(store, "Ada", { token: () => "host", int: () => 0 });
+    const guest = await joinRoom(store, host.code, "Grace", entropy);
+    // The three game seeds are independent draws, not one seed stretched three ways.
+    expect((await store.load(host.code))?.game).toEqual(
+      newGame({ white: 11, black: 22, play: 33 }).state,
+    );
+
+    const inbox: ServerMessage[] = [];
+    const first = (await store.load(host.code))?.game?.current;
+    const token = first === "white" ? host.token : guest.token;
+    const mover = await openConnection(store, host.code, token, (m) => inbox.push(m), entropy);
+    await mover.command({ type: "pickCard", index: 0 });
+    const before = (await store.load(host.code))?.game;
+    await mover.command({ type: "roll" });
+    const after = (await store.load(host.code))?.game;
+    if (!before || !after || !first) throw new Error("game missing");
+    // The roll came from the entropy handed in for that command, not from the stored state.
+    const expected = applyCommand({ ...before, rng: 501 }, first, { type: "roll" }).state;
+    expect(after.dice).toEqual(expected.dice);
+    expect(after.rng).toBe(expected.rng);
   });
 
   it("refuses commands before the game has started", async () => {

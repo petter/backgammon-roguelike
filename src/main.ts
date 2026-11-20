@@ -1,5 +1,6 @@
 import "./style.css";
 import { runGame } from "./app/gameScreen.ts";
+import { seedFromQuery } from "./app/seed.ts";
 import { createLocalSession } from "./net/localSession.ts";
 import { isRoomCode, normalizeCode, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
@@ -76,7 +77,7 @@ function startRemote(code: string, token: string): void {
 
 function startLocal(): void {
   leaveGame();
-  const seed = Number(new URLSearchParams(location.search).get("seed")) || Date.now();
+  const seed = seedFromQuery(location.search, Date.now());
   stopGame = runGame(deps, {
     local: true,
     connect: (handlers) => createLocalSession(handlers, seed),

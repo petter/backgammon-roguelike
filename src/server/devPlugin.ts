@@ -2,31 +2,24 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Connect, Plugin } from "vite";
 import { WebSocketServer } from "ws";
 import { normalizeCode } from "../net/protocol.ts";
-import { handleApi } from "./http.ts";
+import { BODY_LIMIT, handleApi } from "./http.ts";
 import { createMemoryStore } from "./memoryStore.ts";
 import { serveSocket } from "./socket.ts";
 
-const BODY_LIMIT = 1024;
 const SOCKET_PATH = /^\/api\/rooms\/([A-Za-z]+)\/ws$/;
 
-function readJson(req: IncomingMessage): Promise<unknown> {
+/**
+ * Reads the request body as text. Stops keeping data once it is over the limit, but still
+ * resolves, so the caller can answer with a proper error instead of a dropped connection.
+ */
+function readText(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let text = "";
     req.setEncoding("utf8");
     req.on("data", (chunk: string) => {
-      text += chunk;
-      if (text.length > BODY_LIMIT) {
-        reject(new Error("Body too large"));
-        req.destroy();
-      }
+      if (text.length <= BODY_LIMIT) text += chunk;
     });
-    req.on("end", () => {
-      try {
-        resolve(text ? JSON.parse(text) : null);
-      } catch {
-        resolve(null);
-      }
-    });
+    req.on("end", () => resolve(text));
     req.on("error", reject);
   });
 }
@@ -47,7 +40,7 @@ export function gameServer(): Plugin {
     middlewares.use((req, res, next) => {
       const path = (req.url ?? "").split("?")[0];
       if (!path.startsWith("/api/")) return next();
-      readJson(req)
+      readText(req)
         .then((body) => handleApi(store, req.method ?? "GET", path, body))
         .then((result) => reply(res, result.status, result.body))
         .catch((error) => {

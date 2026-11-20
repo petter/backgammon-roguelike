@@ -14,24 +14,43 @@ const STATUS: Record<RoomErrorKind, number> = {
   busy: 503,
 };
 
+/** Longest request body the lobby accepts, in UTF-16 code units. */
+export const BODY_LIMIT = 1024;
+
 function nameOf(body: unknown): unknown {
   return typeof body === "object" && body !== null ? (body as { name?: unknown }).name : undefined;
+}
+
+/** An empty body is fine (no name given); anything else must be valid JSON. */
+function parseBody(text: string): { ok: true; value: unknown } | { ok: false } {
+  if (text.trim() === "") return { ok: true, value: null };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /**
  * The lobby's HTTP API, independent of any server framework.
  * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat.
+ * Takes the raw body text, so a malformed or oversized request is refused before it can
+ * take a seat.
  */
 export async function handleApi(
   store: GameStore,
   method: string,
   path: string,
-  body: unknown,
+  bodyText: string,
 ): Promise<ApiResponse> {
   const parts = path.split("/").filter(Boolean);
   if (parts[0] !== "api" || parts[1] !== "rooms")
     return { status: 404, body: { error: "Not found" } };
   if (method !== "POST") return { status: 405, body: { error: "Method not allowed" } };
+  if (bodyText.length > BODY_LIMIT) return { status: 413, body: { error: "Request too large" } };
+  const parsed = parseBody(bodyText);
+  if (!parsed.ok) return { status: 400, body: { error: "Request body is not valid JSON" } };
+  const body = parsed.value;
 
   try {
     if (parts.length === 2) return { status: 201, body: await createRoom(store, nameOf(body)) };

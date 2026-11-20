@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseClientMessage, type ServerMessage } from "../src/net/protocol.ts";
-import { handleApi } from "../src/server/http.ts";
+import { BODY_LIMIT, handleApi } from "../src/server/http.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createRoom, joinRoom } from "../src/server/room.ts";
 import { serveSocket } from "../src/server/socket.ts";
@@ -179,24 +179,58 @@ describe("parseClientMessage", () => {
 describe("handleApi", () => {
   it("creates and joins rooms", async () => {
     const store = createMemoryStore();
-    const created = await handleApi(store, "POST", "/api/rooms", { name: "Ada" });
+    const created = await handleApi(store, "POST", "/api/rooms", '{"name":"Ada"}');
     expect(created.status).toBe(201);
     const { code } = created.body as { code: string; token: string };
 
-    const joined = await handleApi(store, "POST", `/api/rooms/${code.toLowerCase()}/join`, null);
+    const joined = await handleApi(store, "POST", `/api/rooms/${code.toLowerCase()}/join`, "");
     expect(joined.status).toBe(200);
     expect((joined.body as { code: string }).code).toBe(code);
     expect((await store.load(code))?.seats.black?.name).toBe("Guest");
 
-    expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, {})).status).toBe(409);
+    expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, "{}")).status).toBe(409);
+  });
+
+  it("refuses malformed JSON without taking the seat", async () => {
+    const store = createMemoryStore();
+    const { code } = (await handleApi(store, "POST", "/api/rooms", "")).body as { code: string };
+    for (const junk of ["{", "name=Ada", '{"name":']) {
+      expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, junk)).status).toBe(400);
+      expect((await handleApi(store, "POST", "/api/rooms", junk)).status).toBe(400);
+    }
+    expect((await store.load(code))?.seats.black).toBeUndefined();
+    expect((await store.load(code))?.game).toBeNull();
+    expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, "  ")).status).toBe(200);
+  });
+
+  it("ignores JSON that is valid but not an object", async () => {
+    const store = createMemoryStore();
+    for (const body of ["null", "42", '"Ada"', "[]", '{"name":{"a":1}}']) {
+      const created = await handleApi(store, "POST", "/api/rooms", body);
+      expect(created.status).toBe(201);
+      const { code } = created.body as { code: string };
+      expect((await store.load(code))?.seats.white?.name).toBe("Host");
+    }
+  });
+
+  it("refuses an oversized body with 413 and creates nothing", async () => {
+    const store = createMemoryStore();
+    const { code } = (await handleApi(store, "POST", "/api/rooms", "")).body as { code: string };
+    const big = JSON.stringify({ name: "a".repeat(BODY_LIMIT) });
+    expect((await handleApi(store, "POST", "/api/rooms", big)).status).toBe(413);
+    expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, big)).status).toBe(413);
+    expect((await store.load(code))?.seats.black).toBeUndefined();
+    const fits = JSON.stringify({ name: "a".repeat(BODY_LIMIT - 11) });
+    expect(fits).toHaveLength(BODY_LIMIT);
+    expect((await handleApi(store, "POST", "/api/rooms", fits)).status).toBe(201);
   });
 
   it("maps failures to status codes", async () => {
     const store = createMemoryStore();
-    expect((await handleApi(store, "POST", "/api/rooms/ZZZZZ/join", {})).status).toBe(404);
-    expect((await handleApi(store, "POST", "/api/rooms/nope!/join", {})).status).toBe(404);
-    expect((await handleApi(store, "GET", "/api/rooms", {})).status).toBe(405);
-    expect((await handleApi(store, "POST", "/api/other", {})).status).toBe(404);
-    expect((await handleApi(store, "POST", "/api/rooms/AAAAA/steal", {})).status).toBe(404);
+    expect((await handleApi(store, "POST", "/api/rooms/ZZZZZ/join", "{}")).status).toBe(404);
+    expect((await handleApi(store, "POST", "/api/rooms/nope!/join", "{}")).status).toBe(404);
+    expect((await handleApi(store, "GET", "/api/rooms", "{}")).status).toBe(405);
+    expect((await handleApi(store, "POST", "/api/other", "{}")).status).toBe(404);
+    expect((await handleApi(store, "POST", "/api/rooms/AAAAA/steal", "{}")).status).toBe(404);
   });
 });

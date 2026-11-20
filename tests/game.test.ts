@@ -55,6 +55,23 @@ describe("newGame", () => {
     expect(newGame(99).state.rng).not.toBe(newGame(100).state.rng);
   });
 
+  it("shuffles each deck from its own seed, so one deck says nothing about the other", () => {
+    const a = newGame({ white: 1, black: 2, play: 3 }).state;
+    const b = newGame({ white: 1, black: 999, play: 3 }).state;
+    const all = (s: typeof a, who: "white" | "black") => [
+      ...s.cards[who].deck,
+      ...s.cards[who].offer,
+    ];
+    expect(a.current).toBe(b.current);
+    expect(all(a, "white").sort()).toEqual(all(b, "white").sort());
+    const whiteOrder = (s: typeof a) =>
+      s.current === "white"
+        ? [...s.cards.white.deck, ...[...s.cards.white.offer].reverse()]
+        : s.cards.white.deck;
+    expect(whiteOrder(a)).toEqual(whiteOrder(b));
+    expect(a.cards.black).not.toEqual(b.cards.black);
+  });
+
   it("opens with the first player picking from three cards", () => {
     const { state, events } = newGame(5);
     const mine = state.cards[state.current];
