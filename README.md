@@ -30,6 +30,8 @@ reconnecting. Rooms live in memory and are lost when the dev server restarts.
 3. Move checkers and play cards from your hand, in any order.
 4. End the turn once no checker move is left.
 
+Doubles play four times. That also holds when a card leaves you with exactly two matching dice.
+
 ## Layout
 
 - `src/core`: rules, cards, seeded RNG, per-player views. No rendering or network imports.

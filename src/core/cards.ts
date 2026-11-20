@@ -1,7 +1,11 @@
+/** Dice cards share one rule: if a card leaves you with exactly two matching dice, they are doubles. */
 export const CARDS = {
-  reroll: { name: "Second Wind", text: "Reroll your remaining dice." },
-  loaded: { name: "Loaded Die", text: "Your lowest remaining die becomes a 6." },
-  charm: { name: "Lucky Charm", text: "Roll one extra die." },
+  reroll: { name: "Second Wind", text: "Reroll your remaining dice. A pair counts as doubles." },
+  loaded: {
+    name: "Loaded Die",
+    text: "Your lowest remaining die becomes a 6. A pair counts as doubles.",
+  },
+  charm: { name: "Lucky Charm", text: "Roll one extra die. A pair counts as doubles." },
   shield: { name: "Bulwark", text: "Your lone checkers cannot be hit until your next turn." },
   quake: { name: "Quake", text: "Send every lone enemy checker in your home board to the bar." },
 } as const;

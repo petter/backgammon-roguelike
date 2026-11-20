@@ -88,6 +88,9 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
           shake(stage.world, 1.4);
           tossAll(pieces.all());
         }
+      } else if (event.type === "diceChanged" && event.dice.length === 4 && text) {
+        // A card can only leave four dice by turning a pair into doubles.
+        text += ": doubles!";
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
       }

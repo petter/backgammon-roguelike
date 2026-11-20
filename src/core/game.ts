@@ -193,6 +193,15 @@ export function newGame(seed: number | GameSeeds): Result {
   );
 }
 
+/**
+ * Two matching dice are doubles and play four times, whether rolled or made by a card.
+ * Only an exact pair counts: three dice with two alike stay as they are.
+ */
+function asDoubles(dice: number[]): number[] {
+  const [a, b] = dice;
+  return dice.length === 2 && a === b ? [a, a, a, a] : dice;
+}
+
 function pickCard(state: GameState, index: number): Result {
   if (state.phase !== "pick") throw new GameError("There is no card to pick right now");
   const player = state.current;
@@ -213,7 +222,7 @@ function roll(state: GameState): Result {
   const rng = createRng(state.rng);
   const a = rollDie(rng);
   const b = rollDie(rng);
-  const dice = a === b ? [a, a, a, a] : [a, b];
+  const dice = asDoubles([a, b]);
   return {
     state: { ...state, dice, phase: "move", rng: rng.state },
     events: [{ type: "diceRolled", player: state.current, dice }],
@@ -269,7 +278,10 @@ function playCard(state: GameState, index: number): Result {
     next.board = swept.board;
     events.push(...swept.events);
   }
-  if (next.dice !== state.dice) events.push({ type: "diceChanged", player, dice: next.dice });
+  if (next.dice !== state.dice) {
+    next.dice = asDoubles(next.dice);
+    events.push({ type: "diceChanged", player, dice: next.dice });
+  }
 
   next.rng = rng.state;
   return { state: next, events };

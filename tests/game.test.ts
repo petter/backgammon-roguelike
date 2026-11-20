@@ -278,6 +278,72 @@ describe("cards", () => {
     expect(() => play(game({ dice: [], cards: hand("white", "loaded") }))).toThrow(GameError);
   });
 
+  it("treats a pair made by a card as doubles: four moves", () => {
+    const loaded = play(game({ dice: [5, 6], cards: hand("white", "loaded") }));
+    expect(loaded.state.dice).toEqual([6, 6, 6, 6]);
+    expect(loaded.events.at(-1)).toEqual({
+      type: "diceChanged",
+      player: "white",
+      dice: [6, 6, 6, 6],
+    });
+
+    // Second Wind and Lucky Charm depend on the roll: check both outcomes over many seeds.
+    const seen = { rerollPair: 0, rerollOther: 0, charmPair: 0, charmOther: 0 };
+    for (let rng = 0; rng < 200; rng++) {
+      const rerolled = play(game({ rng, dice: [1, 2], cards: hand("white", "reroll") })).state.dice;
+      if (rerolled.length === 4) {
+        expect(new Set(rerolled).size).toBe(1);
+        seen.rerollPair++;
+      } else {
+        expect(rerolled).toHaveLength(2);
+        expect(rerolled[0]).not.toBe(rerolled[1]);
+        seen.rerollOther++;
+      }
+      const charmed = play(game({ rng, dice: [4], cards: hand("white", "charm") })).state.dice;
+      if (charmed.length === 4) {
+        expect(charmed).toEqual([4, 4, 4, 4]);
+        seen.charmPair++;
+      } else {
+        expect(charmed).toHaveLength(2);
+        expect(charmed[0]).toBe(4);
+        expect(charmed[1]).not.toBe(4);
+        seen.charmOther++;
+      }
+    }
+    for (const count of Object.values(seen)) expect(count).toBeGreaterThan(0);
+  });
+
+  it("makes doubles only from exactly two dice", () => {
+    // Three dice with two alike stay three dice.
+    expect(play(game({ dice: [6, 2, 6], cards: hand("white", "loaded") })).state.dice).toEqual([
+      6, 6, 6,
+    ]);
+    for (let rng = 0; rng < 50; rng++) {
+      expect(
+        play(game({ rng, dice: [3, 3], cards: hand("white", "charm") })).state.dice,
+      ).toHaveLength(3);
+      expect(
+        play(game({ rng, dice: [1, 2, 3], cards: hand("white", "reroll") })).state.dice,
+      ).toHaveLength(3);
+      expect(play(game({ rng, dice: [], cards: hand("white", "charm") })).state.dice).toHaveLength(
+        1,
+      );
+    }
+    // Cards that do not touch the dice leave a pair alone.
+    expect(play(game({ dice: [3, 3], cards: hand("white", "shield") })).state.dice).toEqual([3, 3]);
+  });
+
+  it("lets all four doubled dice be played", () => {
+    const board = emptyBoard();
+    place(board, "white", 23, 4);
+    let state = play(game({ board, dice: [5, 6], cards: hand("white", "loaded") })).state;
+    for (let i = 0; i < 4; i++) {
+      state = applyCommand(state, "white", { type: "move", from: 23, to: 17, die: 6 }).state;
+    }
+    expect(state.dice).toEqual([]);
+    expect(state.board.points[17]).toEqual({ owner: "white", count: 4 });
+  });
+
   it("Lucky Charm adds a die, even when none are left", () => {
     const { state } = play(game({ dice: [], cards: hand("white", "charm") }));
     expect(state.dice).toHaveLength(1);
