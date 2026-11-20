@@ -64,6 +64,22 @@ A seat token is a random secret kept in the browser's `sessionStorage`. The serv
 - Session implementations: local (solo, hot-seat, tests) and remote (WebSocket). The renderer does not know which it has.
 - `api/`: create lobby, join lobby, room WebSocket.
 
+## Local development and testing
+
+`pnpm dev` must give a fully playable multiplayer game with no Redis, no Docker and no Vercel login.
+
+- The room handler takes a `GameStore` (load, compare-and-set save, publish, subscribe) instead of calling Redis directly. Two implementations: in-memory and Redis.
+- `pnpm dev` starts Vite and a small Node WebSocket server that wraps the same room handler with the in-memory store. Vite proxies `/api` to it, so the client uses the same URLs as in production.
+- Two browser tabs are two players, because seat tokens live in `sessionStorage`, which is per tab.
+- A dev-only command forces a disconnect, to exercise reconnect and resync.
+
+Test levels:
+
+- **Rules:** Vitest against `src/core`.
+- **Server logic:** Vitest drives the room handler with two fake players and the in-memory store. Covers lobby flow, redaction, rejected commands and racing writes.
+- **Redis adapter:** one contract test suite runs against both store implementations. Needs a local Redis or a throwaway Upstash database.
+- **Vercel behaviour:** preview deployments, pointed at a Redis database separate from production.
+
 ## Alternatives rejected
 
 - **Cloudflare Durable Objects**: the simplest model, one in-memory object per room. Rejected to stay on one platform.
