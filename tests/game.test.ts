@@ -265,7 +265,12 @@ describe("cards", () => {
     const { state, events } = play(game({ dice: [1, 2, 3], cards: hand("white", "reroll") }));
     expect(state.dice).toHaveLength(3);
     for (const die of state.dice) expect([1, 2, 3, 4, 5, 6]).toContain(die);
-    expect(events.at(-1)).toEqual({ type: "diceChanged", player: "white", dice: state.dice });
+    expect(events.at(-1)).toEqual({
+      type: "diceChanged",
+      player: "white",
+      dice: state.dice,
+      doubled: false,
+    });
     expect(state.rng).not.toBe(1);
     expect(() => play(game({ dice: [], cards: hand("white", "reroll") }))).toThrow(GameError);
   });
@@ -285,6 +290,7 @@ describe("cards", () => {
       type: "diceChanged",
       player: "white",
       dice: [6, 6, 6, 6],
+      doubled: true,
     });
 
     // Second Wind and Lucky Charm depend on the roll: check both outcomes over many seeds.
@@ -331,6 +337,25 @@ describe("cards", () => {
     }
     // Cards that do not touch the dice leave a pair alone.
     expect(play(game({ dice: [3, 3], cards: hand("white", "shield") })).state.dice).toEqual([3, 3]);
+  });
+
+  it("flags doubles only when a card turned an exact pair into four dice", () => {
+    const doubled = (state: GameState) =>
+      play(state).events.flatMap((e) => (e.type === "diceChanged" ? [e.doubled] : []));
+    // Four dice afterwards, but no pair was made.
+    expect(doubled(game({ dice: [3, 3, 3, 3], cards: hand("white", "loaded") }))).toEqual([false]);
+    expect(doubled(game({ dice: [5, 6], cards: hand("white", "loaded") }))).toEqual([true]);
+    for (let rng = 0; rng < 300; rng++) {
+      const four = play(game({ rng, dice: [1, 2, 3, 4], cards: hand("white", "reroll") }));
+      expect(four.state.dice).toHaveLength(4);
+      expect(four.events.at(-1)).toMatchObject({ doubled: false });
+      const three = play(game({ rng, dice: [2, 2, 5], cards: hand("white", "charm") }));
+      expect(three.state.dice).toHaveLength(4);
+      expect(three.events.at(-1)).toMatchObject({ doubled: false });
+      const two = play(game({ rng, dice: [1, 2], cards: hand("white", "reroll") }));
+      expect(two.events.at(-1)).toMatchObject({ doubled: two.state.dice.length === 4 });
+    }
+    expect(doubled(game({ dice: [3, 3], cards: hand("white", "shield") }))).toEqual([]);
   });
 
   it("lets all four doubled dice be played", () => {

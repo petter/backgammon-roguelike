@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseClientMessage, type ServerMessage } from "../src/net/protocol.ts";
+import { codeFromPath, parseClientMessage, type ServerMessage } from "../src/net/protocol.ts";
 import { BODY_LIMIT, handleApi } from "../src/server/http.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createRoom, joinRoom } from "../src/server/room.ts";
@@ -172,6 +172,32 @@ describe("parseClientMessage", () => {
       '{"type":"command","command":{"type":"move","from":3,"to":2}}',
     ]) {
       expect(parseClientMessage(text), text).toBeNull();
+    }
+  });
+});
+
+describe("codeFromPath", () => {
+  it("reads the code from an invite path, in either case", () => {
+    expect(codeFromPath("/g/ABCDE")).toBe("ABCDE");
+    expect(codeFromPath("/g/abcde")).toBe("ABCDE");
+    expect(codeFromPath("/g/abcde/")).toBe("ABCDE");
+  });
+
+  it("returns null for anything else, without throwing", () => {
+    for (const path of [
+      "/",
+      "/g/",
+      "/g/BAD",
+      "/g/ABCDEF",
+      "/g/ABCDI",
+      "/g/%",
+      "/g/%FF",
+      "/g/%41BCDE",
+      "/g/AB CDE",
+      "/g/ABCDE/extra",
+      "/x/ABCDE",
+    ]) {
+      expect(codeFromPath(path), path).toBeNull();
     }
   });
 });

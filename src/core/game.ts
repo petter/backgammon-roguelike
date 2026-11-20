@@ -61,7 +61,8 @@ export type GameEvent =
   | { type: "cardPicked"; player: Player; card: CardId | null }
   | { type: "cardPlayed"; player: Player; card: CardId }
   | { type: "diceRolled"; player: Player; dice: number[] }
-  | { type: "diceChanged"; player: Player; dice: number[] }
+  /** A card changed the dice. `doubled`: it left an exact pair, which became four dice. */
+  | { type: "diceChanged"; player: Player; dice: number[]; doubled: boolean }
   | { type: "shieldRaised"; player: Player }
   | { type: "turnEnded"; player: Player; next: Player }
   | { type: "gameWon"; winner: Player };
@@ -279,8 +280,9 @@ function playCard(state: GameState, index: number): Result {
     events.push(...swept.events);
   }
   if (next.dice !== state.dice) {
-    next.dice = asDoubles(next.dice);
-    events.push({ type: "diceChanged", player, dice: next.dice });
+    const changed = next.dice;
+    next.dice = asDoubles(changed);
+    events.push({ type: "diceChanged", player, dice: next.dice, doubled: next.dice !== changed });
   }
 
   next.rng = rng.state;

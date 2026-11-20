@@ -2,7 +2,7 @@ import "./style.css";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { createLocalSession } from "./net/localSession.ts";
-import { isRoomCode, normalizeCode, type SeatGrant } from "./net/protocol.ts";
+import { codeFromPath, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
 import { createStage } from "./render/stage.ts";
@@ -43,12 +43,6 @@ const seats = {
     }
   },
 };
-
-function codeFromUrl(): string | null {
-  const match = /^\/g\/([^/]+)\/?$/.exec(location.pathname);
-  const code = match ? normalizeCode(decodeURIComponent(match[1])) : "";
-  return isRoomCode(code) ? code : null;
-}
 
 function leaveGame(): void {
   stopGame?.();
@@ -122,7 +116,7 @@ const lobby = createLobbyUi({
 
 function route(): void {
   leaveGame();
-  const code = codeFromUrl();
+  const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;
   if (code && token) startRemote(code, token);
   else lobby.showMenu({ code: code ?? undefined });
