@@ -183,21 +183,30 @@ export async function openConnection(
   if (!seat) throw new RoomError("bad_token", "You do not have a seat in that game");
 
   let sent = -1;
-  /** Sends a room state unless this connection already has that version or a newer one. */
+  let closed = false;
+  /**
+   * Sends a room state unless this connection already has that version or a newer one.
+   * The version counts as sent only once `send` has returned: if it throws, a later
+   * attempt tries again.
+   */
   const deliver = (room: Room, events: GameEvent[]) => {
-    if (room.version <= sent) return;
-    sent = room.version;
+    if (closed || room.version <= sent) return;
     send(stateMessage(room, seat, events));
+    sent = room.version;
   };
 
   // Subscribe before taking the snapshot, so no change can fall between the two.
   const unsubscribe = await store.subscribe(code, (update) => deliver(update.room, update.events));
-  const snapshot = await store.load(code);
-  if (!snapshot) {
+  try {
+    const snapshot = await store.load(code);
+    if (!snapshot) throw new RoomError("not_found", "That game no longer exists");
+    deliver(snapshot, []);
+  } catch (error) {
+    // No handle is returned on failure, so nobody else could ever remove the listener.
+    closed = true;
     unsubscribe();
-    throw new RoomError("not_found", "That game no longer exists");
+    throw error;
   }
-  deliver(snapshot, []);
 
   const resync = setInterval(() => {
     store
@@ -236,13 +245,20 @@ export async function openConnection(
           await announce(store, code, { room: next, events: result.events });
           // If the announcement reached this connection, this is a no-op. If it did not,
           // the player who acted still sees their own move at once.
-          deliver(next, result.events);
+          try {
+            deliver(next, result.events);
+          } catch (error) {
+            // The move is committed; a failed send is retried by the next resync.
+            console.error("Could not send a player their own move", error);
+          }
           return;
         }
       }
       send({ type: "error", message: "The game is busy, try again", fatal: false });
     },
     close() {
+      // Also stops a resync that is already reading from delivering once it returns.
+      closed = true;
       clearInterval(resync);
       unsubscribe();
     },

@@ -374,6 +374,147 @@ describe("playing", () => {
     }
   });
 
+  it("retries a version whose send failed, instead of counting it as sent", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createMemoryStore();
+      const host = await createRoom(store, "Ada");
+      const got: number[] = [];
+      let failNext = false;
+      const connection = await openConnection(store, host.code, host.token, (m) => {
+        if (m.type !== "state") return;
+        if (failNext) {
+          failNext = false;
+          throw new Error("socket write failed");
+        }
+        got.push(m.version);
+      });
+      failNext = true;
+      await joinRoom(store, host.code, "Grace");
+      expect(got).toEqual([0]);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(got).toEqual([0, 1]);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(got).toEqual([0, 1]);
+      connection.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a command committed and retried when sending the mover their own move fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const inner = createMemoryStore();
+      // No announcements, so the direct send to the mover is the only immediate delivery.
+      const store: GameStore = { ...inner, publish: () => Promise.reject(new Error("down")) };
+      const host = await createRoom(store, "Ada");
+      const guest = await joinRoom(store, host.code, "Grace");
+      const first = (await store.load(host.code))?.game?.current;
+      const got: number[] = [];
+      let failNext = false;
+      const mover = await openConnection(
+        store,
+        host.code,
+        first === "white" ? host.token : guest.token,
+        (m) => {
+          if (m.type !== "state") return;
+          if (failNext) {
+            failNext = false;
+            throw new Error("socket write failed");
+          }
+          got.push(m.version);
+        },
+      );
+      failNext = true;
+      await expect(mover.command({ type: "pickCard", index: 0 })).resolves.toBeUndefined();
+      expect((await store.load(host.code))?.version).toBe(2);
+      expect(got).toEqual([1]);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(got).toEqual([1, 2]);
+      mover.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no listener behind when opening a connection fails part-way", async () => {
+    const inner = createMemoryStore();
+    const host = await createRoom(inner, "Ada");
+    for (const failure of ["reject", "vanish", "send"] as const) {
+      let loads = 0;
+      let listeners = 0;
+      const store: GameStore = {
+        ...inner,
+        load: async (code) => {
+          loads++;
+          if (loads === 2 && failure === "reject") throw new Error("store down");
+          if (loads === 2 && failure === "vanish") return null;
+          return inner.load(code);
+        },
+        subscribe: async (code, listener) => {
+          listeners++;
+          const stop = await inner.subscribe(code, listener);
+          return () => {
+            listeners--;
+            stop();
+          };
+        },
+      };
+      const got: unknown[] = [];
+      const send = (m: ServerMessage) => {
+        if (failure === "send" && got.length === 0) {
+          got.push("threw");
+          throw new Error("socket write failed");
+        }
+        got.push(m);
+      };
+      await expect(openConnection(store, host.code, host.token, send), failure).rejects.toThrow();
+      expect(listeners, failure).toBe(0);
+      const before = got.length;
+      await inner.publish(host.code, {
+        room: { code: host.code, version: 50, seats: {}, game: null },
+        events: [],
+      });
+      expect(got.length, failure).toBe(before);
+    }
+  });
+
+  it("delivers nothing after close, even from a resync already in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const inner = createMemoryStore();
+      let release: (() => void) | null = null;
+      let hold = false;
+      const store: GameStore = {
+        ...inner,
+        load: async (code) => {
+          const room = await inner.load(code);
+          if (hold) await new Promise<void>((resolve) => (release = resolve));
+          return room;
+        },
+        publish: async () => {},
+      };
+      const host = await createRoom(store, "Ada");
+      const got: number[] = [];
+      const connection = await openConnection(store, host.code, host.token, (m) => {
+        if (m.type === "state") got.push(m.version);
+      });
+      await joinRoom(store, host.code, "Grace");
+      expect(got).toEqual([0]);
+
+      hold = true;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(release).not.toBeNull();
+      connection.close();
+      (release as unknown as () => void)();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(got).toEqual([0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports a room that vanished as a fatal error", async () => {
     let gone = false;
     const inner = createMemoryStore();
