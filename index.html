@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Backgammon Roguelike</title>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="hud">
+      <div class="row">
+        <span id="turn"></span>
+        <span id="dice"></span>
+        <span id="message"></span>
+      </div>
+      <div class="row">
+        <button id="roll" type="button">Roll <kbd>Space</kbd></button>
+        <button id="quake" type="button">Quake <kbd>Q</kbd></button>
+        <span id="seed"></span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
