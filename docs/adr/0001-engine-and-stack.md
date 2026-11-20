@@ -17,15 +17,15 @@ Constraints:
 
 Three.js + TypeScript + Vite. Real 3D scene, mostly fixed top-down camera.
 
-| Concern | Choice |
-| --- | --- |
-| Language | TypeScript |
-| Build / dev server | Vite |
-| Rendering | Plain `three` (no React Three Fiber) |
-| Tweens / juice | GSAP |
-| Physics | None at first; tween hops. Rapier later only if real dice tumbling is wanted |
-| UI (hand, card picks, shop, menus) | DOM/CSS overlay to start |
-| Tests | Vitest |
+| Concern                            | Choice                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| Language                           | TypeScript                                                                   |
+| Build / dev server                 | Vite                                                                         |
+| Rendering                          | Plain `three` (no React Three Fiber)                                         |
+| Tweens / juice                     | GSAP                                                                         |
+| Physics                            | None at first; tween hops. Rapier later only if real dice tumbling is wanted |
+| UI (hand, card picks, shop, menus) | DOM/CSS overlay to start                                                     |
+| Tests                              | Vitest                                                                       |
 
 ## Architecture
 
