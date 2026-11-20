@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { applyCommand, type Command, canPlayCard, legalMoves, newGame } from "../src/core/game.ts";
 import { isRoomCode, type ServerMessage } from "../src/net/protocol.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
@@ -189,7 +189,7 @@ describe("playing", () => {
     const inbox: ServerMessage[] = [];
     const first = (await store.load(host.code))?.game?.current;
     const token = first === "white" ? host.token : guest.token;
-    const mover = await openConnection(store, host.code, token, (m) => inbox.push(m), entropy);
+    const mover = await openConnection(store, host.code, token, (m) => inbox.push(m), { entropy });
     await mover.command({ type: "pickCard", index: 0 });
     const before = (await store.load(host.code))?.game;
     await mover.command({ type: "roll" });
@@ -273,6 +273,105 @@ describe("playing", () => {
     expect(back.last().version).toBe(first.last().version);
     expect(back.last().view?.dice).toEqual(first.last().view?.dice);
     expect(back.last().view?.phase).toBe("move");
+  });
+
+  it("still shows the mover their move when the announcement fails, and commits it once", async () => {
+    const inner = createMemoryStore();
+    let broken = false;
+    const store: GameStore = {
+      ...inner,
+      publish: async (code, update) => {
+        if (broken) throw new Error("NOPERM");
+        return inner.publish(code, update);
+      },
+    };
+    const { code, first, second } = await table(store);
+    const before = first.last().version;
+    broken = true;
+    await first.send({ type: "pickCard", index: 0 });
+
+    expect((await store.load(code))?.version).toBe(before + 1);
+    expect(first.errors()).toEqual([]);
+    expect(first.last().version).toBe(before + 1);
+    expect(first.last().view?.hand).toHaveLength(1);
+    expect(first.last().events).toHaveLength(1);
+    // The other player has not heard yet...
+    expect(second.last().version).toBe(before);
+  });
+
+  it("catches a player up by itself when an announcement was lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const inner = createMemoryStore();
+      let broken = false;
+      const store: GameStore = {
+        ...inner,
+        publish: async (code, update) =>
+          broken ? Promise.reject(new Error("down")) : inner.publish(code, update),
+      };
+      const { first, second } = await table(store);
+      const before = second.last().version;
+      const quiet = second.inbox.length;
+      await vi.advanceTimersByTimeAsync(30_000);
+      // Nothing changed, so the resync sends nothing.
+      expect(second.inbox.length).toBe(quiet);
+
+      broken = true;
+      await first.send({ type: "pickCard", index: 0 });
+      await first.send({ type: "roll" });
+      expect(second.last().version).toBe(before);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(second.last().version).toBe(before + 2);
+      expect(second.last().events).toEqual([]);
+      expect(second.last().view?.phase).toBe("move");
+      expect(second.last().view?.dice).toEqual(first.last().view?.dice);
+
+      // After closing, the timer is gone too.
+      second.connection.close();
+      const closedAt = second.inbox.length;
+      await first.send({ type: "playCard", index: 0 }).catch(() => {});
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(second.inbox.length).toBe(closedAt);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never sends a seat the same version twice", async () => {
+    vi.useFakeTimers();
+    try {
+      const { white, black, first } = await table();
+      await first.send({ type: "pickCard", index: 0 });
+      await vi.advanceTimersByTimeAsync(25_000);
+      await first.send({ type: "roll" });
+      await vi.advanceTimersByTimeAsync(25_000);
+      for (const { inbox } of [white, black]) {
+        const versions = inbox.flatMap((m) => (m.type === "state" ? [m.version] : []));
+        expect(versions).toEqual([...new Set(versions)]);
+        expect(versions).toEqual([...versions].sort((a, b) => a - b));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives the guest their seat even when announcing the join fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const inner = createMemoryStore();
+      const store: GameStore = { ...inner, publish: () => Promise.reject(new Error("down")) };
+      const host = await createRoom(store, "Ada");
+      const white = await client(store, host.code, host.token);
+      const guest = await joinRoom(store, host.code, "Grace");
+      expect(guest.token).toBeTruthy();
+      expect(white.last().view).toBeNull();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(white.last().view?.you).toBe("white");
+      expect(white.last().lobby.players.black).toEqual({ name: "Grace" });
+      white.connection.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports a room that vanished as a fatal error", async () => {

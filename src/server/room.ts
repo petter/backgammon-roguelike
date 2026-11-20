@@ -9,7 +9,7 @@ import {
   type SeatGrant,
   type ServerMessage,
 } from "../net/protocol.ts";
-import type { GameStore, Room } from "./store.ts";
+import type { GameStore, Room, RoomUpdate } from "./store.ts";
 
 const SAVE_ATTEMPTS = 5;
 const SEED_RANGE = 0x1_0000_0000;
@@ -123,11 +123,30 @@ export async function joinRoom(
       game: started.state,
     };
     if (await store.save(next, room.version)) {
-      await store.publish(code, { room: next, events: started.events });
+      // The seat is taken whether or not the announcement gets through; the host's
+      // connection catches up by itself if it does not.
+      await announce(store, code, { room: next, events: started.events });
       return { code, token };
     }
   }
   throw new RoomError("busy", "The game is busy, try again");
+}
+
+/**
+ * Tells the room's connections about a saved change. The save has already happened, so a
+ * failure here must not fail the caller: it is logged, and each connection's periodic
+ * resync delivers the change instead. Returns whether the announcement went out.
+ */
+async function announce(store: GameStore, code: string, update: RoomUpdate): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await store.publish(code, update);
+      return true;
+    } catch (error) {
+      console.error("Could not announce a room change", error);
+    }
+  }
+  return false;
 }
 
 export interface Connection {
@@ -136,32 +155,58 @@ export interface Connection {
   close(): void;
 }
 
+export interface ConnectionOptions {
+  entropy?: Entropy;
+  /**
+   * How often to check the store for a change this connection was never told about.
+   * Announcements are best-effort, so this is what bounds how long a player can be stale.
+   */
+  resyncMs?: number;
+}
+
 /**
  * Binds a seat to a way of sending messages. Sends the current state at once, then every
- * later change. Throws `RoomError` if the room or token is not valid.
+ * later change, each version at most once. Throws `RoomError` if the room or token is not
+ * valid.
  */
 export async function openConnection(
   store: GameStore,
   code: string,
   token: string,
   send: (message: ServerMessage) => void,
-  entropy: Entropy = cryptoEntropy,
+  options: ConnectionOptions = {},
 ): Promise<Connection> {
+  const { entropy = cryptoEntropy, resyncMs = 10_000 } = options;
   const found = await store.load(code);
   if (!found) throw new RoomError("not_found", "That game no longer exists");
   const seat = seatOf(found, token);
   if (!seat) throw new RoomError("bad_token", "You do not have a seat in that game");
 
+  let sent = -1;
+  /** Sends a room state unless this connection already has that version or a newer one. */
+  const deliver = (room: Room, events: GameEvent[]) => {
+    if (room.version <= sent) return;
+    sent = room.version;
+    send(stateMessage(room, seat, events));
+  };
+
   // Subscribe before taking the snapshot, so no change can fall between the two.
-  const unsubscribe = await store.subscribe(code, (update) => {
-    send(stateMessage(update.room, seat, update.events));
-  });
+  const unsubscribe = await store.subscribe(code, (update) => deliver(update.room, update.events));
   const snapshot = await store.load(code);
   if (!snapshot) {
     unsubscribe();
     throw new RoomError("not_found", "That game no longer exists");
   }
-  send(stateMessage(snapshot, seat, []));
+  deliver(snapshot, []);
+
+  const resync = setInterval(() => {
+    store
+      .load(code)
+      .then((room) => room && deliver(room, []))
+      .catch((error) => console.error("Could not resync a room", error));
+  }, resyncMs);
+  // Never the reason a process stays alive.
+  (resync as { unref?: () => void }).unref?.();
 
   return {
     async command(command) {
@@ -188,12 +233,18 @@ export async function openConnection(
         }
         const next: Room = { ...room, version: room.version + 1, game: result.state };
         if (await store.save(next, room.version)) {
-          await store.publish(code, { room: next, events: result.events });
+          await announce(store, code, { room: next, events: result.events });
+          // If the announcement reached this connection, this is a no-op. If it did not,
+          // the player who acted still sees their own move at once.
+          deliver(next, result.events);
           return;
         }
       }
       send({ type: "error", message: "The game is busy, try again", fatal: false });
     },
-    close: unsubscribe,
+    close() {
+      clearInterval(resync);
+      unsubscribe();
+    },
   };
 }

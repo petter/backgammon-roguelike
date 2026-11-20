@@ -36,3 +36,17 @@ export interface GameStore {
   /** Resolves to an unsubscribe function once the listener is live. */
   subscribe(code: string, listener: (update: RoomUpdate) => void): Promise<() => void>;
 }
+
+/** Calls every listener with the update. One that throws is logged and does not stop the rest. */
+export function notify(
+  listeners: Iterable<(update: RoomUpdate) => void> | undefined,
+  update: RoomUpdate,
+): void {
+  for (const listener of [...(listeners ?? [])]) {
+    try {
+      listener(structuredClone(update));
+    } catch (error) {
+      console.error("A room listener failed", error);
+    }
+  }
+}

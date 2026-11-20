@@ -37,6 +37,29 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect((await store.load("AAAAA"))?.version).toBe(0);
     });
 
+    it("keeps delivering when one listener throws", async () => {
+      const store = makeStore();
+      const seen: number[] = [];
+      await store.subscribe("AAAAA", () => {
+        throw new Error("listener failed");
+      });
+      await store.subscribe("AAAAA", (u) => seen.push(u.room.version));
+      await store.publish("AAAAA", { room: room("AAAAA", 1), events: [] });
+      await store.publish("AAAAA", { room: room("AAAAA", 2), events: [] });
+      expect(seen).toEqual([1, 2]);
+    });
+
+    it("gives each listener its own copy of an update", async () => {
+      const store = makeStore();
+      const seen: RoomUpdate[] = [];
+      await store.subscribe("AAAAA", (u) => {
+        u.room.version = 99;
+      });
+      await store.subscribe("AAAAA", (u) => seen.push(u));
+      await store.publish("AAAAA", { room: room("AAAAA", 1), events: [] });
+      expect(seen[0]?.room.version).toBe(1);
+    });
+
     it("delivers published updates to subscribers of that room only", async () => {
       const store = makeStore();
       const a: RoomUpdate[] = [];

@@ -103,7 +103,8 @@ export interface BoardHints {
   /** Rest positions of the top checker on every stack that can move. */
   sources: Vec3[];
   /** Points the selected checker can reach, each with the spot it would land on. */
-  targets: { point: number; at: Vec3 }[];
+  /** `occupied`: an opposing checker sits on the spot and would be hit. */
+  targets: { point: number; at: Vec3; occupied: boolean }[];
   /** Whether the selected checker can be borne off. */
   off: boolean;
 }
@@ -167,9 +168,13 @@ export function createBoard(): BoardView {
       targetMarkers.forEach((marker, i) => {
         const target = hints.targets[i];
         marker.visible = target !== undefined;
-        // Just above whatever the checker would rest on: the felt, or the checker below.
-        if (target)
-          marker.position.set(target.at.x, target.at.y - CHECKER_H / 2 + 0.03, target.at.z);
+        if (!target) return;
+        // Just above the felt or the checker below; or on top of the checker to be hit,
+        // which would otherwise cover the marker.
+        const y = target.occupied
+          ? target.at.y + CHECKER_H / 2 + 0.014
+          : target.at.y - CHECKER_H / 2 + 0.03;
+        marker.position.set(target.at.x, y, target.at.z);
       });
       sourceMarkers.forEach((marker, i) => {
         const at = hints.sources[i];

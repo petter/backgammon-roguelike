@@ -56,13 +56,16 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (!moves.some((m) => m.from === selected)) selected = null;
     const targets = moves.filter((m) => m.from === selected);
     const { board: state, current } = view;
-    // A checker lands on top of its own colour, or on the felt after a hit or on an empty point.
+    // A checker lands on top of its own colour, or on the felt of an empty point. When it
+    // would hit, it takes the place of the checker that is there now.
     const landing = (point: number) => {
       const there = state.points[point];
-      return slotPosition(
-        { kind: "point", index: point },
-        there.owner === current ? there.count : 0,
-      );
+      const mine = there.owner === current;
+      return {
+        point,
+        at: slotPosition({ kind: "point", index: point }, mine ? there.count : 0),
+        occupied: !mine && there.count > 0,
+      };
     };
     const top = (from: number | "bar") =>
       from === "bar"
@@ -74,7 +77,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     board.setHints({
       // Until a checker is picked, show which ones can move at all.
       sources: selected === null ? [...new Set(moves.map((m) => m.from))].map(top) : [],
-      targets: reachable.map((point) => ({ point, at: landing(point) })),
+      targets: reachable.map(landing),
       off: targets.some((m) => m.to === "off"),
     });
     if (selected === null) checkers.lift(null);

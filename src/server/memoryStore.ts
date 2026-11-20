@@ -1,4 +1,4 @@
-import type { GameStore, Room, RoomUpdate } from "./store.ts";
+import { type GameStore, notify, type Room, type RoomUpdate } from "./store.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,9 +37,7 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       return true;
     },
     async publish(code, update) {
-      for (const listener of [...(listeners.get(code) ?? [])]) {
-        listener(structuredClone(update));
-      }
+      notify(listeners.get(code), update);
     },
     async subscribe(code, listener) {
       const set = listeners.get(code) ?? new Set();

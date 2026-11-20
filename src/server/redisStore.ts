@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import type { GameStore, Room, RoomUpdate } from "./store.ts";
+import { type GameStore, notify, type Room, type RoomUpdate } from "./store.ts";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -36,8 +36,13 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
     subscriber = redis.duplicate();
     subscriber.on("error", (error) => console.error("Redis subscriber error", error.message));
     subscriber.on("message", (channel: string, text: string) => {
-      const update = JSON.parse(text) as RoomUpdate;
-      for (const listener of [...(listeners.get(channel) ?? [])]) listener(update);
+      // Nothing thrown here may escape: it would take the whole process down with it.
+      try {
+        const update = JSON.parse(text) as RoomUpdate;
+        notify(listeners.get(channel), update);
+      } catch (error) {
+        console.error("Ignoring a malformed room update", error);
+      }
     });
     return subscriber;
   };
