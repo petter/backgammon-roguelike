@@ -35,14 +35,25 @@ Doubles play four times. That also holds when a card leaves you with exactly two
 ## Layout
 
 - `src/core`: rules, cards, seeded RNG, per-player views. No rendering or network imports.
-- `src/server`: rooms, lobby API and socket handling, behind a `GameStore` interface.
+- `src/server`: rooms, lobby API and socket handling, behind a `GameStore` interface (memory
+  or Redis). `vercel.ts` is the production entry point; `devPlugin.ts` the local one.
 - `src/net`: wire protocol and the client's session (local or remote).
 - `src/render`: Three.js scene, board, checkers, effects. Plays back core events.
 - `src/app`, `src/ui`: game controller and DOM overlay.
 - `tests`: Vitest.
 
+## Deployment
+
+Hosted on Vercel as one project. `pnpm build` produces the client in `dist` and bundles the
+game server into `dist-server/vercel.js`, which `api/server.js` exposes as a single Vercel
+Function. `vercel.json` routes every `/api/*` request to it and serves the app for `/g/*`.
+
+- Rooms live in Redis (`REDIS_URL`, from a Redis integration on the Vercel project). Without
+  it the server falls back to memory, which is only reliable while one instance is running.
+- `GET /api/health` reports the store in use and the deployed commit.
+- `REDIS_URL=redis://localhost:6379 pnpm test` also runs the Redis store tests.
+
 ## Not built yet
 
-- Deployment: the Vercel function entry points and the Redis `GameStore`.
 - The rule that a roll must be played so as to use as many dice as possible.
 - Characters, and any way to start a rematch.

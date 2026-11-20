@@ -95,10 +95,12 @@ Test levels:
 - The game is turn-based, so there is no prediction or rollback to build.
 - Solo and hot-seat play keep working with no server, through the local session.
 
-## To verify when building
+## As built
 
-- Current status and limits of WebSockets on Vercel Functions. It launched as a public beta in June 2026 and was reported generally available in October 2026, but some Vercel pages still described it as beta.
-- Whether `vercel dev` serves the WebSocket endpoint locally. Fallback: a small local Node wrapper around the same handler.
+- One Vercel Function, `api/server.js`, exports a Node HTTP server that handles both the lobby API and WebSocket upgrades with the `ws` package. `vercel.json` rewrites `/api/*` to it.
+- The server is bundled by Vite into one file at build time, so the function does not depend on the platform's TypeScript handling.
+- The Redis store uses one JSON value per room with a Lua compare-and-set, and a pub/sub channel per room over a dedicated subscriber connection.
+- `vercel dev` is not used; local development runs the same handlers inside Vite.
 
 ## Revisit if
 
