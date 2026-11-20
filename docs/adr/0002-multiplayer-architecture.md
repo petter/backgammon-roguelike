@@ -69,7 +69,7 @@ A seat token is a random secret kept in the browser's `sessionStorage`. The serv
 `pnpm dev` must give a fully playable multiplayer game with no Redis, no Docker and no Vercel login.
 
 - The room handler takes a `GameStore` (load, compare-and-set save, publish, subscribe) instead of calling Redis directly. Two implementations: in-memory and Redis.
-- `pnpm dev` starts Vite and a small Node WebSocket server that wraps the same room handler with the in-memory store. Vite proxies `/api` to it, so the client uses the same URLs as in production.
+- `pnpm dev` runs the game server inside Vite's own dev server, as a plugin (`src/server/devPlugin.ts`) that wraps the same room handler with the in-memory store. One process, one port, and the client uses the same `/api` URLs as in production.
 - Two browser tabs are two players, because seat tokens live in `sessionStorage`, which is per tab.
 - A dev-only command forces a disconnect, to exercise reconnect and resync.
 
