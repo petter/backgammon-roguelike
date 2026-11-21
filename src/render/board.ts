@@ -1,20 +1,26 @@
 import { gsap } from "gsap";
 import * as THREE from "three";
 
-import { POINT_COUNT } from "../core/board.ts";
+import { type Player, POINT_COUNT } from "../core/board.ts";
 import { box, flat, mitredFrame, shade, triangle } from "./boardParts.ts";
+import { createGuide, type Guide } from "./guide.ts";
 import {
   BAR_W,
   CHECKER_H,
   CHECKER_R,
   FIELD_HALF_D,
   FIELD_HALF_W,
+  OUTER_D,
+  RIM,
   TRAY_W,
+  TRAY_WALL,
+  TRAY_WELL_D,
   TRAY_X,
   type Vec3,
 } from "./layout.ts";
 import {
   clothTexture,
+  crispRingTexture,
   dropShadowTexture,
   glowRingTexture,
   vignetteTexture,
@@ -22,10 +28,8 @@ import {
   woodTexture,
 } from "./textures.ts";
 
-const RIM = 0.5;
 const RIM_H = 0.3;
 const BASE_H = 0.5;
-const TRAY_WALL = 0.16;
 
 /** World units covered by one repeat of a texture, so grain and weave keep one scale. */
 function tiled(texture: THREE.Texture, u: number, v = u): THREE.Texture {
@@ -75,6 +79,10 @@ const HALO_PEAK = 0.76;
 const TARGET_COLOR = 0x35ffb0;
 /** Which checkers can move: a warm amber halo, readable on both checker colours. */
 const SOURCE_COLOR = 0xff9a30;
+/** Which can leave the board now: the gold of the tray's own glow, so the two go together. */
+const LEAVING_COLOR = 0xeaa62a;
+/** A leaving checker's ring sits just outside its rim, clear of the rail on the last point. */
+const LEAVING_SCALE = 1.08;
 
 const overlay = (color: number, opacity: number) =>
   new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
@@ -84,11 +92,22 @@ const targetEdge = overlay(0xffffff, 0.95);
 const sourceRing = overlay(SOURCE_COLOR, 1);
 sourceRing.map = glowRingTexture(HALO_PEAK);
 sourceRing.blending = THREE.AdditiveBlending;
+// A crisp closed ring drawn over the felt rather than added to it, so it stays a saturated
+// gold outline, not a pale glow like the usual halo.
+const leavingRing = overlay(LEAVING_COLOR, 1);
+leavingRing.map = crispRingTexture(0.62, 0.8);
+// Over the rail and the checkers beside it, which would otherwise cut it into a crescent.
+leavingRing.depthTest = false;
+/** The usual halo, held very low while some checker can leave, so that one is what stands out. */
+const quietRing = sourceRing.clone();
+quietRing.opacity = 0.15;
 // One slow pulse shared by every hint, so they draw the eye without flickering.
 for (const [material, low] of [
   [targetFill, 0.22],
   [targetSpot, 0.45],
   [sourceRing, 0.5],
+  [leavingRing, 0.75],
+  [quietRing, 0.05],
 ] as const) {
   gsap.to(material, { opacity: low, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: -1 });
 }
@@ -113,8 +132,8 @@ function targetMarker(): THREE.Group {
 /** Outer radius of the halo under a movable checker. */
 const HALO_R = CHECKER_R * 1.4;
 /** A soft pool of light under a checker that is able to move, glowing out round its rim. */
-function sourceMarker(): THREE.Mesh {
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(HALO_R * 2, HALO_R * 2), sourceRing);
+function sourceMarker(ring = sourceRing): THREE.Mesh {
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(HALO_R * 2, HALO_R * 2), ring);
   halo.rotation.x = -Math.PI / 2;
   halo.visible = false;
   return halo;
@@ -123,6 +142,8 @@ function sourceMarker(): THREE.Mesh {
 export interface BoardHints {
   /** Rest positions of the top checker on every stack that can move. */
   sources: Vec3[];
+  /** Those of them that can be borne off now, which get a gold halo instead. */
+  leaving?: Vec3[];
   /** Points the selected checker can reach, each with the spot it would land on. */
   /** `occupied`: an opposing checker sits on the spot and would be hit. */
   targets: Array<{ point: number; at: Vec3; occupied: boolean }>;
@@ -134,12 +155,16 @@ export interface BoardView {
   group: THREE.Group;
   /** Shows what the player can do right now. Pass nothing to clear every hint. */
   setHints: (hints?: BoardHints) => void;
+  /** Lights the way for a player, or puts the light out when given nothing. */
+  setGuide: (guide: Guide | null, still?: boolean, scale?: number) => void;
+  /** Leaves a faint frame on a player's home, or takes it away; `now`: without a fade. */
+  markHome: (player: Player | null, now?: boolean) => void;
 }
 
 export function createBoard(): BoardView {
   const group = new THREE.Group();
   const outerW = (FIELD_HALF_W + RIM) * 2;
-  const outerD = (FIELD_HALF_D + RIM) * 2;
+  const outerD = OUTER_D;
   const fieldW = FIELD_HALF_W * 2;
   const fieldD = FIELD_HALF_D * 2;
 
@@ -191,7 +216,7 @@ export function createBoard(): BoardView {
   );
   const divider = box(TRAY_W - TRAY_WALL * 2, RIM_H * 0.8, 0.2, wood);
   divider.position.set(TRAY_X, (RIM_H * 0.8) / 2, 0);
-  const wellD = (outerD - TRAY_WALL * 2 - 0.2) / 2;
+  const wellD = TRAY_WELL_D;
   const trayShade = shade(wellShadeTexture(TRAY_W - TRAY_WALL * 2, wellD, 0.3), 0.55);
   const trayGlow = new THREE.Mesh(new THREE.PlaneGeometry(TRAY_W, outerD), targetFill);
   trayGlow.rotation.x = -Math.PI / 2;
@@ -233,11 +258,44 @@ export function createBoard(): BoardView {
   }
 
   const targetMarkers = Array.from({ length: MAX_TARGETS }, targetMarker);
-  const sourceMarkers = Array.from({ length: MAX_SOURCES }, sourceMarker);
-  group.add(...targetMarkers, ...sourceMarkers);
+  const sourceMarkers = Array.from({ length: MAX_SOURCES }, () => sourceMarker());
+  const leavingMarkers = Array.from({ length: 6 }, () => {
+    const marker = sourceMarker(leavingRing);
+    // Over the guide's frames, which would otherwise cut across it on the last point.
+    marker.renderOrder = 4;
+    return marker;
+  });
+  // The ring swells and settles: the one moving thing among steady lights, so the eye
+  // goes to it first.
+  // A phone draws the board small: the ring keeps closer to its checker there, clear of
+  // the stacks beside it.
+  const narrow = window.matchMedia("(max-width: 640px)");
+  const ringScale = (scale: number) => (narrow.matches ? scale * 0.88 : scale);
+  const swell = { scale: LEAVING_SCALE * 1.08 };
+  const applySwell = () => {
+    for (const marker of leavingMarkers) marker.scale.setScalar(ringScale(swell.scale));
+  };
+  applySwell();
+  // A phone turned on its side crosses the width line: the ring follows, held still or not.
+  narrow.addEventListener("change", applySwell);
+  // Held still for a player who asks for less motion.
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    gsap.to(swell, {
+      scale: LEAVING_SCALE * 1.16,
+      duration: 0.7,
+      ease: "sine.inOut",
+      yoyo: true,
+      repeat: -1,
+      onUpdate: applySwell,
+    });
+  group.add(...targetMarkers, ...sourceMarkers, ...leavingMarkers);
+  const guide = createGuide();
+  group.add(guide.group);
 
   return {
     group,
+    setGuide: guide.show,
+    markHome: guide.mark,
     setHints(hints = { sources: [], targets: [], off: false }) {
       pointGlows.forEach((mesh, p) => {
         mesh.visible = hints.targets.some((target) => target.point === p);
@@ -254,8 +312,16 @@ export function createBoard(): BoardView {
           : target.at.y - CHECKER_H / 2 + 0.03;
         marker.position.set(target.at.x, y, target.at.z);
       });
+      const leaving = hints.leaving ?? [];
+      const plain = hints.sources.filter((at) => !leaving.includes(at));
+      leavingMarkers.forEach((marker, i) => {
+        const at = leaving[i];
+        marker.visible = at !== undefined;
+        if (at) marker.position.set(at.x, at.y - CHECKER_H / 2 + 0.024, at.z);
+      });
       sourceMarkers.forEach((marker, i) => {
-        const at = hints.sources[i];
+        const at = plain[i];
+        marker.material = leaving.length > 0 ? quietRing : sourceRing;
         marker.visible = at !== undefined;
         // Down on the surface the checker stands on, so its neighbours cover the overlap.
         if (at) marker.position.set(at.x, at.y - CHECKER_H / 2 + 0.024, at.z);

@@ -9,6 +9,13 @@ export const CHECKER_R = 0.43;
 export const CHECKER_H = 0.2;
 export const TRAY_X = 7.8;
 export const TRAY_W = 1.4;
+/** Width of the wooden rails round the playfield, and of the tray's walls. */
+export const RIM = 0.5;
+export const TRAY_WALL = 0.16;
+/** The board's outer depth, rails included; the tray is as deep. */
+export const OUTER_D = (FIELD_HALF_D + RIM) * 2;
+/** Depth of each of the tray's two felt wells, either side of its divider. */
+export const TRAY_WELL_D = (OUTER_D - TRAY_WALL * 2 - 0.2) / 2;
 
 const SLOT = 0.88;
 const PER_LAYER = 5;
@@ -59,12 +66,70 @@ export function slotPosition(place: Place, i: number): Vec3 {
   return { x: pointX(place.index), y, z: pointSide(place.index) * edge };
 }
 
+/**
+ * How far from the middle line the guide's route runs, on each side: just inside the tips
+ * of the points, so the outward and return lanes stand well apart.
+ */
+export const ROUTE_LANE = 0.68;
+
+/** A rectangle on the playfield plane, in world units. */
+export interface Area {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** A player's home board: the six points between the bar and the tray on their edge. */
+export function homeArea(player: Player): Area {
+  const far = side(player) * FIELD_HALF_D;
+  return { x0: BAR_W / 2, x1: FIELD_HALF_W, z0: Math.min(0, far), z1: Math.max(0, far) };
+}
+
+/**
+ * A player's outer board: the six points on their own edge across the bar from home,
+ * stopping short of the middle strip between the two rows of point tips.
+ */
+export function outerArea(player: Player): Area {
+  const s = side(player);
+  const near = s * (FIELD_HALF_D - TRIANGLE_LEN);
+  const far = s * FIELD_HALF_D;
+  return {
+    x0: -FIELD_HALF_W,
+    x1: -BAR_W / 2,
+    z0: Math.min(near, far),
+    z1: Math.max(near, far),
+  };
+}
+
+/**
+ * Where a player's two back checkers stand at the start, on the far side of the board:
+ * their 24-point, from the edge to just past the nearer checker.
+ */
+export function backArea(player: Player): Area {
+  const s = side(player);
+  const x = pointX(player === "white" ? 23 : 0);
+  // The nearer checker's centre, then its radius and a little more.
+  const reach = FIELD_HALF_D - 0.5 - SLOT - 0.55;
+  const ends = [-s * FIELD_HALF_D, -s * reach];
+  return { x0: x - 0.5, x1: x + 0.5, z0: Math.min(...ends), z1: Math.max(...ends) };
+}
+
+/** The tray well a player bears off into. */
+export function trayWell(player: Player): Area {
+  const half = (TRAY_W - TRAY_WALL * 2) / 2;
+  const z = (side(player) * (TRAY_WELL_D + 0.2)) / 2;
+  return { x0: TRAY_X - half, x1: TRAY_X + half, z0: z - TRAY_WELL_D / 2, z1: z + TRAY_WELL_D / 2 };
+}
+
 export type PickTarget = { kind: "point"; index: number } | { kind: "bar" } | { kind: "off" };
 
 /** Maps a spot on the playfield plane to what the player clicked. */
 export function pickAt(x: number, z: number): PickTarget | null {
   if (Math.abs(z) > FIELD_HALF_D + 0.5) return null;
-  if (Math.abs(x - TRAY_X) <= TRAY_W / 2) return { kind: "off" };
+  // The tray is narrow, a thin target on a small screen: the outer half of the rail beside
+  // it, clear of the checkers on the last point, and a sliver past it count as the tray too.
+  if (x > FIELD_HALF_W + RIM / 2 && x <= TRAY_X + TRAY_W / 2 + 0.3) return { kind: "off" };
   if (Math.abs(x) > FIELD_HALF_W || Math.abs(z) > FIELD_HALF_D) return null;
   if (Math.abs(x) < BAR_W / 2) return { kind: "bar" };
   const c = x < 0 ? Math.floor(x + FIELD_HALF_W) : 6 + Math.floor(x - BAR_W / 2);

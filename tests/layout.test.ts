@@ -22,6 +22,12 @@ describe("layout", () => {
   it("picks the bar, the tray, and nothing outside", () => {
     expect(pickAt(0, 2)).toEqual({ kind: "bar" });
     expect(pickAt(TRAY_X, -3)).toEqual({ kind: "off" });
+    // The outer half of the rail beside the narrow tray, and a sliver past it, count too.
+    expect(pickAt(6.8, 2)).toEqual({ kind: "off" });
+    expect(pickAt(TRAY_X + 0.9, 2)).toEqual({ kind: "off" });
+    // Not the rail's inner half, where the last point's checkers reach, nor the open table.
+    expect(pickAt(6.6, 2)).toBeNull();
+    expect(pickAt(9, -3)).toBeNull();
     expect(pickAt(-9, 0)).toBeNull();
   });
 });

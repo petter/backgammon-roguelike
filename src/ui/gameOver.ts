@@ -109,7 +109,8 @@ export function createGameOver(actions: {
     hud.classList.toggle("covered", covered);
     // Everything but the notice, which must still be read out, such as a refused rematch.
     for (const control of hud.querySelectorAll<HTMLElement>(".row > :not(#notice)")) {
-      control.inert = covered;
+      // What the coach covers stays out of reach while its card is still up.
+      control.inert = covered || control.classList.contains("coach-covered");
     }
   };
 

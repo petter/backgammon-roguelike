@@ -7,6 +7,7 @@ import { codeFromPath, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
 import { createStage } from "./render/stage.ts";
+import { createCoach } from "./ui/coach.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
 import { createLobbyUi, type PlayerChoice } from "./ui/lobby.ts";
@@ -18,7 +19,8 @@ const stage = createStage(stageEl);
 const board = createBoard();
 stage.world.add(board.group);
 const hud = createHud();
-const deps = { stageEl, stage, board, hud };
+const coach = createCoach();
+const deps = { stageEl, stage, board, hud, coach };
 
 let stopGame: (() => void) | null = null;
 
