@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CANCEL_TIMEOUT_MS, findMatch, type SearchEnvironment } from "../src/net/matchmaking.ts";
+import {
+  CANCEL_TIMEOUT_MS,
+  findMatch,
+  type SearchEnvironment,
+  settleTicket,
+} from "../src/net/matchmaking.ts";
 import type { MatchReply, SeatGrant } from "../src/net/protocol.ts";
 
 const player = { name: "Ada", character: "seer" as const };
@@ -130,19 +135,19 @@ describe("findMatch", () => {
     const { seats, handlers } = recorder();
     const search = findMatch(player, handlers, server.env);
     await settled(server);
-    expect(await search.cancel()).toBeNull();
+    expect(await search.cancel()).toEqual({ ticket: "t1", seat: null, settled: true });
     expect(server.calls[1]?.aborted()).toBe(true);
     expect(server.calls.at(-1)?.path).toBe("/api/match/t1/cancel");
     await settled(server);
     expect(seats).toEqual([]);
-    expect(await search.cancel()).toBeNull();
+    expect((await search.cancel()).seat).toBeNull();
   });
 
   it("cancels at once while the first answer is still on its way, naming the ticket", async () => {
     // The request to start looking never answers.
     const server = fakeServer(["hang"]);
     const search = findMatch(player, recorder().handlers, server.env);
-    expect(await search.cancel()).toBeNull();
+    expect((await search.cancel()).seat).toBeNull();
     expect(server.calls.map((c) => c.path)).toEqual(["/api/match", "/api/match/t1/cancel"]);
     expect(server.calls[0]?.aborted()).toBe(true);
   });
@@ -151,15 +156,16 @@ describe("findMatch", () => {
     const server = fakeServer(["hang"], { ticket: "t1", seat });
     const { seats, handlers } = recorder();
     const search = findMatch(player, handlers, server.env);
-    expect(await search.cancel()).toEqual(seat);
+    expect(await search.cancel()).toEqual({ ticket: "t1", seat, settled: true });
     await settled(server);
     expect(seats).toEqual([]);
   });
 
-  it("settles a cancel the server never answers", async () => {
+  it("gives up on a cancel the server never answers, keeping the ticket to settle later", async () => {
     vi.useFakeTimers();
     try {
-      const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
+      // The server processed the cancel and finds the seat, but its answer is lost.
+      const server = fakeServer([{ ticket: "t1", seat: null }, "hang"], { ticket: "t1", seat });
       const fetchAll = server.env.fetch;
       server.env.fetch = ((path: string, init?: RequestInit) =>
         path.endsWith("/cancel")
@@ -171,7 +177,10 @@ describe("findMatch", () => {
       await vi.advanceTimersByTimeAsync(10);
       const cancelled = search.cancel();
       await vi.advanceTimersByTimeAsync(CANCEL_TIMEOUT_MS);
-      expect(await cancelled).toBeNull();
+      expect(await cancelled).toEqual({ ticket: "t1", seat: null, settled: false });
+      // Settled again before another search, once the server answers: the seat is there.
+      server.env.fetch = fetchAll;
+      expect(await settleTicket("t1", server.env)).toEqual({ ticket: "t1", seat, settled: true });
     } finally {
       vi.useRealTimers();
     }

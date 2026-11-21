@@ -4,7 +4,7 @@ import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
-import { findMatch, type Search } from "./net/matchmaking.ts";
+import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
@@ -110,8 +110,20 @@ function enterRoom(code: string, token: string): void {
   startRemote(code, token);
 }
 
+/**
+ * A ticket whose cancel went unanswered. The server may have matched it all the same, with
+ * a stranger now waiting at that table, so it is settled before any new search.
+ */
+let unsettled: string | null = null;
+/** Whether that is being done right now. */
+let settling = false;
+
 function seek(player: PlayerChoice): void {
-  if (search || cancelling) return;
+  if (search || cancelling || settling) return;
+  if (unsettled) {
+    void settleThenSeek(unsettled, player);
+    return;
+  }
   lobby.showSearching(player);
   const mine = findMatch(player, {
     onSeat: (seat) => {
@@ -150,10 +162,28 @@ function cancelSeek(then: () => void): boolean {
 }
 
 async function settle(running: Search | null): Promise<void> {
-  const seat = running ? await running.cancel() : null;
+  const outcome = running ? await running.cancel() : null;
   cancelling = false;
-  if (seat) enterRoom(seat.code, seat.token);
+  if (outcome && !outcome.settled) unsettled = outcome.ticket;
+  if (outcome?.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else afterCancel();
+}
+
+/** Settles the ticket left over from an unanswered cancel, then searches if nobody waits. */
+async function settleThenSeek(ticket: string, player: PlayerChoice): Promise<void> {
+  settling = true;
+  lobby.setBusy(true);
+  const outcome = await settleTicket(ticket);
+  settling = false;
+  lobby.setBusy(false);
+  if (!outcome.settled) {
+    lobby.showMenu({ error: "Could not reach the game server" });
+    return;
+  }
+  unsettled = null;
+  // Matched after all: that stranger has been waiting, so the player joins them.
+  if (outcome.seat) enterRoom(outcome.seat.code, outcome.seat.token);
+  else seek(player);
 }
 
 /** Refusals that are about the code itself: no game has it, or its game is full. */

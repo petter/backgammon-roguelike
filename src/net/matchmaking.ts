@@ -8,13 +8,24 @@ export interface SearchHandlers {
   onTrouble: (problem: string | null) => void;
 }
 
-export interface Search {
+/** How a cancel turned out. */
+export interface Cancelled {
+  ticket: string;
   /**
-   * Stops looking. Resolves to a seat if a stranger was found just before: someone is
-   * already sitting at that table, so the caller should take it. Always settles, within
-   * `CANCEL_TIMEOUT_MS` even if the server does not answer.
+   * A seat, if a stranger was found just before: someone is already sitting at that table,
+   * so the caller should take it.
    */
-  cancel: () => Promise<SeatGrant | null>;
+  seat: SeatGrant | null;
+  /**
+   * Whether the server answered. If not, a seat may be waiting all the same: settle the
+   * ticket again (`settleTicket`) before looking for another game.
+   */
+  settled: boolean;
+}
+
+export interface Search {
+  /** Stops looking. Always resolves, within `CANCEL_TIMEOUT_MS` if the server is silent. */
+  cancel: () => Promise<Cancelled>;
 }
 
 /** The parts of the browser this needs. Tests supply their own. */
@@ -40,6 +51,26 @@ export const CANCEL_TIMEOUT_MS = 5000;
 async function read(response: Response): Promise<MatchReply> {
   if (!response.ok) throw new Error(`Matchmaking answered ${response.status}`);
   return (await response.json()) as MatchReply;
+}
+
+/**
+ * Gives up a ticket on the server: it is refused from then on, unless it was already
+ * matched, in which case its seat comes back. Always resolves, within `CANCEL_TIMEOUT_MS`.
+ */
+export async function settleTicket(
+  ticket: string,
+  env: Pick<SearchEnvironment, "fetch"> = browser,
+): Promise<Cancelled> {
+  try {
+    const response = await env.fetch(`/api/match/${ticket}/cancel`, {
+      method: "POST",
+      keepalive: true,
+      signal: within(null, CANCEL_TIMEOUT_MS),
+    });
+    return { ticket, seat: (await read(response)).seat, settled: true };
+  } catch {
+    return { ticket, seat: null, settled: false };
+  }
 }
 
 /** A signal that aborts with `signal`, or after `ms`, whichever comes first. */
@@ -174,19 +205,9 @@ export function findMatch(
   start();
   return {
     async cancel() {
-      if (stopped) return null;
+      if (stopped) return { ticket, seat: null, settled: true };
       finish();
-      try {
-        const response = await env.fetch(`/api/match/${ticket}/cancel`, {
-          method: "POST",
-          keepalive: true,
-          signal: within(null, CANCEL_TIMEOUT_MS),
-        });
-        return (await read(response)).seat;
-      } catch {
-        // Unanswered: the server drops the ticket by itself once it stops being asked.
-        return null;
-      }
+      return settleTicket(ticket, env);
     },
   };
 }
