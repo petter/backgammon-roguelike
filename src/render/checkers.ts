@@ -49,7 +49,7 @@ function checkerGeometry(): THREE.LatheGeometry {
     ...arc(RIM_IN, H - FILLET, FILLET, Math.PI / 2, Math.PI),
     ...bowl.slice(1),
   ];
-  const geometry = new THREE.LatheGeometry(profile, 64);
+  const geometry = new THREE.LatheGeometry(profile, 96);
   // Map the stone texture straight down onto the face, rather than around the lathe.
   const pos = geometry.getAttribute("position");
   const uv = geometry.getAttribute("uv");
@@ -70,7 +70,7 @@ const inlayMaterial = new THREE.MeshStandardMaterial({
 });
 const materials: Record<Player, THREE.Material> = {
   white: new THREE.MeshPhysicalMaterial({
-    map: stoneTexture("#e4d5b4", "#a08552", 41),
+    map: stoneTexture("#d3c29c", "#8a6e3e", 41, { from: 0.8, to: 0.86, alpha: 0.22 }),
     roughness: 0.3,
     clearcoat: 0.8,
     clearcoatRoughness: 0.15,
@@ -81,7 +81,7 @@ const materials: Record<Player, THREE.Material> = {
     roughness: 0.32,
     clearcoat: 1,
     clearcoatRoughness: 0.12,
-    envMapIntensity: 1.2,
+    envMapIntensity: 0.9,
   }),
 };
 /** A soft dark disc under each checker, grounding it on the felt or the checker below. */

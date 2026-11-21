@@ -247,7 +247,12 @@ export function glowRingTexture(peak: number): THREE.CanvasTexture {
  * Polished stone for a checker face: a base colour with soft drifting veins of `vein`,
  * drawn as several faint passes so they blur into the base.
  */
-export function stoneTexture(base: string, vein: string, seed: number): THREE.CanvasTexture {
+export function stoneTexture(
+  base: string,
+  vein: string,
+  seed: number,
+  crease?: { from: number; to: number; alpha: number },
+): THREE.CanvasTexture {
   const size = 512;
   const [c, context] = canvas(size, size);
   const { next: random } = createRng(seed);
@@ -279,6 +284,17 @@ export function stoneTexture(base: string, vein: string, seed: number): THREE.Ca
     }
   }
   context.globalAlpha = 1;
+  // A faint dark ring where the rim turns into the bowl, between radii `from` and `to`
+  // (fractions of the checker's radius, which spans half the texture).
+  if (crease) {
+    const half = size / 2;
+    const ring = context.createRadialGradient(half, half, 0, half, half, half);
+    ring.addColorStop(crease.from, "rgba(0,0,0,0)");
+    ring.addColorStop((crease.from + crease.to) / 2, `rgba(0,0,0,${crease.alpha})`);
+    ring.addColorStop(crease.to, "rgba(0,0,0,0)");
+    context.fillStyle = ring;
+    context.fillRect(0, 0, size, size);
+  }
   speckle(context, size, size, 6, seed + 1);
   return toTexture(c);
 }

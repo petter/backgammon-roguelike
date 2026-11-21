@@ -59,7 +59,7 @@ export function createStage(container: HTMLElement): Stage {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.01;
+  sun.shadow.normalBias = 0.03;
   sun.shadow.radius = 2.5;
   const shadowCam = sun.shadow.camera;
   shadowCam.left = -10.5;
@@ -87,7 +87,7 @@ export function createStage(container: HTMLElement): Stage {
   const dusk = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 60),
     new THREE.MeshBasicMaterial({
-      map: vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,0.9)", 0.38),
+      map: vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,0.9)", 0.5),
       transparent: true,
       depthWrite: false,
     }),

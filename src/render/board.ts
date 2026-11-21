@@ -17,6 +17,7 @@ import {
   clothTexture,
   dropShadowTexture,
   glowRingTexture,
+  vignetteTexture,
   wellShadeTexture,
   woodTexture,
 } from "./textures.ts";
@@ -39,13 +40,15 @@ const wood = new THREE.MeshPhysicalMaterial({
   bumpMap: walnut,
   bumpScale: 1.2,
   roughness: 0.42,
-  clearcoat: 0.55,
+  clearcoat: 0.35,
   clearcoatRoughness: 0.22,
+  // The studio room is neutral grey; too much of it turns the walnut cold.
+  envMapIntensity: 0.4,
 });
 const brass = new THREE.MeshStandardMaterial({ color: 0xc09a4c, metalness: 1, roughness: 0.22 });
 const weave = tiled(clothTexture("#d8d8d8", 21, 0), 3);
 const felt = new THREE.MeshStandardMaterial({
-  color: 0x1b5139,
+  color: 0x1f5c40,
   map: weave,
   bumpMap: weave,
   bumpScale: 0.8,
@@ -62,7 +65,7 @@ const pointMaterial = (color: number) =>
     bumpScale: 0.6,
     roughness: 0.8,
   });
-const pointColors = [pointMaterial(0xc4a067), pointMaterial(0x6a1c1a)] as const;
+const pointColors = [pointMaterial(0xcaa76d), pointMaterial(0x6a1c1a)] as const;
 /** A fine gilt cord laid under every point, so its edges read clean against the felt. */
 const piping = new THREE.MeshStandardMaterial({ color: 0x8c6a38, roughness: 0.6, metalness: 0.3 });
 
@@ -71,7 +74,7 @@ const HALO_PEAK = 0.76;
 /** Where a selected checker can go: bright mint, far from every colour on the board. */
 const TARGET_COLOR = 0x35ffb0;
 /** Which checkers can move: a warm amber halo, readable on both checker colours. */
-const SOURCE_COLOR = 0xffc24a;
+const SOURCE_COLOR = 0xff9a30;
 
 const overlay = (color: number, opacity: number) =>
   new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
@@ -168,7 +171,10 @@ export function createBoard(): BoardView {
 
   // Each half of the playfield sits in a well: shade it in along the walls.
   const halfW = FIELD_HALF_W - BAR_W / 2;
-  const wellShade = shade(wellShadeTexture(halfW, fieldD, 0.45), 0.45);
+  const wellShade = shade(wellShadeTexture(halfW, fieldD, 0.45), 0.52);
+  // And the lamp over the table lights the middle of the field more than its corners.
+  const pool = shade(vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,1)", 0.55), 0.28);
+  group.add(flat(fieldW, fieldD, pool, { x: 0, y: 0.0155, z: 0 }));
   for (const s of [-1, 1]) {
     group.add(flat(halfW, fieldD, wellShade, { x: s * (BAR_W / 2 + halfW / 2), y: 0.014, z: 0 }));
   }
