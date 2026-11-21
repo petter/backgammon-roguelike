@@ -122,6 +122,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
    * however the animation was delayed.
    */
   let rolling = false;
+  /**
+   * Until when, by `performance.now()`, a checker a revealed card sent off is still on its
+   * way. Moving it sooner would cut its trip short, so the board waits.
+   */
+  let heldUntil = 0;
   /** The board's shake when the game is won, waiting for the result screen to land. */
   let finale: gsap.core.Tween | null = null;
 
@@ -218,7 +223,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (event.type === "pieceMoved") {
         pieces.apply(event);
       } else if (event.type === "hit") {
-        pieces.apply(event, after);
+        const lands = pieces.apply(event, after);
+        if (after > 0) heldUntil = Math.max(heldUntil, performance.now() + lands * 1000);
         // A quake already shook the board; a second shake would cut it short. A hit a
         // revealed card made shook the board as the card turned up.
         if (!quaked && after === 0) shake(stage.world, 0.6, 0.4);
@@ -378,7 +384,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     "pointerdown",
     (event) => {
       if (!view || !myTurn() || view.phase !== "move") return;
-      if (rolling) return;
+      if (rolling || performance.now() < heldUntil) return;
       const target = stage.pick(event.clientX, event.clientY);
       const moves = legalMoves(view);
 

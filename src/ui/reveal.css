@@ -10,7 +10,9 @@
   left: clamp(12px, 3vw, 48px);
   z-index: 13;
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
+  max-width: calc(100vw - 2 * clamp(12px, 3vw, 48px));
   pointer-events: none;
   translate: 0 -50%;
 }
