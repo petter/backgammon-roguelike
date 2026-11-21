@@ -153,11 +153,10 @@ export class DiceView {
     const airborne = this.playback !== null;
     this.playback?.kill();
     this.playback = null;
-    for (const { body } of this.dice) {
-      if (airborne) {
-        this.group.remove(body);
-        continue;
-      }
+    // A cancelled throw takes everything with it, including any earlier dice that were still
+    // shrinking away when it began.
+    if (airborne) this.group.clear();
+    for (const { body } of airborne ? [] : this.dice) {
       gsap.to(body.scale, {
         x: 0,
         y: 0,
