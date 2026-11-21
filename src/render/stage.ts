@@ -114,7 +114,9 @@ export function createStage(container: HTMLElement): Stage {
     camera.updateProjectionMatrix();
   };
   resize();
-  window.addEventListener("resize", resize);
+  // The container changes size with the window, and also when the start screen hands the
+  // whole window to the board behind it.
+  new ResizeObserver(resize).observe(container);
   renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
   const raycaster = new THREE.Raycaster();

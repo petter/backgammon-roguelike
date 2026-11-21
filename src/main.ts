@@ -96,6 +96,9 @@ function startLocal(): void {
   });
 }
 
+/** Refusals that are about the code itself: no game has it, or its game is full. */
+const CODE_ERRORS: Partial<Record<number, "missing" | "full">> = { 404: "missing", 409: "full" };
+
 /** Asks the server for a seat, then enters the room. */
 async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
   lobby.setBusy(true);
@@ -108,7 +111,7 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
     const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
     if (!response.ok || !body.code || !body.token) {
       // No such game, or it is full: the code is what to look at again.
-      const codeError = response.status === 404 || response.status === 409;
+      const codeError = CODE_ERRORS[response.status];
       lobby.showMenu({ error: body.error ?? "Could not reach the game server", codeError });
       return;
     }

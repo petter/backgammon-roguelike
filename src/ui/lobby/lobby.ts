@@ -30,8 +30,8 @@ export interface MenuOptions {
   /** A code from an invite link: the player arrives as an invited guest. */
   code?: string;
   error?: string;
-  /** The error is about the code itself, such as no game having it. */
-  codeError?: boolean;
+  /** The error is about the code itself: no game has it, or its game is full. */
+  codeError?: "missing" | "full";
 }
 
 export interface LobbyUi {
@@ -42,7 +42,7 @@ export interface LobbyUi {
   hide: () => void;
 }
 
-type Step = "host" | "join" | "invited" | "expired";
+type Step = "host" | "join" | "invited" | "expired" | "full";
 type View = "home" | Step;
 
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
@@ -67,8 +67,14 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
     swap: "Host a game instead",
   },
   expired: {
-    title: "This invite has expired",
+    title: "Invite expired",
     lede: "The game behind this link is over. Ask your friend for a new link, or enter another code.",
+    go: "Enter another code",
+    swap: "Host your own game",
+  },
+  full: {
+    title: "Table is full",
+    lede: "Two players are already seated at this table. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
     swap: "Host your own game",
   },
@@ -171,12 +177,15 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     go.textContent = text.go;
     swap.textContent = text.swap;
     // An invited guest came by link: there is no menu behind them to go back to.
-    const byLink = next === "invited" || next === "expired";
+    const dead = next === "expired" || next === "full";
+    const byLink = next === "invited" || dead;
     back.hidden = byLink;
     inviteCode.hidden = !byLink;
     if (byLink) codeTiles(inviteTiles, code.value());
     codeSlot.hidden = next !== "join";
-    youSlot.hidden = next === "expired";
+    youSlot.hidden = dead;
+    // Blank names fall back to these on the server, so that is what the field promises.
+    you.fallback(next === "host" ? "Host" : "Guest");
     if (!focus) return;
     // The code comes first, so a phone may raise its keyboard for it; never for the name,
     // where the keyboard would cover the button.
@@ -210,7 +219,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   swap.addEventListener("click", () => navigate(view === "host" ? "join" : "host"));
   step.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (view === "expired") {
+    if (view === "expired" || view === "full") {
       code.set("");
       navigate("join");
       return;
@@ -229,14 +238,14 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   });
 
   return {
-    showMenu({ code: invite, error: problem, codeError = false } = {}) {
+    showMenu({ code: invite, error: problem, codeError } = {}) {
       root.hidden = false;
       if (invite) {
         code.set(invite);
         show("invited");
       } else if (codeError && view === "invited") {
-        // The link's game is gone. Stay with the invite and offer a table of their own.
-        show("expired", false);
+        // The link's game is gone or taken. Stay with the invite and offer the ways on.
+        show(codeError === "full" ? "full" : "expired", false);
       } else if (codeError) {
         // The code was wrong or the game is full: let them check it or type another.
         show("join", false);

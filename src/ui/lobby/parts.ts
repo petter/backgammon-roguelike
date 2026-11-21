@@ -54,6 +54,8 @@ export function identity(): {
   element: HTMLElement;
   read: () => PlayerChoice;
   focus: () => void;
+  /** What the player will be called if they leave the name blank, shown as the placeholder. */
+  fallback: (name: string) => void;
 } {
   const element = document.createElement("div");
   element.className = "identity";
@@ -112,6 +114,9 @@ export function identity(): {
       return { name: chosen, character: current };
     },
     focus: () => name.focus(),
+    fallback(fallbackName) {
+      name.placeholder = fallbackName;
+    },
   };
 }
 
@@ -158,7 +163,17 @@ export function codeEntry(): {
     paint();
   });
   input.addEventListener("blur", settle);
-  input.addEventListener("pointerdown", settle);
+  input.addEventListener("pointerdown", () => {
+    settle();
+    // A tap on a code that was wrong selects all of it, so typing starts over without
+    // backspacing through letters on a phone keyboard.
+    if (element.classList.contains("wrong")) {
+      setTimeout(() => {
+        input.select();
+        element.classList.add("selected");
+      });
+    }
+  });
   paint();
   return {
     element,
@@ -234,8 +249,8 @@ export function waitingRoom(onCancel: () => void): {
     clearTimeout(restore);
     restore = window.setTimeout(() => (send.textContent = label()), 2000);
   };
+  let link = "";
   const sendLink = async () => {
-    const link = linkField.value;
     if (share()) {
       try {
         await navigator.share({ title: "Backgammon Roguelike", url: link });
@@ -257,11 +272,17 @@ export function waitingRoom(onCancel: () => void): {
   };
   send.addEventListener("click", () => void sendLink());
   linkField.addEventListener("focus", () => linkField.select());
+  linkField.addEventListener("copy", (event) => {
+    event.clipboardData?.setData("text/plain", link);
+    event.preventDefault();
+  });
   part(element, ".cancel").addEventListener("click", onCancel);
   return {
     element,
     show(code, inviteLink) {
-      linkField.value = inviteLink;
+      link = inviteLink;
+      // Shown without the scheme, to read as an address; copying still takes the full link.
+      linkField.value = inviteLink.replace(/^https?:\/\//, "");
       codeTiles(codeBox, code);
       clearTimeout(restore);
       send.textContent = label();

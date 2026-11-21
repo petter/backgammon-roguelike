@@ -27,6 +27,11 @@ body {
   inset: 84px 0 148px;
 }
 
+/* Behind the start screen, the board has the whole window. */
+body:has(#lobby:not([hidden])) #stage {
+  inset: 0;
+}
+
 #stage canvas {
   display: block;
 }
