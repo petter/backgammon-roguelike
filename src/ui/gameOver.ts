@@ -80,6 +80,8 @@ export function createGameOver(actions: {
 
   const animated = () => [
     backdrop,
+    canvas,
+    art,
     ...bars,
     line,
     flash,
@@ -105,7 +107,10 @@ export function createGameOver(actions: {
   /** The HUD fades out behind the result and takes no input while it is up. */
   const coverHud = (covered: boolean) => {
     hud.classList.toggle("covered", covered);
-    hud.inert = covered;
+    // Everything but the notice, which must still be read out, such as a refused rematch.
+    for (const control of hud.querySelectorAll<HTMLElement>(".row > :not(#notice)")) {
+      control.inert = covered;
+    }
   };
 
   /** Lays out everything for this result, before it is animated in. */
@@ -141,7 +146,7 @@ export function createGameOver(actions: {
     // Both tallies, the winner's one short: it ticks up once the screen has landed.
     const tally = (player: Player) => {
       const box = document.createElement("span");
-      box.className = `go-tally ${player}`;
+      box.className = `go-tally ${player}${player === winner ? "" : " lost"}`;
       const label = document.createElement("span");
       label.className = "go-name";
       label.textContent = name(player);
@@ -167,7 +172,8 @@ export function createGameOver(actions: {
     const still = !entrance || prefersLessMotion();
     const narrow = window.innerWidth <= 640;
     const letters = [...title.children];
-    const cracks = [...art.querySelectorAll(".go-crack")];
+    // The crack and its highlight split together; the splinters follow.
+    const [glint, crack, ...splinters] = art.querySelectorAll(".go-crack");
     const count = score.querySelector<HTMLElement>("b[data-before]");
     const after = count?.textContent ?? "";
     if (count) count.textContent = count.dataset.before ?? after;
@@ -181,15 +187,23 @@ export function createGameOver(actions: {
       .fromTo(bars, { scaleY: 0 }, { scaleY: 1, duration: 0.5, ease: "power3.out" }, 0.35)
       .set([ribbon, score, ...letters, ring, rays], { opacity: 0 }, 0)
       .set(actionsBox, { autoAlpha: 0 }, 0)
-      .set(crest, { opacity: 0 }, 0);
+      .set(crest, { opacity: 0 }, 0)
+      .fromTo(canvas, { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.3);
 
     if (victory) {
       tl.fromTo(line, { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 0.3 }, 0.55)
         .to(line, { scaleY: 8, opacity: 0, duration: 0.35, ease: "power2.in" }, 0.85)
         .fromTo(
           crest,
-          { scale: 3.2, opacity: 0, filter: "blur(16px)" },
-          { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.35, ease: "power4.in" },
+          { scale: 3.2, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.35, ease: "power4.in" },
+          impact - 0.35,
+        )
+        // Blur only the medallion, not the huge rays and flash layers around it.
+        .fromTo(
+          art,
+          { filter: "blur(16px)" },
+          { filter: "blur(0px)", duration: 0.35, ease: "power4.in", clearProps: "filter" },
           impact - 0.35,
         )
         .to(crest, { scale: 1.1, duration: 0.07, ease: "power1.out" }, impact)
@@ -206,12 +220,18 @@ export function createGameOver(actions: {
             duration: 0.45,
             ease: "back.out(2)",
             stagger: 0.055,
+            clearProps: "filter",
           },
           impact + 0.1,
         )
         .from(
           title,
-          { letterSpacing: narrow ? "0.25em" : "0.5em", duration: 1.1, ease: "power3.out" },
+          {
+            letterSpacing: narrow ? "0.25em" : "0.5em",
+            duration: 1.1,
+            ease: "power3.out",
+            clearProps: "letterSpacing",
+          },
           impact + 0.1,
         );
     } else {
@@ -228,10 +248,16 @@ export function createGameOver(actions: {
           impact + 0.07,
         )
         .fromTo(
-          cracks,
+          [glint, crack],
           { strokeDashoffset: 1 },
-          { strokeDashoffset: 0, duration: 0.3, ease: "power1.in", stagger: 0.12 },
+          { strokeDashoffset: 0, duration: 0.3, ease: "power1.in" },
           impact + 0.15,
+        )
+        .fromTo(
+          splinters,
+          { strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.2, ease: "power1.in" },
+          impact + 0.4,
         )
         .fromTo(rays, { opacity: 0 }, { opacity: 1, duration: 1.4 }, impact)
         // Heavy letters: they drop like iron and stop dead, each with a small jolt.
@@ -308,7 +334,8 @@ export function createGameOver(actions: {
         { autoAlpha: 1, y: 0, duration: 0.45, immediateRender: false },
         impact + 1.3,
       )
-      .call(() => rematch.focus({ preventScroll: true }), [], impact + 1.3);
+      // Focus goes to the dialog, not to Rematch: a stray Space must not start a new game.
+      .call(() => root.focus({ preventScroll: true }), [], impact + 1.3);
 
     intro = tl;
     if (still) tl.progress(1);

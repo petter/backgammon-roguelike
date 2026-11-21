@@ -20,7 +20,12 @@
   text-align: center;
 }
 
+#gameover:focus {
+  outline: none;
+}
+
 #gameover.defeat {
+  color: #d9dee6;
   --metal-light: #e8eef5;
   --metal: #9aa6b4;
   --metal-dark: #3a414c;
@@ -224,6 +229,16 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
+  /*
+   * The edge and glow sit on the word, not on its letters: the letters' own filter is
+   * animated during the entrance.
+   */
+  filter: drop-shadow(0 3px 0 #2a1606)
+    drop-shadow(0 0 22px color-mix(in srgb, var(--glow) 60%, transparent));
+}
+
+.defeat #result {
+  filter: drop-shadow(0 3px 0 #0b0b0d) drop-shadow(0 0 26px var(--glow));
 }
 
 #result span {
@@ -241,12 +256,6 @@
     );
   background-clip: text;
   -webkit-background-clip: text;
-  filter: drop-shadow(0 3px 0 #2a1606)
-    drop-shadow(0 0 22px color-mix(in srgb, var(--glow) 60%, transparent));
-}
-
-.defeat #result span {
-  filter: drop-shadow(0 3px 0 #0b0b0d) drop-shadow(0 0 26px var(--glow));
 }
 
 /* Once everything has landed, a glint runs along the word every few seconds. */
@@ -388,8 +397,13 @@
 }
 
 #rematch:focus-visible {
-  outline: 2px solid var(--metal-light);
+  outline: 1px solid color-mix(in srgb, var(--metal) 70%, transparent);
   outline-offset: 4px;
+}
+
+/* The score says at a glance who won: the loser's tally is dimmed. */
+.go-tally.lost b {
+  opacity: 0.55;
 }
 
 #rematch-status {
@@ -484,18 +498,23 @@
     padding-block: 4vh;
   }
 
-  .go-crest {
-    width: clamp(64px, 22vh, 140px);
-  }
-
   .go-motto {
     display: none;
+  }
+
+  .go-crest {
+    width: clamp(64px, 26vh, 150px);
+  }
+
+  #rematch {
+    padding: 8px 32px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .go-rays,
-  .go-live .go-art,
+  .go-live.defeat .go-rays,
+  .go-live.victory .go-art,
   .go-live.victory #result span,
   .go-pop {
     animation: none;

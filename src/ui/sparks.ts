@@ -76,7 +76,7 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
         vy: 35 + Math.random() * 45,
         age: 0,
         life: 8 + Math.random() * 6,
-        size: 1 + Math.random() * 2.2,
+        size: 0.6 + Math.random() * 2.6,
         // Mostly grey ash, now and then a dying red ember.
         hue: Math.random() < 0.15 ? 8 : -1,
         streak: false,
@@ -89,7 +89,7 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
   const tick = (now: number) => {
     frame = requestAnimationFrame(tick);
     if (!context) return;
-    const dt = Math.min((now - last) / 1000, 0.05);
+    const dt = Math.max(0, Math.min((now - last) / 1000, 0.05));
     last = now;
     spawnDebt += dt * (outcome === "victory" ? 28 : 22);
     while (spawnDebt >= 1) {
@@ -128,12 +128,15 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
         context.lineTo(p.x, p.y);
         context.stroke();
       } else {
-        context.fillStyle =
-          p.hue < 0
-            ? `hsla(220, 8%, 70%, ${alpha * 0.55})`
-            : `hsla(${p.hue}, 100%, 62%, ${alpha * 0.85})`;
         context.beginPath();
-        context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        if (p.hue < 0) {
+          // Ash: thin flakes that turn over as they sway down.
+          context.fillStyle = `hsla(220, 8%, 70%, ${alpha * 0.4})`;
+          context.ellipse(p.x, p.y, p.size * 1.3, p.size * 0.45, p.sway, 0, Math.PI * 2);
+        } else {
+          context.fillStyle = `hsla(${p.hue}, 100%, 62%, ${alpha * 0.85})`;
+          context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        }
         context.fill();
       }
     }

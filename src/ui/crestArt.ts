@@ -24,7 +24,7 @@ export type Outcome = keyof typeof METALS;
 const C = 100;
 
 /** Where the loser's crest splits: from the rim down into the portrait. */
-const CRACK = "M136 30l-12 17 8 9-15 20 6 8-13 19 4 12-8 14 5 10-4 34";
+const CRACK = "M136 30l-12 17 8 9-15 20 6 8-13 19 4 12-8 14 5 10-4 42";
 const SPLINTERS = "M124 47l-16-3-7 11M117 76l14 8M110 104l-12 6M107 140l12 7";
 
 function polar(radius: number, degrees: number): string {
