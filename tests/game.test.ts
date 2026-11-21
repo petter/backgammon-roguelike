@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { emptyBoard, initialBoard, place } from "../src/core/board.ts";
-import { starterDeck } from "../src/core/cards.ts";
+import {
+  CARD_IDS,
+  CARDS,
+  type CardId,
+  RARITIES,
+  type Rarity,
+  starterDeck,
+} from "../src/core/cards.ts";
 import {
   applyCommand,
   GameError,
@@ -46,6 +53,23 @@ describe("createRng", () => {
   it("shuffles without losing or inventing items", () => {
     const deck = starterDeck();
     expect(shuffle(deck, createRng(3)).sort()).toEqual([...deck].sort());
+  });
+});
+
+describe("starterDeck", () => {
+  it("holds fewer copies the rarer a card is, and a single copy of the rarest", () => {
+    const deck = starterDeck();
+    const count = (id: CardId) => deck.filter((card) => card === id).length;
+    const order = Object.keys(RARITIES) as Rarity[];
+    for (const id of CARD_IDS) expect(count(id)).toBe(RARITIES[CARDS[id].rarity].copies);
+    const copies = order.map((rarity) => RARITIES[rarity].copies);
+    expect(copies).toEqual([...copies].sort((a, b) => b - a));
+    expect(copies[0]).toBeGreaterThan(copies.at(-1) ?? 0);
+    expect(RARITIES.legendary.copies).toBe(1);
+    // The two cards that swing a game hardest are the two rarest.
+    expect(CARDS.loaded.rarity).toBe("legendary");
+    expect(CARDS.quake.rarity).toBe("epic");
+    expect(deck).toHaveLength(11);
   });
 });
 
