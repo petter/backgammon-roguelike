@@ -11,6 +11,8 @@ export type Rarity = keyof typeof RARITIES;
 
 interface CardDefinition {
   name: string;
+  /** Printed on the card's type line. `Dice` cards change your roll; `Tactic` cards the board. */
+  kind: "Dice" | "Tactic";
   rarity: Rarity;
   text: string;
 }
@@ -19,26 +21,31 @@ interface CardDefinition {
 export const CARDS = {
   reroll: {
     name: "Second Wind",
+    kind: "Dice",
     rarity: "common",
     text: "Reroll your remaining dice. A pair counts as doubles.",
   },
   shield: {
     name: "Bulwark",
+    kind: "Tactic",
     rarity: "uncommon",
     text: "Your lone checkers cannot be hit until your next turn.",
   },
   charm: {
     name: "Lucky Charm",
+    kind: "Dice",
     rarity: "rare",
     text: "Roll one extra die. A pair counts as doubles.",
   },
   quake: {
     name: "Quake",
+    kind: "Tactic",
     rarity: "epic",
     text: "Send every lone enemy checker in your home board to the bar.",
   },
   loaded: {
     name: "Loaded Die",
+    kind: "Dice",
     rarity: "legendary",
     text: "Your lowest remaining die becomes a 6. A pair counts as doubles.",
   },

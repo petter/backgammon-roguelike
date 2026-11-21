@@ -1,9 +1,8 @@
 import type { Player } from "../core/board.ts";
-import { CARDS, type CardId, copiesOf, RARITIES } from "../core/cards.ts";
 import { canPlayCard } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
-import { cardArt } from "./cardArt.ts";
+import { createCard, fanCard } from "./card.ts";
 import { el } from "./dom.ts";
 
 export interface HudActions {
@@ -34,30 +33,6 @@ export interface Hud {
   render(model: HudModel): void;
   show(): void;
   hide(): void;
-}
-
-/** A card as a button: name, art, rarity line and rules text, framed in its rarity colour. */
-function cardButton(card: CardId, onClick: () => void): HTMLButtonElement {
-  const { name, rarity, text } = CARDS[card];
-  const part = (className: string, content: string) => {
-    const element = document.createElement("span");
-    element.className = className;
-    element.textContent = content;
-    return element;
-  };
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `card rarity-${rarity}`;
-  const art = document.createElement("span");
-  art.className = "card-art";
-  // Fixed markup from our own source, not user input.
-  art.innerHTML = cardArt(card);
-  const copies = copiesOf(card);
-  const line = `${RARITIES[rarity].name} · ×${copies}`;
-  button.title = `${RARITIES[rarity].name}: ${copies} in each deck`;
-  button.append(part("card-name", name), art, part("card-rarity", line), part("card-text", text));
-  button.addEventListener("click", onClick);
-  return button;
 }
 
 /**
@@ -176,7 +151,8 @@ export function createHud(): Hud {
 
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
-          const button = cardButton(card, () => hud.actions?.onPlay(index));
+          const button = createCard(card, () => hud.actions?.onPlay(index));
+          fanCard(button, index, view.hand.length);
           button.addEventListener("pointerenter", () => keepOnScreen(button));
           button.addEventListener("focus", () => keepOnScreen(button));
           button.disabled = !(myTurn && !model.rolling && canPlayCard(view, card));
@@ -187,7 +163,9 @@ export function createHud(): Hud {
       offer.hidden = !picking;
       offerCards.replaceChildren(
         ...(picking
-          ? view.offer.map((card, index) => cardButton(card, () => hud.actions?.onPick(index)))
+          ? view.offer.map((card, index) =>
+              createCard(card, () => hud.actions?.onPick(index), true),
+            )
           : []),
       );
     },
