@@ -68,9 +68,9 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
   },
   expired: {
     title: "This invite has expired",
-    lede: "The game behind this link is over or gone. Ask your friend for a new link, or start your own table.",
-    go: "Host a new game",
-    swap: "Enter a different code",
+    lede: "The game behind this link is over. Ask your friend for a new link, or enter another code.",
+    go: "Enter another code",
+    swap: "Host your own game",
   },
   host: {
     title: "Host a game",
@@ -85,6 +85,8 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
  * then shows the short form for that choice, so a guest never stands next to a host button.
  * An invite link skips the menu and seats the guest straight away.
  */
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
+
 export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const root = el("lobby");
   root.replaceChildren(
@@ -133,7 +135,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const swap = part(root, ".swap");
   const codeSlot = part(root, ".code-slot");
   const you = identity();
-  part(root, ".you-slot").append(you.element);
+  const youSlot = part(root, ".you-slot");
+  youSlot.append(you.element);
   const code = codeEntry();
   codeSlot.append(code.element);
   const error = part(root, ".lobby-error");
@@ -173,31 +176,46 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     inviteCode.hidden = !byLink;
     if (byLink) codeTiles(inviteTiles, code.value());
     codeSlot.hidden = next !== "join";
-    if (!focus || touch.matches) return;
+    youSlot.hidden = next === "expired";
+    if (!focus) return;
+    // The code comes first, so a phone may raise its keyboard for it; never for the name,
+    // where the keyboard would cover the button.
     if (next === "join" && code.value().length < CODE_LENGTH) code.input.focus();
-    else you.focus();
+    else if (!touch.matches) you.focus();
+  };
+
+  /**
+   * Moves to another view at the player's request. Each view is centred on its own, so where
+   * the browser can, the title and plaque glide to their new places instead of jumping.
+   */
+  const navigate = (next: View, after?: () => void) => {
+    const change = () => {
+      show(next);
+      after?.();
+    };
+    if (!("startViewTransition" in document) || calm.matches) change();
+    else document.startViewTransition(change);
   };
 
   for (const choice of home.querySelectorAll<HTMLButtonElement>("[data-go]")) {
     choice.addEventListener("click", () => {
       const target = choice.dataset.go;
       if (target === "local") actions.onLocal();
-      else show(target === "join" ? "join" : "host");
+      else navigate(target === "join" ? "join" : "host");
     });
   }
-  back.addEventListener("click", () => {
-    show("home");
-    part(home, "[data-go]").focus({ focusVisible: false });
-  });
-  swap.addEventListener("click", () => {
-    if (view === "expired") {
-      show("join", false);
-      code.selectAll();
-    } else show(view === "host" ? "join" : "host");
-  });
+  back.addEventListener("click", () =>
+    navigate("home", () => part(home, "[data-go]").focus({ focusVisible: false })),
+  );
+  swap.addEventListener("click", () => navigate(view === "host" ? "join" : "host"));
   step.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (view === "host" || view === "expired") {
+    if (view === "expired") {
+      code.set("");
+      navigate("join");
+      return;
+    }
+    if (view === "host") {
       actions.onCreate(you.read());
       return;
     }
@@ -222,7 +240,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       } else if (codeError) {
         // The code was wrong or the game is full: let them check it or type another.
         show("join", false);
-        if (problem) say(problem, true);
+        if (problem) say(`${problem}. Check the code with your friend.`, true);
         if (!touch.matches) code.selectAll();
       } else {
         show(problem ? view : "home", false);

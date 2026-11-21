@@ -22,11 +22,13 @@
   position: fixed;
   inset: 0;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: 0 16px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
   /* Dark enough under the title and at the edges to read, light enough that the board shows. */
   background:
-    linear-gradient(180deg, #000000a6 0%, #0000 34%),
+    linear-gradient(180deg, #000000bf 0%, #00000059 22%, #0000 40%),
     radial-gradient(ellipse 85% 75% at 50% 55%, #0a060314 0%, #0a060370 60%, #000000d9 100%);
   backdrop-filter: blur(3px);
   color: var(--text);
@@ -37,35 +39,38 @@
   display: none !important;
 }
 
-/*
- * Centred on the screen as if it were always as tall as the tallest form, so it sits in
- * the middle without the title jumping when the view below it changes.
- */
+/* Centred when it fits, scrolled when it does not. */
 .lobby-shell {
-  --block: 720px;
-
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: clamp(16px, 3.2vh, 30px);
   width: min(100%, 440px);
-  margin: max(16px, calc((100dvh - var(--block)) / 2)) auto max(24px, env(safe-area-inset-bottom));
+  margin: auto;
 }
 
 /* Big screens get a bigger menu, so it does not sit like a phone card in the middle. */
 @media (min-width: 1600px) and (min-height: 1000px) {
   .lobby-shell {
-    --block: 900px;
-
     zoom: 1.12;
   }
+}
+
+/* Moving between views, the title glides to its new place and the rest crossfades. */
+.lobby-title {
+  view-transition-name: lobby-title;
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
 /* The game's name, struck in the same gold as the victory screen. */
 .lobby-title {
   margin: 0;
   text-align: center;
-  font: 900 clamp(32px, min(10vw, 7.5vh), 68px) / 1 var(--display);
+  font: 900 clamp(28px, min(9vw, 7.5vh), 68px) / 1 var(--display);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   filter: drop-shadow(0 2px 0 #2a1606) drop-shadow(0 0 18px #ffb34755);
@@ -93,6 +98,9 @@
   font: italic 400 clamp(14px, 1.8vw, 16px) / 1.3 var(--serif);
   letter-spacing: 0.02em;
   text-transform: none;
+  text-shadow:
+    0 1px 3px #000,
+    0 2px 12px #000;
 }
 
 /* A walnut plaque with a fine gold inlay. */
@@ -167,7 +175,7 @@
 }
 
 #lobby input::placeholder {
-  color: #9a8a6c;
+  color: #7a6c55;
   font-style: italic;
 }
 

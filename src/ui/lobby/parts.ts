@@ -68,7 +68,7 @@ export function identity(): {
         <legend class="field-label">Your emblem</legend>
         <div class="character-options"></div>
       </fieldset>
-      <p class="character-motto" aria-live="polite"><b></b> <i></i></p>
+      <p class="character-motto" aria-live="polite"><b></b> — <i></i></p>
     `),
   );
   const name = part(element, "input", HTMLInputElement);

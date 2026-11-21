@@ -77,9 +77,11 @@
   background: radial-gradient(circle at 50% 35%, #3b2714, var(--well));
 }
 
+/* Smaller, but in the same column as the emblems above it. */
 .quiet-choice .choice-icon {
   width: 38px;
   height: 38px;
+  margin: 0 4px;
 }
 
 .choice-icon svg {
@@ -162,8 +164,8 @@
   }
 
   .step .character-motto {
-    grid-column: 1 / -1;
-    margin: 0;
+    grid-column: 2;
+    margin: -2px 0 0;
   }
 
   .step .code-tiles {
@@ -199,10 +201,36 @@
   white-space: nowrap;
 }
 
-/* A link whose game is gone: its code is struck through. */
+/* Narrow phones: the label goes above the tiles, so the row never outgrows the plaque. */
+@media (max-width: 480px) {
+  .invite-code {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* A link whose game is gone: its code fades, the heading says why, and joining leads. */
 [data-view="expired"] .invite-code .ivory-tiles {
-  opacity: 0.55;
-  text-decoration: line-through 2px var(--error-edge);
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+[data-view="expired"] .step-title {
+  color: var(--error);
+}
+
+[data-view="expired"] .step-title::before {
+  content: "⚠ ";
+}
+
+#lobby[data-view="expired"] .swap {
+  width: 100%;
+  min-height: 48px;
+  margin: -8px 0 0;
+  border: 1px solid #6b5137;
+  background: linear-gradient(180deg, #2b1d12, #1a110a);
+  color: var(--text);
 }
 
 /* Short screens and phones: the tagline gives way to the form, which packs a little tighter. */
@@ -282,6 +310,11 @@
   height: 26px;
   background: var(--metal);
   animation: lobby-caret 1s steps(1) infinite;
+}
+
+/* Where the next letter goes, even before the field has focus, so the tiles look typeable. */
+.code-tiles span.next:not(.filled) {
+  border-color: color-mix(in srgb, var(--metal) 55%, #5f452a);
 }
 
 .code-entry.complete .code-tiles span {
@@ -379,18 +412,18 @@
 /* The link itself, for copying by hand or checking what was sent. */
 #lobby .invite-link {
   width: 100%;
-  padding: 6px 10px;
-  border-color: transparent;
-  background: none;
-  box-shadow: none;
+  padding: 8px 12px;
+  border-color: #3e2c1b;
+  background: #0f0a0699;
+  box-shadow: inset 0 1px 4px #000a;
   color: var(--muted);
-  font: 14px / 1.3 var(--serif);
+  font:
+    14px / 1.3 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
   text-align: center;
-}
-
-#lobby .invite-link:focus {
-  border-color: #5f452a;
-  background: var(--well);
+  text-overflow: ellipsis;
 }
 
 .waiting .send-link {
@@ -423,7 +456,7 @@
 }
 
 #lobby .cancel {
-  margin: -10px 0 -10px;
+  margin: -6px 0 -10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
