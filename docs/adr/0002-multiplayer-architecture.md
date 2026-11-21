@@ -141,7 +141,8 @@ Players without a friend can be paired with a stranger.
   a moment before, it returns the seat instead: someone is already at that table, so the
   client takes it. Until the cancel is answered (at most 5 s), the client shows
   "Cancelling…" and nothing else, so the player cannot start a second search meanwhile. A
-  cancel that goes unanswered leaves its ticket unsettled: it is cancelled again before the
+  cancel that goes unanswered leaves its ticket unsettled (kept in `sessionStorage`, so a
+  reload does not lose it): it is cancelled again before the
   player's next search, and a seat that comes back then is taken.
 - Seekers live in Redis as one JSON value each, expiring ten minutes after they were last
   heard from, plus a sorted set of waiting tickets by when they started looking.

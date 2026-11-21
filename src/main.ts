@@ -7,6 +7,7 @@ import { createLocalSession } from "./net/localSession.ts";
 import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
+import { ticketMemory } from "./net/unsettled.ts";
 import { createBoard } from "./render/board.ts";
 import { CheckersView } from "./render/checkers.ts";
 import { createStage } from "./render/stage.ts";
@@ -114,14 +115,28 @@ function enterRoom(code: string, token: string): void {
  * A ticket whose cancel went unanswered. The server may have matched it all the same, with
  * a stranger now waiting at that table, so it is settled before any new search.
  */
-let unsettled: string | null = null;
+const unsettledTickets = ticketMemory();
+/** The same, for when storage is unavailable: then it lasts until the page is reloaded. */
+let unsettledHere: string | null = null;
+const unsettled = {
+  get: () => unsettledTickets.get() ?? unsettledHere,
+  set(ticket: string) {
+    unsettledHere = ticket;
+    unsettledTickets.set(ticket);
+  },
+  clear() {
+    unsettledHere = null;
+    unsettledTickets.clear();
+  },
+};
 /** Whether that is being done right now. */
 let settling = false;
 
 function seek(player: PlayerChoice): void {
   if (search || cancelling || settling) return;
-  if (unsettled) {
-    void settleThenSeek(unsettled, player);
+  const leftover = unsettled.get();
+  if (leftover) {
+    void settleThenSeek(leftover, player);
     return;
   }
   lobby.showSearching(player);
@@ -164,7 +179,7 @@ function cancelSeek(then: () => void): boolean {
 async function settle(running: Search | null): Promise<void> {
   const outcome = running ? await running.cancel() : null;
   cancelling = false;
-  if (outcome && !outcome.settled) unsettled = outcome.ticket;
+  if (outcome && !outcome.settled) unsettled.set(outcome.ticket);
   if (outcome?.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else afterCancel();
 }
@@ -180,7 +195,7 @@ async function settleThenSeek(ticket: string, player: PlayerChoice): Promise<voi
     lobby.showMenu({ error: "Could not reach the game server" });
     return;
   }
-  unsettled = null;
+  unsettled.clear();
   // Matched after all: that stranger has been waiting, so the player joins them.
   if (outcome.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else seek(player);
