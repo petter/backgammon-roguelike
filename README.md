@@ -4,6 +4,7 @@ Backgammon with cards, played against a friend. Three.js + TypeScript + Vite.
 
 - [ADR 0001](docs/adr/0001-engine-and-stack.md): engine and stack
 - [ADR 0002](docs/adr/0002-multiplayer-architecture.md): multiplayer architecture
+- [Design notes](docs/design.md): how screens should look and behave, and how to check them
 
 ## Commands
 

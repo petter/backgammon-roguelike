@@ -17,8 +17,6 @@ body {
 
 /* The ids and classes below set `display`, which would otherwise beat the hidden attribute. */
 #hud[hidden],
-#menu[hidden],
-#waiting[hidden],
 .overlay[hidden] {
   display: none;
 }
@@ -27,6 +25,11 @@ body {
 #stage {
   position: fixed;
   inset: 84px 0 148px;
+}
+
+/* Behind the start screen, the board has the whole window. */
+body:has(#lobby:not([hidden])) #stage {
+  inset: 0;
 }
 
 #stage canvas {
@@ -1031,115 +1034,9 @@ kbd {
   text-align: center;
 }
 
-.panel h1,
 .panel h2 {
   margin: 0 0 16px;
   font-size: 22px;
-}
-
-#menu,
-#waiting {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-}
-
-input {
-  padding: 8px 10px;
-  border: 1px solid #6b5137;
-  border-radius: 8px;
-  background: #14110f;
-  color: inherit;
-  font: inherit;
-  font-size: 16px;
-}
-
-#code {
-  text-transform: uppercase;
-  letter-spacing: 4px;
-}
-
-.or,
-#waiting p {
-  margin: 4px 0 0;
-  text-align: center;
-}
-
-#share-code {
-  font:
-    600 40px ui-monospace,
-    monospace;
-  letter-spacing: 8px;
-  text-align: center;
-}
-
-#characters {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  font-size: 13px;
-}
-
-#characters legend {
-  padding: 0;
-  margin-bottom: 6px;
-}
-
-.character-options {
-  display: flex;
-  gap: 10px;
-}
-
-.character {
-  position: relative;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* The radio button itself is invisible but still focusable; its medallion shows the state. */
-.character input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.character .portrait {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  opacity: 0.55;
-  transition:
-    opacity 0.12s,
-    box-shadow 0.12s;
-}
-
-.character input:checked + .portrait {
-  opacity: 1;
-  box-shadow: 0 0 0 3px #ffd24a;
-}
-
-.character input:focus-visible + .portrait {
-  outline: 2px solid #efe6d2;
-  outline-offset: 4px;
-}
-
-.motto {
-  min-height: 1.4em;
-  margin: 8px 0 0;
-}
-
-#lobby-error {
-  min-height: 1.4em;
-  margin: 12px 0 0;
-  color: #ff9d8a;
 }
 
 /* Phones: the top strip wraps onto several lines and the hand takes the full width. */

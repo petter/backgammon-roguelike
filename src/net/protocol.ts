@@ -42,6 +42,9 @@ export type ServerMessage =
   /** `fatal` means the seat is unusable and reconnecting will not help. */
   | { type: "error"; message: string; fatal: boolean };
 
+/** Response of `GET /api/rooms/:code`: whether an invite to it can still be taken. */
+export type RoomStatus = "open" | "full";
+
 /** Responses of `POST /api/rooms` and `POST /api/rooms/:code/join`. */
 export interface SeatGrant {
   code: string;

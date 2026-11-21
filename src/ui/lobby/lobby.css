@@ -1,0 +1,395 @@
+/*
+ * The start screen. It borrows the result screen's vocabulary: Cinzel in tracked capitals,
+ * gold metal and walnut. The board stays in view behind it, dimmed and softened.
+ * Layout of the menu and its forms is in menu.css; this file holds the common pieces.
+ */
+#lobby {
+  --metal-light: #fff4c4;
+  --metal: #f2bf4f;
+  --metal-dark: #8a5512;
+  --glow: #ffb347;
+  --wood: #2c1c11;
+  --wood-dark: #170f09;
+  --well: #0f0a06;
+  --text: #f3ead6;
+  --muted: #d2c3a3;
+  --label: #dccb9f;
+  --error: #ffab99;
+  --error-edge: #e0604a;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --display: Cinzel, "Iowan Old Style", Georgia, serif;
+
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  /* Dark enough under the title and at the edges to read, light enough that the board shows. */
+  background:
+    linear-gradient(180deg, #000000bf 0%, #00000059 22%, #0000 40%),
+    radial-gradient(ellipse 85% 75% at 50% 55%, #0a060314 0%, #0a060370 60%, #000000d9 100%);
+  backdrop-filter: blur(3px);
+  color: var(--text);
+}
+
+/* Tall screens: the board is cropped to fill them, so the scrim lets more of it through. */
+@media (max-aspect-ratio: 4/5) {
+  #lobby {
+    background:
+      linear-gradient(180deg, #000000b3 0%, #00000059 18%, #0000 34%, #0000 70%, #00000080 100%),
+      radial-gradient(ellipse 110% 85% at 50% 50%, #0a060314 0%, #0a060359 65%, #000000b3 100%);
+  }
+}
+
+#lobby[hidden],
+#lobby [hidden] {
+  display: none !important;
+}
+
+/* Centred when it fits, scrolled when it does not. */
+.lobby-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(16px, 3.2vh, 30px);
+  width: min(100%, 440px);
+  margin: auto;
+}
+
+/*
+ * Every form shares one place on the screen, set as if it were the tallest form, so the
+ * title stays put between them and a plaque that grows, with an error say, grows downward.
+ */
+#lobby:is(
+    [data-view="host"],
+    [data-view="join"],
+    [data-view="invited"],
+    [data-view="expired"],
+    [data-view="full"]
+  )
+  .lobby-shell {
+  margin: max(0px, calc((100dvh - 32px - 700px) / 2)) auto auto;
+}
+
+/* Big screens get a bigger menu, so it does not sit like a phone card in the middle. */
+@media (min-width: 1600px) and (min-height: 1000px) {
+  .lobby-shell {
+    zoom: 1.12;
+  }
+}
+
+/* Moving between views, the title glides to its new place and the rest crossfades. */
+.lobby-title {
+  view-transition-name: lobby-title;
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+/* The game's name, struck in the same gold as the victory screen. */
+.lobby-title {
+  margin: 0;
+  text-align: center;
+  font: 900 clamp(28px, min(9vw, 7.5vh), 68px) / 1 var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  filter: drop-shadow(0 2px 0 #2a1606) drop-shadow(0 0 18px #ffb34755);
+}
+
+/* A pool of shadow behind the title, so it and the tagline read over the board's points. */
+.lobby-title {
+  position: relative;
+}
+
+.lobby-title::before {
+  content: "";
+  position: absolute;
+  inset: -30% -12%;
+  z-index: -1;
+  background: radial-gradient(closest-side, #000000b3, #00000066 55%, #0000);
+}
+
+/* On a form the title sits over the board's rail and checkers: a deeper pool beneath it. */
+#lobby:not([data-view="home"]) .lobby-title::before {
+  background: radial-gradient(closest-side, #000000d9, #0000008c 60%, #0000);
+}
+
+.lobby-title span {
+  display: block;
+  color: transparent;
+  background: linear-gradient(
+    180deg,
+    var(--metal-light) 10%,
+    var(--metal) 48%,
+    var(--metal-dark) 52%,
+    var(--metal) 85%,
+    var(--metal-light)
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.lobby-title small {
+  display: block;
+  margin-top: 0.45em;
+  color: var(--muted);
+  font: italic 400 clamp(14px, 1.8vw, 16px) / 1.3 var(--serif);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-shadow:
+    0 1px 3px #000,
+    0 2px 12px #000;
+}
+
+/* A walnut plaque with a fine gold inlay. */
+.plaque {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: clamp(18px, 5vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--metal) 45%, transparent);
+  border-radius: 6px;
+  background:
+    var(--grain), linear-gradient(170deg, #3a26169e, #0000 50%),
+    linear-gradient(180deg, var(--wood), var(--wood-dark));
+  box-shadow:
+    inset 0 0 0 4px #0c0805,
+    inset 0 0 0 5px color-mix(in srgb, var(--metal) 22%, transparent),
+    0 24px 60px #000c,
+    0 0 0 1px #000;
+}
+
+.lobby-heading {
+  margin: 0;
+  color: var(--metal-light);
+  font: 700 clamp(16px, 2.2vw, 19px) / 1.2 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.lede {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: italic 16px / 1.4 var(--serif);
+}
+
+.field-label {
+  display: block;
+  margin: 0 0 8px;
+  padding: 0;
+  color: var(--label);
+  font: 700 13px / 1 var(--display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.field-label small {
+  margin-left: 4px;
+  color: var(--muted);
+  font: italic 400 13px / 1 var(--serif);
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.85;
+}
+
+.field {
+  display: block;
+  font-size: inherit;
+}
+
+#lobby input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #5f452a;
+  border-radius: 4px;
+  background: var(--well);
+  box-shadow: inset 0 2px 6px #000c;
+  color: var(--text);
+  font: 17px / 1.2 var(--serif);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+#lobby input::placeholder {
+  color: #9c8c72;
+  font-style: italic;
+}
+
+#lobby input:focus {
+  outline: none;
+  border-color: var(--metal);
+  box-shadow:
+    inset 0 2px 6px #000c,
+    0 0 0 3px color-mix(in srgb, var(--metal) 25%, transparent);
+}
+
+/* The character medallions. */
+.characters {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Inset by the selection ring, so the chosen emblem's ring stays inside the column. */
+.character-options {
+  display: flex;
+  gap: clamp(12px, 3.5vw, 18px);
+  padding: 4px;
+}
+
+.character {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.character input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.character .portrait {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  filter: saturate(0.7) brightness(0.85);
+  transition:
+    filter 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+
+@media (hover: hover) {
+  .character:hover .portrait {
+    filter: none;
+  }
+}
+
+.character input:checked + .portrait {
+  filter: none;
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 2px var(--wood-dark),
+    0 0 0 4px var(--metal),
+    0 0 18px color-mix(in srgb, var(--glow) 55%, transparent);
+}
+
+.character input:focus-visible + .portrait {
+  outline: 2px solid var(--text);
+  outline-offset: 6px;
+}
+
+/* Captions the emblems, close under them. */
+.character-motto {
+  min-height: 1.4em;
+  margin: -10px 0 0;
+  color: var(--muted);
+  font: 16px / 1.4 var(--serif);
+}
+
+.character-motto b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Buttons. The primary one is the gold-edged plate from the result screen. */
+#lobby button {
+  font: 700 14px / 1 var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s,
+    transform 0.2s,
+    opacity 0.2s;
+}
+
+#lobby button.primary {
+  min-height: 52px;
+  padding: 14px 28px;
+  border: 1px solid var(--metal);
+  background: linear-gradient(180deg, #6a4520, #2a180b);
+  box-shadow:
+    inset 0 0 0 3px #140c05,
+    inset 0 0 0 4px color-mix(in srgb, var(--metal) 40%, transparent),
+    0 0 22px color-mix(in srgb, var(--glow) 28%, transparent);
+  color: var(--metal-light);
+  font-size: 15px;
+}
+
+#lobby button.link {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  #lobby button.primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #80562a, #33200e);
+    box-shadow:
+      inset 0 0 0 3px #140c05,
+      inset 0 0 0 4px var(--metal),
+      0 0 34px color-mix(in srgb, var(--glow) 55%, transparent);
+    transform: translateY(-1px);
+  }
+
+  #lobby button.link:hover:not(:disabled) {
+    background: none;
+    color: var(--metal-light);
+  }
+}
+
+#lobby button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--metal) 80%, transparent);
+  outline-offset: 3px;
+}
+
+#lobby button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lobby-error {
+  margin: 0;
+  color: var(--error);
+  font: 16px / 1.4 var(--serif);
+}
+
+.lobby-error::before {
+  content: "⚠ ";
+}
+
+.lobby-error:empty {
+  display: none;
+}
+
+/* The home menu's error has no form around it. */
+.home + .lobby-error,
+.lobby-shell > .lobby-error {
+  text-align: center;
+}

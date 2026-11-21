@@ -2,15 +2,17 @@ import "./style.css";
 import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
+import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
-import { codeFromPath, type SeatGrant } from "./net/protocol.ts";
+import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
+import { CheckersView } from "./render/checkers.ts";
 import { createStage } from "./render/stage.ts";
 import { createCoach } from "./ui/coach.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
-import { createLobbyUi, type PlayerChoice } from "./ui/lobby.ts";
+import { createLobbyUi, type PlayerChoice } from "./ui/lobby/lobby.ts";
 
 startAnalytics();
 
@@ -98,6 +100,9 @@ function startLocal(): void {
   });
 }
 
+/** Refusals that are about the code itself: no game has it, or its game is full. */
+const CODE_ERRORS: Partial<Record<number, "missing" | "full">> = { 404: "missing", 409: "full" };
+
 /** Asks the server for a seat, then enters the room. */
 async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
   lobby.setBusy(true);
@@ -109,7 +114,9 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
     });
     const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
     if (!response.ok || !body.code || !body.token) {
-      lobby.showMenu({ error: body.error ?? "Could not reach the game server" });
+      // No such game, or it is full: the code is what to look at again.
+      const codeError = CODE_ERRORS[response.status];
+      lobby.showMenu({ error: body.error ?? "Could not reach the game server", codeError });
       return;
     }
     seats.set(body.code, body.token);
@@ -126,14 +133,41 @@ const lobby = createLobbyUi({
   onCreate: (player) => void takeSeat("/api/rooms", player),
   onJoin: (code, player) => void takeSeat(`/api/rooms/${code}/join`, player),
   onLocal: startLocal,
+  onCancel: toMenu,
 });
+
+/** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
+async function checkInvite(code: string): Promise<void> {
+  try {
+    const response = await fetch(`/api/rooms/${code}`);
+    if (response.status === 404) return lobby.inviteClosed("missing");
+    if (!response.ok) return;
+    const { status } = (await response.json()) as { status?: RoomStatus };
+    if (status === "full") lobby.inviteClosed("full");
+  } catch {
+    // Offline or unreachable: joining will say so when they try.
+  }
+}
+
+// The board is scenery while the start screen is up, set for a game that has yet to start,
+// and the playing surface once it is not.
+const lobbyEl = el("lobby");
+const scenery = new CheckersView(initialBoard());
+new MutationObserver(() => {
+  stage.setBackdrop(!lobbyEl.hidden);
+  if (lobbyEl.hidden) stage.world.remove(scenery.group);
+  else stage.world.add(scenery.group);
+}).observe(lobbyEl, { attributes: true, attributeFilter: ["hidden"] });
 
 function route(): void {
   leaveGame();
   const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;
   if (code && token) startRemote(code, token);
-  else lobby.showMenu({ code: code ?? undefined });
+  else {
+    lobby.showMenu({ code: code ?? undefined });
+    if (code) void checkInvite(code);
+  }
 }
 
 window.addEventListener("popstate", route);

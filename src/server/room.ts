@@ -15,6 +15,7 @@ import {
   CODE_LENGTH,
   type LobbyView,
   NAME_MAX,
+  type RoomStatus,
   type SeatGrant,
   type ServerMessage,
 } from "../net/protocol.ts";
@@ -130,6 +131,16 @@ export async function createRoom(
     if (await store.create(room)) return { code, token };
   }
   throw new RoomError("busy", "Could not find a free room code, try again");
+}
+
+/**
+ * Whether a room still has a seat for a guest, so an invite link can say at once that its
+ * game is gone or taken. It reveals nothing a join attempt would not.
+ */
+export async function roomStatus(store: GameStore, code: string): Promise<RoomStatus> {
+  const room = await store.load(code);
+  if (!room) throw new RoomError("not_found", "No game with that code");
+  return room.seats.black ? "full" : "open";
 }
 
 /** Takes the second seat and starts the game. */

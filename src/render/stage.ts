@@ -11,6 +11,13 @@ const TABLE_Y = -0.5;
 const VIEW_TARGET = new THREE.Vector3((TRAY_X + TRAY_W / 2 - 7) / 2, 0, 0);
 const VIEW_HALF_W = 8.4;
 const VIEW_HALF_H = 7.2;
+/**
+ * How much of the board's width a phone held upright shows while it is a backdrop: about as
+ * much as lets the felt fill the screen from top to bottom.
+ */
+const BACKDROP_CROP = 0.38;
+/** The same for a tablet held upright. */
+const TABLET_CROP = 0.6;
 
 /** What it takes to hold something up in front of the camera, at a spot on the screen. */
 export interface Lens {
@@ -31,9 +38,21 @@ export interface Stage {
   setSeat: (player: Player) => void;
   /** What sits on the playfield under a pointer position, if anything. */
   pick: (clientX: number, clientY: number) => PickTarget | null;
+  /**
+   * While the board is only scenery behind a menu, a tall screen crops it instead of
+   * shrinking it to a strip: the felt fills the screen behind the menu.
+   */
+  setBackdrop: (on: boolean) => void;
   /** Where a spot on the playfield is on screen, in client pixels; `y` lifts it off the felt. */
   toScreen: (x: number, z: number, y?: number) => { x: number; y: number };
   lens: Lens;
+}
+
+/** How much of the board's width the backdrop keeps on a screen of this shape. */
+function backdropCrop(aspect: number): number {
+  if (aspect < 0.6) return BACKDROP_CROP;
+  if (aspect < 0.8) return TABLET_CROP;
+  return 1;
 }
 
 export function createStage(container: HTMLElement): Stage {
@@ -103,6 +122,7 @@ export function createStage(container: HTMLElement): Stage {
 
   const viewDir = new THREE.Vector3();
   let side = 1;
+  let backdrop = false;
 
   const resize = () => {
     viewDir.set(0, 1, 0.4 * side).normalize();
@@ -110,7 +130,10 @@ export function createStage(container: HTMLElement): Stage {
     renderer.setSize(w, h);
     camera.aspect = w / h;
     const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const distance = Math.max(VIEW_HALF_H / tan, VIEW_HALF_W / (tan * camera.aspect));
+    const fitWidth = VIEW_HALF_W / (tan * camera.aspect);
+    // As scenery on a tall screen, show about the middle half of the board's width.
+    const width = backdrop ? fitWidth * backdropCrop(camera.aspect) : fitWidth;
+    const distance = Math.max(VIEW_HALF_H / tan, width);
     camera.position.copy(VIEW_TARGET).addScaledVector(viewDir, distance);
     camera.lookAt(VIEW_TARGET);
     camera.updateProjectionMatrix();
@@ -118,7 +141,11 @@ export function createStage(container: HTMLElement): Stage {
     camera.updateMatrixWorld();
   };
   resize();
+  // On a window resize at once, ahead of anything that places itself with `toScreen` then;
+  // and whenever the container changes size on its own, such as when the start screen hands
+  // the whole window to the board behind it.
   window.addEventListener("resize", resize);
+  new ResizeObserver(resize).observe(container);
   renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
   const raycaster = new THREE.Raycaster();
@@ -143,6 +170,11 @@ export function createStage(container: HTMLElement): Stage {
       // The light moves with the camera, so both players see the checkers lit the same way.
       sun.position.set(-8.5 * side, 10.5, 6.5 * side);
       rim.position.set(8 * side, 7, -7 * side);
+      resize();
+    },
+    setBackdrop(on) {
+      if (backdrop === on) return;
+      backdrop = on;
       resize();
     },
     pick(clientX, clientY) {

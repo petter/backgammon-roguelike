@@ -436,6 +436,21 @@ describe("handleApi", () => {
     expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, "{}")).status).toBe(409);
   });
 
+  it("tells an invite whether its room is open, full or gone", async () => {
+    const store = createMemoryStore();
+    const { code } = (await handleApi(store, "POST", "/api/rooms", "")).body as { code: string };
+    const status = (path: string) => handleApi(store, "GET", path, "");
+    expect(await status(`/api/rooms/${code.toLowerCase()}`)).toEqual({
+      status: 200,
+      body: { status: "open" },
+    });
+    await handleApi(store, "POST", `/api/rooms/${code}/join`, "");
+    expect((await status(`/api/rooms/${code}`)).body).toEqual({ status: "full" });
+    expect((await status("/api/rooms/ZZZZZ")).status).toBe(404);
+    expect((await status("/api/rooms/nope!")).status).toBe(404);
+    expect((await handleApi(store, "GET", "/api/rooms", "")).status).toBe(405);
+  });
+
   it("takes the character from the request, and the default when it is not a known one", async () => {
     const store = createMemoryStore();
     const body = '{"name":"Ada","character":"corsair"}';
