@@ -1,4 +1,4 @@
-import type { Player } from "../core/board.ts";
+import type { BoardState, Player } from "../core/board.ts";
 
 /** World units. X runs left to right, Z towards the camera, Y up. Playfield top is y = 0. */
 export const FIELD_HALF_W = 6.5;
@@ -69,4 +69,21 @@ export function pickAt(x: number, z: number): PickTarget | null {
   if (Math.abs(x) < BAR_W / 2) return { kind: "bar" };
   const c = x < 0 ? Math.floor(x + FIELD_HALF_W) : 6 + Math.floor(x - BAR_W / 2);
   return { kind: "point", index: z > 0 ? 11 - c : 12 + c };
+}
+
+/** Every checker standing on the board or the bar, as something dice can run into. */
+export function obstaclesOf(board: BoardState): { x: number; z: number; top: number }[] {
+  const out: { x: number; z: number; top: number }[] = [];
+  const add = (place: Place, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const at = slotPosition(place, i);
+      out.push({ x: at.x, z: at.z, top: at.y + CHECKER_H / 2 });
+    }
+  };
+  board.points.forEach((point, index) => {
+    add({ kind: "point", index }, point.count);
+  });
+  add({ kind: "bar", player: "white" }, board.bar.white);
+  add({ kind: "bar", player: "black" }, board.bar.black);
+  return out;
 }

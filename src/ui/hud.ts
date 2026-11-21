@@ -20,6 +20,8 @@ export interface HudModel {
   myTurn: boolean;
   /** Whether ending the turn is allowed: rolled, and no move left. */
   canEnd: boolean;
+  /** The dice are still in the air: their result is not shown or usable yet. */
+  rolling: boolean;
   /** Both seats share this screen, so name the player instead of saying "you". */
   local: boolean;
   message: string;
@@ -120,7 +122,9 @@ export function createHud(): Hud {
 
       turn.textContent = turnText(model, name);
       // U+2680 is die face 1; the six faces are consecutive.
-      dice.textContent = view.dice.map((d) => String.fromCodePoint(0x267f + d)).join("");
+      dice.textContent = model.rolling
+        ? ""
+        : view.dice.map((d) => String.fromCodePoint(0x267f + d)).join("");
       message.textContent = model.message;
       status.textContent = model.status;
       // Your own chip first; in hot-seat play the order stays fixed.
@@ -158,7 +162,7 @@ export function createHud(): Hud {
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
           const button = cardButton(card, () => hud.actions?.onPlay(index));
-          button.disabled = !(myTurn && canPlayCard(view, card));
+          button.disabled = !(myTurn && !model.rolling && canPlayCard(view, card));
           return button;
         }),
       );

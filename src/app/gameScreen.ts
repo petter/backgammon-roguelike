@@ -6,8 +6,9 @@ import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
 import type { BoardView } from "../render/board.ts";
 import { CheckersView } from "../render/checkers.ts";
+import { DiceView } from "../render/dice.ts";
 import { shake, tossAll } from "../render/effects.ts";
-import { slotPosition } from "../render/layout.ts";
+import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
 import type { Hud } from "../ui/hud.ts";
 
@@ -45,13 +46,35 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let message = "";
   let status = "";
 
+  const dice = new DiceView();
+  stage.world.add(dice.group);
+  /** When the dice now in the air will have landed, on the `performance.now()` clock. */
+  let landsAt = 0;
+  let landing: ReturnType<typeof setTimeout> | undefined;
+
+  const sideOf = (player: Player) => (player === "white" ? 1 : -1);
+  /** Doubles are four moves but two dice on the table. */
+  const physical = (values: number[]) =>
+    values.length === 4 && values.every((value) => value === values[0])
+      ? values.slice(0, 2)
+      : values;
+  /** Throws the dice for a result the server has already decided, then waits for them. */
+  const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
+    const seconds = dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random);
+    landsAt = performance.now() + seconds * 1000;
+    clearTimeout(landing);
+    landing = setTimeout(refresh, seconds * 1000 + 30);
+  };
+
   const myTurn = () => view !== null && view.phase !== "over" && view.current === view.you;
   const name = (player: Player) => lobby?.players[player]?.name ?? player;
 
   /** Redraws everything that depends on the view and the selection. */
   const refresh = () => {
     if (!view || !lobby || !checkers) return;
-    const moves = myTurn() ? legalMoves(view) : [];
+    // Nothing can be done with a roll until the dice have come to rest.
+    const rolling = performance.now() < landsAt;
+    const moves = myTurn() && !rolling ? legalMoves(view) : [];
     if (moves.length > 0 && view.board.bar[view.current] > 0) selected = "bar";
     if (!moves.some((m) => m.from === selected)) selected = null;
     const targets = moves.filter((m) => m.from === selected);
@@ -87,7 +110,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       view,
       lobby,
       myTurn: myTurn(),
-      canEnd: myTurn() && view.phase === "move" && moves.length === 0,
+      canEnd: myTurn() && !rolling && view.phase === "move" && moves.length === 0,
+      rolling,
       local: options.local,
       message,
       status,
@@ -95,7 +119,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   };
 
   /** Plays events back as animation and returns the line to show for them, if any. */
-  const play = (events: GameEvent[], pieces: CheckersView, you: Player): string => {
+  const play = (events: GameEvent[], pieces: CheckersView, next: PlayerView): string => {
+    const you = next.you;
     let text = "";
     let quaked = false;
     for (const event of events) {
@@ -112,8 +137,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
           shake(stage.world, 1.4);
           tossAll(pieces.all());
         }
-      } else if (event.type === "diceChanged" && event.doubled && text) {
-        text += ": doubles!";
+      } else if (event.type === "diceRolled") {
+        throwDice(event.dice, event.player, next.board);
+      } else if (event.type === "diceChanged") {
+        // A card changed the dice: throw them again, landing on the new values.
+        throwDice(event.dice, event.player, next.board);
+        if (event.doubled && text) text += ": doubles!";
+      } else if (event.type === "turnEnded") {
+        dice.clear();
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
       }
@@ -137,7 +168,13 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       checkers = new CheckersView(update.view.board);
       stage.world.add(checkers.group);
     } else {
-      message = play(update.events, checkers, update.view.you);
+      message = play(update.events, checkers, update.view);
+    }
+    // Dice belong to the move phase. Joining or resyncing mid-turn, set them down as rolled.
+    const { phase, dice: remaining, current } = update.view;
+    if (phase !== "move") dice.clear();
+    else if (dice.count === 0 && remaining.length > 0) {
+      dice.show(physical(remaining), sideOf(current));
     }
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
@@ -177,6 +214,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     "pointerdown",
     (event) => {
       if (!view || !myTurn() || view.phase !== "move") return;
+      if (performance.now() < landsAt) return;
       const target = stage.pick(event.clientX, event.clientY);
       const moves = legalMoves(view);
 
@@ -222,6 +260,9 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     hud.actions = null;
     board.setHints();
     if (checkers) stage.world.remove(checkers.group);
+    clearTimeout(landing);
+    dice.clear();
+    stage.world.remove(dice.group);
     stage.setSeat("white");
   };
 }

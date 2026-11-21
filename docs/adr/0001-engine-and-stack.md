@@ -55,6 +55,10 @@ Three.js + TypeScript + Vite. Real 3D scene, mostly fixed top-down camera.
 - No visual editors for particles, shaders or animation timelines; all authored in code.
 - Desktop/Steam release remains possible by wrapping in Tauri or Electron.
 
+## Addendum: dice (2026-11-20)
+
+Dice are thrown with a small purpose-built rigid-body approximation in `src/render/diceSim.ts` rather than Rapier. It needs no new dependency, runs in tests without a browser, and is precomputed per throw so the result can be fixed afterwards: each die is painted so the face it lands on shows the value the server rolled.
+
 ## Revisit if
 
 - Primary target becomes Steam or consoles, with browser secondary.

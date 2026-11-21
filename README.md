@@ -30,6 +30,13 @@ reconnecting. Rooms live in memory and are lost when the dev server restarts.
 3. Move checkers and play cards from your hand, in any order.
 4. End the turn once no checker move is left.
 
+## Dice
+
+The dice are physical objects on the board. A roll throws them from the roller's edge; they
+bounce off the felt, the rims, the checkers and each other. The server decides the result
+before the throw: the client simulates the throw, then paints each die so that the face it
+lands on shows the server's value. Cards that change the dice throw them again.
+
 ## Cards
 
 Each player has their own deck of 11 cards. Rarity sets how many copies it holds, so the
