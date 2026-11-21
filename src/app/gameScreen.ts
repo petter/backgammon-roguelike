@@ -261,6 +261,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     "keydown",
     (event) => {
       if (event.repeat || event.target instanceof HTMLInputElement) return;
+      // A focused button keeps its own keys: Space and Enter press it, as on any page.
+      // Without this, Space on a focused card would roll instead of picking or playing it.
+      const onButton = event.target instanceof HTMLButtonElement && !event.target.disabled;
+      if (event.code === "Space" && onButton) return;
       if (event.code === "Space") {
         event.preventDefault();
         roll();
