@@ -7,7 +7,7 @@ import {
   HANDOVER_MS,
   PING_MS,
   PONG_GRACE_MS,
-  RETIRE_MS,
+  RETIRE_MAX_MS,
   ROTATE_MS,
 } from "../src/net/remoteSession.ts";
 import type { SessionStatus, SessionUpdate } from "../src/net/session.ts";
@@ -53,6 +53,14 @@ class FakeSocket implements ClientSocket {
   }
   commands(): unknown[] {
     return this.sent.filter((m) => m.type === "command").map((m) => m.command);
+  }
+  /** The ids of the commands sent on this socket, in order. */
+  ids(): number[] {
+    return this.sent.filter((m) => m.type === "command").map((m) => m.id as number);
+  }
+  /** The server acknowledges every command sent on this socket so far. */
+  acknowledge(): void {
+    for (const id of this.ids()) this.deliver({ type: "done", id });
   }
 }
 
@@ -128,8 +136,9 @@ describe("remote session", () => {
     api.send({ type: "endTurn" });
     expect(sockets[1].commands()).toEqual([{ type: "endTurn" }]);
     expect(sockets[0].commands()).toEqual([{ type: "roll" }]);
+    // The old one still owes an answer to the roll, so it is kept until that arrives.
     expect(sockets[0].open).toBe(true);
-    vi.advanceTimersByTime(RETIRE_MS);
+    sockets[0].acknowledge();
     expect(sockets[0].open).toBe(false);
     // Never offline, and the repeated state is not applied twice.
     expect(statuses.filter((s) => s === "reconnecting")).toEqual([]);
@@ -144,7 +153,7 @@ describe("remote session", () => {
       expect(sockets).toHaveLength(i + 1);
       sockets[i].come(1);
       expect(sockets[i].open).toBe(true);
-      vi.advanceTimersByTime(RETIRE_MS);
+      // Nothing was outstanding on the old one, so it goes at once.
       expect(sockets[i - 1].open).toBe(false);
       // Never more than the one in use once the old one has been retired.
       expect(sockets.filter((socket) => socket.open)).toHaveLength(1);
@@ -176,7 +185,8 @@ describe("remote session", () => {
     vi.advanceTimersByTime(1);
     expect(sockets).toHaveLength(3);
     sockets[2].come(1);
-    vi.advanceTimersByTime(RETIRE_MS);
+    expect(sockets[0].open).toBe(true);
+    sockets[0].acknowledge();
     expect(sockets[0].open).toBe(false);
     expect(statuses.filter((s) => s === "reconnecting")).toEqual([]);
   });
@@ -205,20 +215,117 @@ describe("remote session", () => {
     expect(sockets[2].commands()).toHaveLength(1);
   });
 
-  it("still hears the answer to a command sent just before a changeover", () => {
+  it("gives every command its own id", () => {
+    const { api, sockets } = session();
+    sockets[0].come(1);
+    api.send({ type: "roll" });
+    api.send({ type: "endTurn" });
+    api.send({ type: "roll" });
+    expect(new Set(sockets[0].ids()).size).toBe(3);
+    expect(sockets[0].ids().every((id) => Number.isSafeInteger(id) && id >= 0)).toBe(true);
+  });
+
+  it("still hears the answer to a command sent just before a changeover, however late", () => {
     const { api, sockets, updates, errors } = session();
     sockets[0].come(4);
     vi.advanceTimersByTime(ROTATE_MS);
     api.send({ type: "pickCard", index: 0 });
+    api.send({ type: "playCard", index: 3 });
     sockets[1].come(4);
-    // The server answers on the socket the command arrived on, after the changeover.
-    sockets[0].deliver({ type: "error", message: "No such card on offer", fatal: false });
-    expect(errors).toEqual([["No such card on offer", false]]);
+    // The server is slow: well past any short grace period, the old socket is still there.
+    vi.advanceTimersByTime(RETIRE_MAX_MS - 1000);
+    expect(sockets[0].open).toBe(true);
+    const [first, second] = sockets[0].ids();
     sockets[0].deliver(state(5, WON));
+    sockets[0].deliver({ type: "done", id: first });
     expect(updates.at(-1)?.events).toHaveLength(1);
+    // One answer is still owed.
+    expect(sockets[0].open).toBe(true);
+    sockets[0].deliver({ type: "error", message: "No such card in hand", fatal: false });
+    sockets[0].deliver({ type: "done", id: second });
+    expect(errors).toEqual([["No such card in hand", false]]);
+    // Everything sent on it has been answered: now it goes.
+    expect(sockets[0].open).toBe(false);
     // The same update on the new socket is not applied a second time.
     sockets[1].deliver(state(5, WON));
     expect(updates).toHaveLength(2);
+  });
+
+  it("tells the player if a replaced socket never answers, and lets it go", () => {
+    const { api, sockets, errors } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    sockets[1].come(4);
+    vi.advanceTimersByTime(RETIRE_MAX_MS);
+    expect(sockets[0].open).toBe(false);
+    expect(errors).toEqual([
+      ["The server did not answer your last action. Check the board.", false],
+    ]);
+    // Only once.
+    vi.advanceTimersByTime(RETIRE_MAX_MS * 2);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("does not hold a socket open for an acknowledgement of someone else's id", () => {
+    const { api, sockets } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    sockets[1].come(4);
+    sockets[0].deliver({ type: "done", id: 9999 });
+    expect(sockets[0].open).toBe(true);
+    sockets[0].acknowledge();
+    expect(sockets[0].open).toBe(false);
+  });
+
+  it("keeps quiet about a replacement that fails without being fatal", () => {
+    const { api, sockets, errors, statuses } = session();
+    sockets[0].come(2);
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1].accept();
+    sockets[1].deliver({
+      type: "error",
+      message: "Something went wrong on the server",
+      fatal: false,
+    });
+    // Nothing the player did failed, so nothing is said; the replacement is tried again.
+    expect(errors).toEqual([]);
+    expect(statuses.at(-1)).toBe("connected");
+    expect(sockets[1].open).toBe(false);
+    api.send({ type: "roll" });
+    expect(sockets[0].commands()).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(sockets).toHaveLength(3);
+  });
+
+  it("keeps quiet about a failed reconnection attempt too, beyond the banner", () => {
+    const { sockets, errors, statuses } = session();
+    sockets[0].come(2);
+    sockets[0].end();
+    vi.advanceTimersByTime(1);
+    sockets[1].accept();
+    sockets[1].deliver({
+      type: "error",
+      message: "Something went wrong on the server",
+      fatal: false,
+    });
+    expect(errors).toEqual([]);
+    expect(statuses.at(-1)).toBe("reconnecting");
+    vi.advanceTimersByTime(5000);
+    expect(sockets.length).toBeGreaterThan(2);
+  });
+
+  it("still ends when the only socket is told the seat is gone", () => {
+    const { sockets, errors } = session();
+    sockets[0].come(2);
+    sockets[0].end();
+    vi.advanceTimersByTime(1);
+    sockets[1].accept();
+    sockets[1].deliver({ type: "error", message: "That game no longer exists", fatal: true });
+    expect(errors).toEqual([["That game no longer exists", true]]);
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(2);
   });
 
   it("ignores a fatal error on a socket that has already been replaced", () => {

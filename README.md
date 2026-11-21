@@ -84,7 +84,9 @@ Function. `vercel.json` routes every `/api/*` request to it and serves the app f
 - `GET /api/health` reports the store in use and the deployed commit.
 - Vercel ends every connection when its function reaches its maximum duration (300 s, set in
   `vercel.json`). The client replaces its socket after 240 s, before that happens, and takes
-  over the new one only once it has the current state, so play is not interrupted. It also
+  over the new one only once it has the current state, so play is not interrupted. Every
+  command carries an id that the server acknowledges, and the old socket is kept until
+  everything sent on it has been answered, so nothing in flight is lost. It also
   pings every 20 s to notice a dead connection, and shows a banner while it is reconnecting.
 - `REDIS_URL=redis://localhost:6379 pnpm test` also runs the Redis store tests.
 

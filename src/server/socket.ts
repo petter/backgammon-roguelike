@@ -37,9 +37,10 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
       if (connection) return reject("Already connected");
       if (!isRoomCode(code)) return reject("That game no longer exists");
       try {
-        const opened = await openConnection(store, code, message.token, send);
-        if (closed) opened.close();
-        else connection = opened;
+        // Kept even if the socket has closed meanwhile: commands already received behind
+        // this hello are still carried out, and the close handler lets go of the room once
+        // the queue has drained.
+        connection = await openConnection(store, code, message.token, send);
       } catch (error) {
         if (!(error instanceof RoomError)) throw error;
         reject(error.message);
@@ -49,6 +50,8 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
 
     if (!connection) return reject("Say hello first");
     await connection.command(message.command);
+    // After the outcome, never before it: a client may stop listening once it has this.
+    if (message.id !== undefined) send({ type: "done", id: message.id });
   };
 
   socket.onMessage((text) => {

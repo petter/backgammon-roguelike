@@ -233,6 +233,75 @@ describe("a socket that closes with work outstanding", () => {
   });
 });
 
+describe("acknowledging commands", () => {
+  it("sends done after the outcome of each command that carried an id, and only those", async () => {
+    const { store, host, guest, code } = await started();
+    const first = (await store.load(code))?.game?.current;
+    const mover = fakeSocket(store, code);
+    await mover.say({ type: "hello", token: first === "white" ? host.token : guest.token });
+    await mover.say({ type: "command", command: { type: "pickCard", index: 0 }, id: 7 });
+    await mover.say({ type: "command", command: { type: "endTurn" }, id: 8 });
+    await mover.say({ type: "command", command: { type: "roll" } });
+    const kinds = mover.sent.map((m) =>
+      m.type === "done" ? `done ${m.id}` : m.type === "error" ? "error" : m.type,
+    );
+    // A change, then its acknowledgement; a refusal, then its acknowledgement; no id, no done.
+    expect(kinds).toEqual(["state", "state", "done 7", "error", "done 8", "state"]);
+  });
+
+  it("rejects ids that are not whole non-negative numbers", () => {
+    const base = '{"type":"command","command":{"type":"roll"},"id":';
+    expect(parseClientMessage(`${base}3}`)).toEqual({
+      type: "command",
+      command: { type: "roll" },
+      id: 3,
+    });
+    for (const id of ["-1", "1.5", '"3"', "null", "1e400", "{}"]) {
+      expect(parseClientMessage(`${base}${id}}`), id).toBeNull();
+    }
+  });
+});
+
+describe("a close while hello is still in flight", () => {
+  it("still carries out a command that was queued behind the hello, then lets go of the room", async () => {
+    const inner = createMemoryStore();
+    const host = await createRoom(inner, "Ada");
+    const guest = await joinRoom(inner, host.code, "Grace");
+    const first = (await inner.load(host.code))?.game?.current;
+    let open: () => void = () => {};
+    let gate: Promise<void> | null = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const store: GameStore = {
+      ...inner,
+      load: async (code) => {
+        const room = await inner.load(code);
+        if (gate) await gate;
+        return room;
+      },
+    };
+    const socket = fakeSocket(store, host.code);
+    socket.say({ type: "hello", token: first === "white" ? host.token : guest.token });
+    const queued = socket.say({ type: "command", command: { type: "pickCard", index: 0 }, id: 1 });
+    socket.hangUp();
+    gate = null;
+    open();
+    await queued;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const room = await inner.load(host.code);
+    expect(room?.version).toBe(2);
+    expect(room?.game?.phase).toBe("roll");
+    // Nothing was sent to the closed socket, and it is no longer listening to the room.
+    expect(socket.sent).toEqual([]);
+    const current = room?.game?.current;
+    const other = fakeSocket(inner, host.code);
+    await other.say({ type: "hello", token: current === "white" ? host.token : guest.token });
+    await other.say({ type: "command", command: { type: "roll" } });
+    expect(socket.sent).toEqual([]);
+  });
+});
+
 describe("an unexpected server error", () => {
   it("closes the socket without condemning the seat", async () => {
     const inner = createMemoryStore();

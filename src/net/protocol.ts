@@ -16,7 +16,11 @@ export interface LobbyView {
 
 export type ClientMessage =
   | { type: "hello"; token: string }
-  | { type: "command"; command: Command }
+  /**
+   * `id`, when given, is echoed in a `done` once the command has been dealt with, whatever
+   * the outcome. It lets a client know that a socket has nothing more to tell it.
+   */
+  | { type: "command"; command: Command; id?: number }
   /** "Are you there?" Answered with `pong`. Allowed at any time, before hello too. */
   | { type: "ping" };
 
@@ -32,6 +36,8 @@ export type ServerMessage =
       events: GameEvent[];
     }
   | { type: "pong" }
+  /** The command sent with this `id` has been dealt with; its outcome was sent before this. */
+  | { type: "done"; id: number }
   /** `fatal` means the seat is unusable and reconnecting will not help. */
   | { type: "error"; message: string; fatal: boolean };
 
@@ -100,7 +106,12 @@ export function parseClientMessage(text: string): ClientMessage | null {
   if (m.type === "ping") return { type: "ping" };
   if (m.type === "command") {
     const command = parseCommand(m.command);
-    return command ? { type: "command", command } : null;
+    if (!command) return null;
+    if (m.id === undefined) return { type: "command", command };
+    const id = m.id;
+    return typeof id === "number" && Number.isSafeInteger(id) && id >= 0
+      ? { type: "command", command, id }
+      : null;
   }
   return null;
 }
