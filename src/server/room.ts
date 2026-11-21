@@ -93,7 +93,8 @@ export async function createRoom(
     const code = randomCode(entropy);
     const token = entropy.token();
     const seats = { white: { token, name: cleanName(name, "Host") } };
-    if (await store.create({ code, version: 0, seats, game: null })) return { code, token };
+    const room: Room = { id: entropy.token(), code, version: 0, seats, game: null };
+    if (await store.create(room)) return { code, token };
   }
   throw new RoomError("busy", "Could not find a free room code, try again");
 }
@@ -168,6 +169,9 @@ export interface ConnectionOptions {
  * Binds a seat to a way of sending messages. Sends the current state at once, then every
  * later change, each version at most once. Throws `RoomError` if the room or token is not
  * valid.
+ *
+ * The connection belongs to one room, identified by its id. If that room disappears or its
+ * code comes to mean another room, the connection is told once and shut down.
  */
 export async function openConnection(
   store: GameStore,
@@ -181,71 +185,80 @@ export async function openConnection(
   if (!found) throw new RoomError("not_found", "That game no longer exists");
   const seat = seatOf(found, token);
   if (!seat) throw new RoomError("bad_token", "You do not have a seat in that game");
+  const roomId = found.id;
 
   let sent = -1;
   let closed = false;
+  let ready = false;
+  let resync: ReturnType<typeof setInterval> | undefined;
+  let unsubscribe = () => {};
+
+  /** The whole teardown. Safe to call at any point and more than once. */
+  const stop = () => {
+    closed = true;
+    clearInterval(resync);
+    // Taken out before it is called, so the store sees each unsubscribe exactly once, and
+    // one that only becomes available later (during setup) is still called.
+    const release = unsubscribe;
+    unsubscribe = () => {};
+    release();
+  };
   /** Sends an error, unless the connection is closed. */
   const complain = (message: string, fatal: boolean) => {
     if (!closed) send({ type: "error", message, fatal });
   };
-  /**
-   * Whether this room is still the one the token was issued for. A code can be reused after
-   * a room expires; a connection that outlived its room must not see the new one.
-   */
-  const owns = (room: Room) => seatOf(room, token) === seat;
-  let stop = () => {};
-  /** Ends a connection whose room is gone or has been replaced. */
+  /** Ends the connection because its room is gone or replaced. Tears down even if the send fails. */
   const evict = () => {
-    complain("That game no longer exists", true);
-    stop();
+    if (closed) return;
+    try {
+      // During setup the caller has no connection yet and learns through the rejection.
+      if (ready) complain("That game no longer exists", true);
+    } catch (error) {
+      console.error("Could not tell a player their game is gone", error);
+    } finally {
+      stop();
+    }
   };
   /**
    * Sends a room state unless this connection already has that version or a newer one.
    * The version counts as sent only once `send` has returned: if it throws, a later
    * attempt tries again.
    */
-  const deliver = (room: Room, events: GameEvent[]) => {
-    if (closed || room.version <= sent) return;
-    if (!owns(room)) return evict();
+  const deliver = (room: Room | null, events: GameEvent[]) => {
+    if (closed) return;
+    if (room?.id !== roomId) return evict();
+    if (room.version <= sent) return;
     send(stateMessage(room, seat, events));
     sent = room.version;
   };
 
-  // Subscribe before taking the snapshot, so no change can fall between the two.
-  const unsubscribe = await store.subscribe(code, (update) => deliver(update.room, update.events));
   try {
-    const snapshot = await store.load(code);
-    if (!snapshot) throw new RoomError("not_found", "That game no longer exists");
-    deliver(snapshot, []);
+    // Subscribe before taking the snapshot, so no change can fall between the two.
+    unsubscribe = await store.subscribe(code, (update) => deliver(update.room, update.events));
+    deliver(await store.load(code), []);
+    if (closed) throw new RoomError("not_found", "That game no longer exists");
   } catch (error) {
     // No handle is returned on failure, so nobody else could ever remove the listener.
-    closed = true;
-    unsubscribe();
+    stop();
     throw error;
   }
+  ready = true;
 
-  const resync = setInterval(() => {
+  resync = setInterval(() => {
     store
       .load(code)
-      .then((room) => (room ? deliver(room, []) : undefined))
+      .then((room) => deliver(room, []))
       .catch((error) => console.error("Could not resync a room", error));
   }, resyncMs);
   // Never the reason a process stays alive.
   (resync as { unref?: () => void }).unref?.();
-
-  stop = () => {
-    // Also stops a resync that is already reading from delivering once it returns.
-    closed = true;
-    clearInterval(resync);
-    unsubscribe();
-  };
 
   return {
     async command(command) {
       for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
         const room = await store.load(code);
         if (closed) return;
-        if (!room || !owns(room)) return evict();
+        if (room?.id !== roomId) return evict();
         if (!room.game) return complain("The game has not started yet", false);
         let result: ReturnType<typeof applyCommand>;
         try {
@@ -258,6 +271,7 @@ export async function openConnection(
           return complain(error.message, false);
         }
         const next: Room = { ...room, version: room.version + 1, game: result.state };
+        // The store refuses this if the room changed or was replaced since it was loaded.
         if (await store.save(next, room.version)) {
           await announce(store, code, { room: next, events: result.events });
           // If the announcement reached this connection, this is a no-op. If it did not,
@@ -273,6 +287,6 @@ export async function openConnection(
       }
       complain("The game is busy, try again", false);
     },
-    close: () => stop(),
+    close: stop,
   };
 }

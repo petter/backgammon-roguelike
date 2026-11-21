@@ -57,6 +57,10 @@ export function createUpgradeHandler(
     const match = SOCKET_PATH.exec(pathOf(req));
     if (!match) return false;
     sockets.handleUpgrade(req, socket, head, (ws) => {
+      // Without a listener, a socket error (an oversized or invalid frame is enough) would
+      // be thrown as an uncaught exception and take the whole process down.
+      // `ws` closes the socket itself, with the matching close code.
+      ws.on("error", (error) => console.error("Room socket error", error.message));
       serveSocket(store, normalizeCode(match[1]), {
         send: (text) => ws.send(text),
         close: () => ws.close(),

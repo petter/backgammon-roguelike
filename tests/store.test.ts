@@ -8,7 +8,7 @@ describe("memory store expiry", () => {
   it("forgets a room after its time to live, counted from the last write", async () => {
     let now = 0;
     const store = createMemoryStore(1000, () => now);
-    const room = { code: "AAAAA", version: 0, seats: {}, game: null };
+    const room = { id: "r1", code: "AAAAA", version: 0, seats: {}, game: null };
     await store.create(room);
     now = 900;
     expect(await store.save({ ...room, version: 1 }, 0)).toBe(true);

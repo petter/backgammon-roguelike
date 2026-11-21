@@ -3,7 +3,7 @@ import { applyCommand, type Command, canPlayCard, legalMoves, newGame } from "..
 import { isRoomCode, type ServerMessage } from "../src/net/protocol.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createRoom, joinRoom, openConnection, RoomError } from "../src/server/room.ts";
-import type { GameStore } from "../src/server/store.ts";
+import type { GameStore, Room } from "../src/server/store.ts";
 
 type State = Extract<ServerMessage, { type: "state" }>;
 
@@ -473,7 +473,7 @@ describe("playing", () => {
       expect(listeners, failure).toBe(0);
       const before = got.length;
       await inner.publish(host.code, {
-        room: { code: host.code, version: 50, seats: {}, game: null },
+        room: { id: "other", code: host.code, version: 50, seats: {}, game: null },
         events: [],
       });
       expect(got.length, failure).toBe(before);
@@ -591,6 +591,187 @@ describe("playing", () => {
     }
     expect((await store.load(old.code))?.version).toBe(before);
     expect(JSON.stringify([stale.inbox, staleGuest.inbox])).not.toContain("Mallory");
+  });
+
+  describe("when a room is replaced or gone", () => {
+    /** A store whose loads can be overridden, and which counts live subscriptions. */
+    function rigged() {
+      const inner = createMemoryStore();
+      const state = { listeners: 0, loads: 0, override: null as null | (() => Room | null) };
+      const store: GameStore = {
+        ...inner,
+        load: async (code) => {
+          state.loads++;
+          return state.override ? state.override() : inner.load(code);
+        },
+        subscribe: async (code, listener) => {
+          state.listeners++;
+          const stop = await inner.subscribe(code, listener);
+          let stopped = false;
+          return () => {
+            if (stopped) throw new Error("unsubscribed twice");
+            stopped = true;
+            state.listeners--;
+            stop();
+          };
+        },
+      };
+      return { inner, store, state };
+    }
+    const other = (code: string, version: number): Room => ({
+      id: "someone-elses",
+      code,
+      version,
+      seats: { white: { token: "theirs", name: "Eve" } },
+      game: null,
+    });
+
+    it("evicts once, then stops polling, when the room is missing", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, state } = rigged();
+        const host = await createRoom(store, "Ada");
+        const white = await client(store, host.code, host.token);
+        state.override = () => null;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(white.inbox.slice(1)).toEqual([
+          { type: "error", message: "That game no longer exists", fatal: true },
+        ]);
+        expect(state.listeners).toBe(0);
+        const loads = state.loads;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(state.loads).toBe(loads);
+        expect(white.inbox).toHaveLength(2);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("evicts when a different room holds the code at the same or an older version", async () => {
+      vi.useFakeTimers();
+      try {
+        for (const version of [0, 1, 5]) {
+          const { store, state } = rigged();
+          const host = await createRoom(store, "Ada");
+          await joinRoom(store, host.code, "Grace");
+          const white = await client(store, host.code, host.token);
+          expect(white.last().version).toBe(1);
+          state.override = () => other(host.code, version);
+          await vi.advanceTimersByTimeAsync(10_000);
+          expect(white.inbox.at(-1), `v${version}`).toMatchObject({ type: "error", fatal: true });
+          expect(white.inbox.filter((m) => m.type === "state")).toHaveLength(1);
+          expect(JSON.stringify(white.inbox)).not.toContain("Eve");
+          expect(state.listeners).toBe(0);
+          expect(vi.getTimerCount()).toBe(0);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("tears down even when the farewell cannot be sent", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, state } = rigged();
+        const host = await createRoom(store, "Ada");
+        let fail = false;
+        let attempts = 0;
+        await openConnection(store, host.code, host.token, () => {
+          attempts++;
+          if (fail) throw new Error("socket write failed");
+        });
+        fail = true;
+        state.override = () => other(host.code, 9);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(attempts).toBe(2);
+        expect(state.listeners).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("rejects, silently and with no timer, when the room is replaced during setup", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, state } = rigged();
+        const host = await createRoom(store, "Ada");
+        const real = await store.load(host.code);
+        let calls = 0;
+        state.override = () => (calls++ === 0 ? real : other(host.code, 3));
+        const got: ServerMessage[] = [];
+        await expect(
+          openConnection(store, host.code, host.token, (m) => got.push(m)),
+        ).rejects.toMatchObject({ kind: "not_found" });
+        expect(got).toEqual([]);
+        expect(state.listeners).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(got).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("evicts when an announcement for a different room arrives on the code", async () => {
+      const { inner, store, state } = rigged();
+      const host = await createRoom(store, "Ada");
+      const white = await client(store, host.code, host.token);
+      await inner.publish(host.code, { room: other(host.code, 4), events: [] });
+      expect(white.inbox.at(-1)).toMatchObject({ type: "error", fatal: true });
+      expect(JSON.stringify(white.inbox)).not.toContain("Eve");
+      expect(state.listeners).toBe(0);
+      white.connection.close();
+      white.connection.close();
+    });
+
+    it("cannot write into the replacement even when it appears between load and save", async () => {
+      const inner = createMemoryStore();
+      const host = await createRoom(inner, "Ada");
+      const guest = await joinRoom(inner, host.code, "Grace");
+      const original = await inner.load(host.code);
+      if (!original?.game) throw new Error("no game");
+      // The replacement is a started game at the very same version, with other players.
+      const replacement: Room = {
+        ...structuredClone(original),
+        id: "someone-elses",
+        seats: { white: { token: "w2", name: "Eve" }, black: { token: "b2", name: "Mallory" } },
+      };
+      let swap = false;
+      const saves: boolean[] = [];
+      // A store in which the room is swapped right after the mover has read it.
+      const backing = createMemoryStore();
+      await backing.create(original);
+      const store: GameStore = {
+        ...backing,
+        save: async (room, expected) => {
+          if (swap) {
+            swap = false;
+            const fresh = createMemoryStore();
+            await fresh.create(replacement);
+            Object.assign(store, { load: fresh.load, save: wrap(fresh.save) });
+            return store.save(room, expected);
+          }
+          return wrap(backing.save)(room, expected);
+        },
+      };
+      const wrap =
+        (save: GameStore["save"]): GameStore["save"] =>
+        async (room, expected) => {
+          const ok = await save(room, expected);
+          saves.push(ok);
+          return ok;
+        };
+      const first = original.game.current;
+      const mover = await client(store, host.code, first === "white" ? host.token : guest.token);
+      swap = true;
+      await mover.send({ type: "pickCard", index: 0 });
+      expect(saves).toEqual([false]);
+      expect(await store.load(host.code)).toEqual(replacement);
+      expect(mover.inbox.at(-1)).toMatchObject({ type: "error", fatal: true });
+      expect(JSON.stringify(mover.inbox)).not.toContain("Mallory");
+    });
   });
 
   it("reports a room that vanished as a fatal error", async () => {

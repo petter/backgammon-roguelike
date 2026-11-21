@@ -1,4 +1,4 @@
-import { type GameStore, notify, type Room, type RoomUpdate } from "./store.ts";
+import { type GameStore, Listeners, type Room } from "./store.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -8,7 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now): GameStore {
   const rooms = new Map<string, { room: Room; expires: number }>();
-  const listeners = new Map<string, Set<(update: RoomUpdate) => void>>();
+  const listeners = new Listeners();
 
   const live = (code: string): Room | null => {
     const entry = rooms.get(code);
@@ -32,22 +32,16 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       return room ? structuredClone(room) : null;
     },
     async save(room, expectedVersion) {
-      if (live(room.code)?.version !== expectedVersion) return false;
+      const current = live(room.code);
+      if (current?.id !== room.id || current.version !== expectedVersion) return false;
       put(room);
       return true;
     },
     async publish(code, update) {
-      notify(listeners.get(code), update);
+      listeners.notify(code, update);
     },
     async subscribe(code, listener) {
-      const set = listeners.get(code) ?? new Set();
-      listeners.set(code, set);
-      set.add(listener);
-      return () => {
-        set.delete(listener);
-        // Only drop the entry if it is still this set: a later subscriber may have its own.
-        if (set.size === 0 && listeners.get(code) === set) listeners.delete(code);
-      };
+      return listeners.add(code, listener);
     },
   };
 }

@@ -131,7 +131,10 @@ describe("serveSocket", () => {
     const black = fakeSocket(store, code);
     await black.say({ type: "hello", token: guest.token });
     await joinRoom(store, code, "Eve").catch(() => {});
-    await store.publish(code, { room: { code, version: 9, seats: {}, game: null }, events: [] });
+    await store.publish(code, {
+      room: { id: "other", code, version: 9, seats: {}, game: null },
+      events: [],
+    });
     expect(ghost.sent).toEqual([]);
   });
 });

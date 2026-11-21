@@ -55,7 +55,7 @@ describe.skipIf(!url)("redis", () => {
   it("expires a room after its time to live", async () => {
     const store = open(1);
     const code = `x${Date.now()}`;
-    await store.create({ code, version: 0, seats: {}, game: null });
+    await store.create({ id: "x", code, version: 0, seats: {}, game: null });
     expect(await store.load(code)).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 1300));
     expect(await store.load(code)).toBeNull();
@@ -74,10 +74,52 @@ describe.skipIf(!url)("redis", () => {
     }
     const healthy: number[] = [];
     await store.subscribe(code, (u) => healthy.push(u.room.version));
-    await store.publish(code, { room: { code, version: 2, seats: {}, game: null }, events: [] });
+    await store.publish(code, {
+      room: { id: "x", code, version: 2, seats: {}, game: null },
+      events: [],
+    });
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(healthy).toEqual([2]);
     expect(ghost).toEqual([]);
+    await admin.quit();
+  });
+
+  it("retries an unsubscribe that Redis refused, the next time subscriptions change", async () => {
+    const admin = new Redis(url ?? "");
+    const store = open();
+    const code = `u${Date.now()}`;
+    const subscribers = async () => {
+      const reply = (await admin.call("PUBSUB", "NUMSUB", `room:${code}`)) as [string, number];
+      return Number(reply[1]);
+    };
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 150));
+    const stop = await store.subscribe(code, () => {});
+    expect(await subscribers()).toBe(1);
+    try {
+      await admin.call("ACL", "SETUSER", "default", "-unsubscribe");
+      stop();
+      await pause();
+      expect(await subscribers()).toBe(1);
+    } finally {
+      await admin.call("ACL", "SETUSER", "default", "+unsubscribe");
+    }
+    // Unrelated activity is enough to trigger the retry.
+    (await store.subscribe(`${code}-other`, () => {}))();
+    await pause();
+    expect(await subscribers()).toBe(0);
+
+    // A channel that gained a listener again in the meantime is left subscribed.
+    const again: number[] = [];
+    const stopAgain = await store.subscribe(code, (u) => again.push(u.room.version));
+    (await store.subscribe(`${code}-third`, () => {}))();
+    await pause();
+    await store.publish(code, {
+      room: { id: "x", code, version: 7, seats: {}, game: null },
+      events: [],
+    });
+    await pause();
+    expect(again).toEqual([7]);
+    stopAgain();
     await admin.quit();
   });
 

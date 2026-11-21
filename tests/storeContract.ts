@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GameStore, Room, RoomUpdate } from "../src/server/store.ts";
 
-function room(code: string, version = 0): Room {
-  return { code, version, seats: { white: { token: "t", name: "Ada" } }, game: null };
+function room(code: string, version = 0, id = "room-1"): Room {
+  return { id, code, version, seats: { white: { token: "t", name: "Ada" } }, game: null };
 }
 
 /** Behaviour every `GameStore` must share. Run it against each implementation. */
@@ -24,6 +24,30 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect(await store.save(room("AAAAA", 1), 0)).toBe(false);
       expect((await store.load("AAAAA"))?.version).toBe(1);
       expect(await store.save(room("BBBBB", 1), 0)).toBe(false);
+    });
+
+    it("refuses to save over a different room that now holds the same code", async () => {
+      const store = makeStore();
+      await store.create(room("AAAAA", 0, "replacement"));
+      // A writer that read an earlier room with this code, at the same version.
+      expect(await store.save(room("AAAAA", 1, "expired"), 0)).toBe(false);
+      expect(await store.load("AAAAA")).toEqual(room("AAAAA", 0, "replacement"));
+      expect(await store.save(room("AAAAA", 1, "replacement"), 0)).toBe(true);
+    });
+
+    it("treats two registrations of the same function as separate", async () => {
+      const store = makeStore();
+      const seen: number[] = [];
+      const listener = (u: RoomUpdate) => seen.push(u.room.version);
+      const keepAlive = await store.subscribe("AAAAA", () => {});
+      const stopFirst = await store.subscribe("AAAAA", listener);
+      stopFirst();
+      const stopSecond = await store.subscribe("AAAAA", listener);
+      stopFirst();
+      await store.publish("AAAAA", { room: room("AAAAA", 1), events: [] });
+      expect(seen).toEqual([1]);
+      stopSecond();
+      keepAlive();
     });
 
     it("hands out copies, never shared references", async () => {
