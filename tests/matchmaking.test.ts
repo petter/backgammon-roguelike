@@ -130,6 +130,19 @@ describe("findMatch", () => {
     expect(seats).toEqual([seat]);
   });
 
+  it("stops saying the server is unreachable once it answers, across leaving and coming back", async () => {
+    const server = fakeServer(["offline", "offline"]);
+    const { trouble, handlers } = recorder();
+    findMatch(player, handlers, server.env);
+    await settled(server);
+    expect(trouble).toEqual([expect.any(String)]);
+    server.page.hide();
+    server.page.show();
+    await settled(server);
+    // The old ticket is settled: the server is back, so the warning goes.
+    expect(trouble).toEqual([expect.any(String), null]);
+  });
+
   it("aborts the open wait on cancel and asks the server to forget the ticket", async () => {
     const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
     const { seats, handlers } = recorder();

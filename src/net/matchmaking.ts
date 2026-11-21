@@ -143,6 +143,14 @@ export function findMatch(
   /** Bumped whenever the loop is to stop; a loop from an earlier run then ends itself. */
   let run = 0;
   let request = new AbortController();
+  /** Whether the player is being told the server cannot be reached. */
+  let troubled = false;
+  /** Tells the player, or stops telling them; only on a change, across every run. */
+  const trouble = (problem: string | null) => {
+    if ((problem !== null) === troubled) return;
+    troubled = problem !== null;
+    handlers.onTrouble(problem);
+  };
 
   const post = (path: string, body?: unknown): Promise<Response> =>
     env.fetch(path, {
@@ -173,7 +181,7 @@ export function findMatch(
         }
         const reply = await read(response);
         if (mine !== run) return;
-        if (failures >= TROUBLE_AFTER) handlers.onTrouble(null);
+        trouble(null);
         failures = 0;
         known = true;
         if (reply.seat) {
@@ -184,7 +192,7 @@ export function findMatch(
       } catch {
         if (mine !== run) return;
         failures++;
-        if (failures === TROUBLE_AFTER) handlers.onTrouble(TROUBLE);
+        if (failures === TROUBLE_AFTER) trouble(TROUBLE);
         await env.delay(Math.min(500 * 2 ** failures, RETRY_MAX_MS));
       }
     }
@@ -212,11 +220,11 @@ export function findMatch(
       if (mine !== run) return;
       if (!outcome.settled) {
         failures++;
-        if (failures === TROUBLE_AFTER) handlers.onTrouble(TROUBLE);
+        if (failures === TROUBLE_AFTER) trouble(TROUBLE);
         await env.delay(Math.min(500 * 2 ** failures, RETRY_MAX_MS));
         continue;
       }
-      if (failures >= TROUBLE_AFTER) handlers.onTrouble(null);
+      trouble(null);
       if (outcome.seat) {
         finish();
         handlers.onSeat(outcome.seat);
