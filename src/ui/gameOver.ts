@@ -1,7 +1,8 @@
 import "@fontsource/cinzel/700.css";
 import "@fontsource/cinzel/900.css";
 import "./gameOver.css";
-import gsap from "gsap";
+import { gsap } from "gsap";
+
 import type { Player } from "../core/board.ts";
 import { CHARACTERS, DEFAULT_CHARACTER } from "../core/characters.ts";
 import type { PlayerView } from "../core/view.ts";
@@ -30,8 +31,8 @@ export interface GameOverModel {
 
 export interface GameOverScreen {
   /** Shows the result, playing the entrance the first time it appears. */
-  render(model: GameOverModel): void;
-  hide(): void;
+  render: (model: GameOverModel) => void;
+  hide: () => void;
 }
 
 export function prefersLessMotion(): boolean {
@@ -42,12 +43,15 @@ export function prefersLessMotion(): boolean {
  * The full-screen result: VICTORY in gold for the winner, DEFEAT in iron for the loser,
  * with the match score and the rematch controls.
  */
-export function createGameOver(actions: { onRematch(): void; onLeave(): void }): GameOverScreen {
+export function createGameOver(actions: {
+  onRematch: () => void;
+  onLeave: () => void;
+}): GameOverScreen {
   const root = el("gameover");
-  const part = <T extends Element = HTMLElement>(selector: string) => {
-    const found = root.querySelector<T & Element>(selector);
-    if (!found) throw new Error(`Missing ${selector}`);
-    return found as T;
+  const part = (selector: string): HTMLElement => {
+    const found = root.querySelector(selector);
+    if (!(found instanceof HTMLElement)) throw new Error(`Missing ${selector}`);
+    return found;
   };
   const backdrop = part(".go-backdrop");
   const bars = [...root.querySelectorAll<HTMLElement>(".go-bars i")];
@@ -64,9 +68,11 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
   const motto = part(".go-motto");
   const score = el("score");
   const actionsBox = part(".go-actions");
-  const rematch = el<HTMLButtonElement>("rematch");
+  const rematch = el("rematch", HTMLButtonElement);
   const rematchStatus = el("rematch-status");
-  const sparks = createSparks(part<HTMLCanvasElement>("canvas.go-sparks"));
+  const canvas = root.querySelector("canvas.go-sparks");
+  if (!(canvas instanceof HTMLCanvasElement)) throw new Error("Missing canvas.go-sparks");
+  const sparks = createSparks(canvas);
   let intro: gsap.core.Timeline | null = null;
 
   rematch.addEventListener("click", () => actions.onRematch());
@@ -117,7 +123,8 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
     const word = outcome === "victory" ? "Victory" : "Defeat";
     title.setAttribute("aria-label", word);
     title.replaceChildren(
-      ...[...word].map((letter, index) => {
+      // The words are plain ASCII, so splitting by code unit is safe.
+      ...word.split("").map((letter, index) => {
         const span = document.createElement("span");
         span.textContent = letter;
         span.setAttribute("aria-hidden", "true");
@@ -323,11 +330,10 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
       const asked = view.rematch[view.you];
       rematch.textContent = model.local ? "Play again" : "Rematch";
       rematch.disabled = asked;
-      rematchStatus.textContent = asked
-        ? `Waiting for ${name(other)}…`
-        : view.rematch[other]
-          ? `${name(other)} wants a rematch`
-          : "";
+      let status = "";
+      if (asked) status = `Waiting for ${name(other)}…`;
+      else if (view.rematch[other]) status = `${name(other)} wants a rematch`;
+      rematchStatus.textContent = status;
     },
     hide() {
       if (root.hidden) return;

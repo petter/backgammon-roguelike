@@ -1,4 +1,5 @@
-import gsap from "gsap";
+import { gsap } from "gsap";
+
 import type { Player } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";

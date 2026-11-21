@@ -20,10 +20,10 @@ interface Particle {
 
 export interface Sparks {
   /** Starts the ambient drift for this outcome; nothing shows until then. */
-  start(outcome: Outcome): void;
+  start: (outcome: Outcome) => void;
   /** One explosion from a point in viewport pixels. */
-  burst(x: number, y: number): void;
-  stop(): void;
+  burst: (x: number, y: number) => void;
+  stop: () => void;
 }
 
 const MAX = 600;
@@ -152,7 +152,8 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
       if (next === "defeat") {
         for (let i = 0; i < 70; i++) {
           ambient();
-          const p = particles[particles.length - 1];
+          const p = particles.at(-1);
+          if (!p) break;
           p.y = Math.random() * window.innerHeight;
           p.age = Math.random() * p.life * 0.5;
         }
