@@ -1,6 +1,9 @@
 import { CARD_IDS, CARDS, type CardId, RARITIES } from "../core/cards.ts";
 import { cardArt } from "./cardArt.ts";
 
+/** Names longer than this many letters are set smaller to fit the name plate. */
+const LONG_NAME = 14;
+
 function part(tag: string, className: string, content = ""): HTMLElement {
   const element = document.createElement(tag);
   element.className = className;
@@ -31,6 +34,8 @@ export function createCard(
   art.append(part("span", "card-foil"));
 
   const plate = part("span", "card-name", name);
+  // A long name is set a size smaller, so it stays on one line inside the plate.
+  if (name.length > LONG_NAME) plate.classList.add("card-name-long");
 
   const type = part("span", "card-type");
   const rarityLabel = part("span", "card-rarity");
