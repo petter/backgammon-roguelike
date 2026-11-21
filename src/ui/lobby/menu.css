@@ -120,10 +120,7 @@
 
 /* Pass and play starts at once, so it shows a play mark where the others show a chevron. */
 .chevron.play {
-  fill: var(--metal);
-  stroke: none;
-  width: 14px;
-  height: 14px;
+  stroke-width: 1.8;
 }
 
 .choice-text {
@@ -170,7 +167,7 @@
 
 /* Wide screens: the form widens so name and emblem sit side by side, keeping it short. */
 @media (min-width: 700px) {
-  #lobby:not([data-view="home"], [data-view="waiting"]) .lobby-shell {
+  #lobby:is([data-view="host"], [data-view="join"], [data-view="invited"]) .lobby-shell {
     width: 600px;
   }
 
@@ -399,25 +396,24 @@
   border-color: var(--error-edge);
   box-shadow:
     inset 0 -3px 0 #c4ae84,
-    0 0 0 2px color-mix(in srgb, var(--error-edge) 70%, transparent);
-  color: #a3301d;
+    0 0 0 1px color-mix(in srgb, var(--error-edge) 60%, transparent);
+  color: #b33a24;
 }
 
-/* After a wrong code, the code is selected: typing replaces all of it. */
-/* A rejected code blushes inside a rose frame, at every size and with or without focus. */
-.code-entry.wrong .code-tiles span.filled {
-  background: linear-gradient(180deg, #fff1ed, #efcfc6);
-}
-
+/* A rejected code keeps its ivory, edged and lettered in coral, at every size. */
 .code-entry.wrong .code-tiles {
   border-radius: 6px;
-  outline: 2px solid color-mix(in srgb, var(--error-edge) 75%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--error-edge) 55%, transparent);
   outline-offset: 4px;
 }
 
-/* Selected, so the next letter typed replaces the whole code: the frame turns solid. */
+/* Selected, so the next letter typed replaces the whole code: the tiles take a highlight. */
+.code-entry.wrong.selected .code-tiles span.filled {
+  background: linear-gradient(180deg, #fbe0d6, #f0c2b2);
+}
+
 .code-entry.wrong.selected .code-tiles {
-  outline-color: var(--error-edge);
+  outline: 2px solid var(--error-edge);
 }
 
 .code-entry.wrong .code-tiles span {
@@ -500,7 +496,8 @@
 
 .ivory-tiles.small span {
   width: 36px;
-  height: 38px;
+  height: 40px;
+  overflow: hidden;
   padding-bottom: 2px;
   border-radius: 4px;
   box-shadow:
@@ -523,6 +520,12 @@
   font: 15px / 1.3 var(--serif);
   text-align: center;
   text-overflow: ellipsis;
+}
+
+.tile-caption {
+  margin: -10px 0 0;
+  color: var(--muted);
+  font: italic 14px / 1.3 var(--serif);
 }
 
 .waiting .send-link {

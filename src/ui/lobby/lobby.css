@@ -58,6 +58,21 @@
   margin: auto;
 }
 
+/*
+ * Every form shares one place on the screen, set as if it were the tallest form, so the
+ * title stays put between them and a plaque that grows, with an error say, grows downward.
+ */
+#lobby:is(
+    [data-view="host"],
+    [data-view="join"],
+    [data-view="invited"],
+    [data-view="expired"],
+    [data-view="full"]
+  )
+  .lobby-shell {
+  margin: max(0px, calc((100dvh - 32px - 700px) / 2)) auto auto;
+}
+
 /* Big screens get a bigger menu, so it does not sit like a phone card in the middle. */
 @media (min-width: 1600px) and (min-height: 1000px) {
   .lobby-shell {

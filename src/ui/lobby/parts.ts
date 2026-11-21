@@ -129,7 +129,7 @@ export function codeEntry(): {
   input: HTMLInputElement;
   value: () => string;
   set: (code: string) => void;
-  /** Marks the code as the thing that went wrong, until it is edited. */
+  /** Marks the code as the thing that went wrong, until it is changed. */
   flag: () => void;
   /** Focuses the code with all of it selected, so typing starts over. */
   selectAll: () => void;
@@ -156,26 +156,39 @@ export function codeEntry(): {
     element.classList.toggle("complete", cleaned.length === CODE_LENGTH);
   };
   const settle = () => element.classList.remove("selected");
-  input.addEventListener("input", () => {
+  /** The code as it was when it was rejected; it stays flagged until it differs. */
+  let rejected: string | null = null;
+  const unflag = () => {
+    rejected = null;
     element.classList.remove("wrong");
     input.removeAttribute("aria-invalid");
+  };
+  input.addEventListener("input", (event) => {
+    // A letter typed onto a rejected code starts a new one, selected or not, instead of
+    // falling off the end of a full row.
+    const typed =
+      event instanceof InputEvent && event.inputType.startsWith("insert") ? event.data : null;
+    if (rejected !== null && typed && cleanCode(input.value) === rejected) input.value = typed;
     settle();
     paint();
+    if (rejected !== null && cleanCode(input.value) !== rejected) unflag();
     // With the code complete, a phone's keyboard steps aside to show the rest of the form.
     if (touch.matches && cleanCode(input.value).length === CODE_LENGTH) input.blur();
   });
   input.addEventListener("blur", settle);
+  // Coming back to a rejected code, by tap or by Tab, selects all of it to be typed over.
+  const reselect = () => {
+    if (rejected === null) return;
+    setTimeout(() => {
+      input.select();
+      element.classList.add("selected");
+    });
+  };
   input.addEventListener("pointerdown", () => {
     settle();
-    // A tap on a code that was wrong selects all of it, so typing starts over without
-    // backspacing through letters on a phone keyboard.
-    if (element.classList.contains("wrong")) {
-      setTimeout(() => {
-        input.select();
-        element.classList.add("selected");
-      });
-    }
+    reselect();
   });
+  input.addEventListener("focus", reselect);
   paint();
   return {
     element,
@@ -183,11 +196,11 @@ export function codeEntry(): {
     value: () => cleanCode(input.value),
     set(code) {
       input.value = code;
-      element.classList.remove("wrong");
-      input.removeAttribute("aria-invalid");
+      unflag();
       paint();
     },
     flag() {
+      rejected = cleanCode(input.value);
       element.classList.add("wrong");
       input.setAttribute("aria-invalid", "true");
     },
@@ -241,6 +254,7 @@ export function waitingRoom(onCancel: () => void): {
       <h2 id="waiting-title" class="lobby-heading">Your table is set</h2>
       <p class="lede">Send your friend the invite link, or read them the code.</p>
       <button type="button" class="share-code ivory-tiles" title="Copy the code"></button>
+      <p class="tile-caption" aria-live="polite"></p>
       <button type="button" class="primary send-link"></button>
       <input class="invite-link" readonly aria-label="Invite link" />
       <p class="waiting-status" role="status"><span class="pulse-dot"></span>Waiting for your friend to join</p>
@@ -251,6 +265,10 @@ export function waitingRoom(onCancel: () => void): {
   let code = "";
   const send = part(element, ".send-link", HTMLButtonElement);
   const linkField = part(element, ".invite-link", HTMLInputElement);
+  const caption = part(element, ".tile-caption");
+  const captionText = `${touch.matches ? "Tap" : "Click"} the letters to copy the code`;
+  caption.textContent = captionText;
+  let captionRestore = 0;
   let restore = 0;
   const copied = (text: string) => {
     send.textContent = text;
@@ -280,12 +298,18 @@ export function waitingRoom(onCancel: () => void): {
   };
   send.addEventListener("click", () => void sendLink());
   // The code itself copies too, for reading out or typing into a message by hand.
-  codeBox.addEventListener("click", () => {
-    navigator.clipboard.writeText(code).then(
-      () => copied("Code copied ✓"),
-      () => {},
-    );
-  });
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      return;
+    }
+    caption.textContent = "Code copied ✓";
+    clearTimeout(captionRestore);
+    captionRestore = window.setTimeout(() => (caption.textContent = captionText), 2000);
+  };
+  codeBox.addEventListener("click", () => void copyCode());
+
   linkField.addEventListener("focus", () => linkField.select());
   linkField.addEventListener("copy", (event) => {
     event.clipboardData?.setData("text/plain", link);

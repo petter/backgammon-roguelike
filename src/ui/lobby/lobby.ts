@@ -47,7 +47,7 @@ export interface LobbyUi {
 type Step = "host" | "join" | "invited" | "expired" | "full";
 type View = "home" | Step;
 
-const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5l7 4.5-7 4.5z"/></svg>`;
+const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l8.5 5.5-8.5 5.5z"/></svg>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
 const ICONS = {
   join: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="16" r="6.5"/><path d="M17.5 16H29M24 16v5M28 16v4"/></svg>`,
@@ -73,13 +73,13 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
     title: "Invite expired",
     lede: "The game behind this link is over. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
-    swap: "Start a new table instead",
+    swap: "Host a game instead",
   },
   full: {
     title: "Table is full",
     lede: "Two players are already seated at this table. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
-    swap: "Start a new table instead",
+    swap: "Host a game instead",
   },
   host: {
     title: "Host a game",
@@ -231,11 +231,17 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     navigate("home", () => part(home, "[data-go]").focus({ focusVisible: false })),
   );
   swap.addEventListener("click", () => navigate(view === "host" ? "join" : "host"));
-  code.input.addEventListener("input", () => go.removeAttribute("aria-disabled"));
+  // Once the rejected code is changed, Join is live again and the old complaint goes.
+  code.input.addEventListener("input", () => {
+    if (go.getAttribute("aria-disabled") !== "true" || code.element.classList.contains("wrong"))
+      return;
+    go.removeAttribute("aria-disabled");
+    say("");
+  });
   step.addEventListener("submit", (event) => {
     event.preventDefault();
     if (go.getAttribute("aria-disabled") === "true") {
-      code.input.focus();
+      code.selectAll();
       return;
     }
     if (view === "expired" || view === "full") {

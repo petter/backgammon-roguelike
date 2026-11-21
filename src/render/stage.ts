@@ -11,10 +11,13 @@ const TABLE_Y = -0.5;
 const VIEW_TARGET = new THREE.Vector3((TRAY_X + TRAY_W / 2 - 7) / 2, 0, 0);
 const VIEW_HALF_W = 8.4;
 const VIEW_HALF_H = 7.2;
-/** How much of the board's width a phone held upright shows while it is a backdrop. */
-const BACKDROP_CROP = 0.5;
-/** The same for a tablet held upright: a little cropped, so the board is not a thin band. */
-const TABLET_CROP = 0.78;
+/**
+ * How much of the board's width a phone held upright shows while it is a backdrop: about as
+ * much as lets the felt fill the screen from top to bottom.
+ */
+const BACKDROP_CROP = 0.38;
+/** The same for a tablet held upright. */
+const TABLET_CROP = 0.6;
 
 /** What it takes to hold something up in front of the camera, at a spot on the screen. */
 export interface Lens {
