@@ -156,7 +156,8 @@ describe("playing", () => {
       if (!mine || mine.phase === "over") break;
       const [move] = legalMoves(mine);
       // Hold a few cards back, so hands are never empty when the wire is inspected.
-      const playable = mine.hand.length > 3 ? mine.hand.findIndex((c) => canPlayCard(mine, c)) : -1;
+      const playable =
+        mine.hand.length > 3 ? mine.hand.findIndex((c) => canPlayCard(mine, c, mine.traps)) : -1;
       if (mine.phase === "pick") await mover.send({ type: "pickCard", index: 0 });
       else if (mine.phase === "roll") await mover.send({ type: "roll" });
       else if (move)
@@ -915,6 +916,33 @@ describe("playing", () => {
       await first.send({ type: "pickCard", index: 0 });
       expect(first.errors()).toEqual([]);
       expect((await store.load(code))?.game?.rematch).toEqual({ white: false, black: false });
+    });
+
+    it("keeps a game saved before curses, wards and traps playable", async () => {
+      const { store, code, first } = await table();
+      const room = (await store.load(code)) as Room;
+      const {
+        hexes: _hexes,
+        wards: _wards,
+        traps: _traps,
+        extraOffer: _extraOffer,
+        bonusDice: _bonusDice,
+        reversing: _reversing,
+        ...old
+      } = room.game as NonNullable<Room["game"]>;
+      await store.save(
+        { ...room, version: room.version + 1, game: old as Room["game"] },
+        room.version,
+      );
+      await store.publish(code, { room: (await store.load(code)) as Room, events: [] });
+      expect(first.last().view).toMatchObject({
+        hexes: { white: [], black: [] },
+        traps: [],
+        reversing: false,
+      });
+      await first.send({ type: "pickCard", index: 0 });
+      await first.send({ type: "roll" });
+      expect(first.errors()).toEqual([]);
     });
   });
 

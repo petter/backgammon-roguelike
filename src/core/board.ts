@@ -137,6 +137,43 @@ export function legalMovesForDie(
   return moves;
 }
 
+/**
+ * Every move that takes one of the player's checkers `die` points backwards, away from home,
+ * as a Backstep hex demands. A checker on the bar has nowhere back to go, and none may leave
+ * the board; it may hit an open blot like any forward move.
+ */
+export function reverseMovesForDie(
+  board: BoardState,
+  player: Player,
+  die: number,
+  opponentShielded = false,
+): Move[] {
+  const step = player === "white" ? 1 : -1;
+  const moves: Move[] = [];
+  board.points.forEach((p, from) => {
+    if (p.owner !== player || p.count === 0) return;
+    const to = from + step * die;
+    if (to < 0 || to >= POINT_COUNT) return;
+    if (isOpen(board, player, to, opponentShielded)) moves.push({ player, from, to, die });
+  });
+  return moves;
+}
+
+/**
+ * The step Quiet Step takes: the player's rearmost checker one point forward, onto an empty
+ * point or one of their own. `null` if it cannot: a checker on the bar, the rearmost already
+ * on the 1-point, or an opposing checker in the way.
+ */
+export function quietStep(board: BoardState, player: Player): { from: number; to: number } | null {
+  if (board.bar[player] > 0) return null;
+  const far = farthestDistance(board, player);
+  if (far <= 1) return null;
+  const from = player === "white" ? far - 1 : POINT_COUNT - far;
+  const to = player === "white" ? from - 1 : from + 1;
+  const target = pointAt(board, to);
+  return target.owner === opponent(player) && target.count > 0 ? null : { from, to };
+}
+
 /** Applies a move without checking legality. Returns a new board and what happened. */
 export function applyMove(
   board: BoardState,

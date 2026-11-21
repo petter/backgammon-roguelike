@@ -77,16 +77,36 @@ function randomCode(entropy: Entropy): string {
   ).join("");
 }
 
+/** State added after games were first saved; a game saved before it has none. */
+type Added =
+  | "wins"
+  | "rematch"
+  | "hexes"
+  | "wards"
+  | "traps"
+  | "extraOffer"
+  | "bonusDice"
+  | "reversing";
+
 /**
- * A game saved before matches kept a score has none; give it one. If that game is already
- * won, the win is the one thing known about the match, so it is counted.
+ * Brings a saved game up to date. One saved before matches kept a score has none; if it
+ * is already won, the win is the one thing known about the match, so it is counted. One
+ * saved before curses, wards and traps has none of them.
  */
-function upToDate(
-  game: Omit<GameState, "wins" | "rematch"> & Partial<Pick<GameState, "wins" | "rematch">>,
-): GameState {
+function upToDate(game: Omit<GameState, Added> & Partial<Pick<GameState, Added>>): GameState {
   const none = { white: 0, black: 0, ...(game.winner ? { [game.winner]: 1 } : {}) };
   const no = { white: false, black: false };
-  return { ...game, wins: game.wins ?? none, rematch: game.rematch ?? no };
+  return {
+    ...game,
+    wins: game.wins ?? none,
+    rematch: game.rematch ?? no,
+    hexes: game.hexes ?? { white: [], black: [] },
+    wards: game.wards ?? { white: [], black: [] },
+    traps: game.traps ?? { white: [], black: [] },
+    extraOffer: game.extraOffer ?? no,
+    bonusDice: game.bonusDice ?? { white: 0, black: 0 },
+    reversing: game.reversing ?? false,
+  };
 }
 
 function seatOf(room: Room, token: string): Player | null {
