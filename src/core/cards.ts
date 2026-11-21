@@ -102,7 +102,7 @@ export const CARDS = {
     name: "Coin Toss",
     kind: "Wild",
     rarity: "common",
-    text: "Heads: roll one extra die. Tails: lose your lowest die.",
+    text: "Heads: roll an extra die. Tails: lose your lowest die, no doubles.",
   },
   backstep: {
     name: "Backstep",
@@ -114,7 +114,7 @@ export const CARDS = {
     name: "Flip the Bones",
     kind: "Dice",
     rarity: "rare",
-    text: "Turn each remaining die to its opposite face: 1 for 6, 2 for 5, 3 for 4.",
+    text: "Turn each die over: 1 for 6, 2 for 5, 3 for 4. Never doubles.",
   },
   mirror: {
     name: "Glass Mirror",

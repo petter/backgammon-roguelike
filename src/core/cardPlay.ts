@@ -1,7 +1,9 @@
 import {
   applyMove,
   type BoardEvent,
+  type BoardState,
   cloneBoard,
+  legalMovesForDie,
   loneEnemiesAtHome,
   opponent,
   type Player,
@@ -91,6 +93,7 @@ export function cardBlock(turn: CardTurn, card: CardId, traps: readonly TrapId[]
       return Math.max(...turn.dice) > 1 ? null : "Chisel cannot split a 1";
     case "quietStep":
       if (turn.board.bar[me] > 0) return "Enter your checkers from the bar first";
+      if (turn.reversing) return "Backstep first: your next checker move must go backwards";
       return quietStep(turn.board, me)
         ? null
         : "Quiet Step has no room: your rearmost checker cannot step forward";
@@ -143,7 +146,6 @@ function liftHexes(next: GameState, player: Player, cards: HexId[], events: Game
     player,
     next.hexes[player].filter((hex) => !cards.includes(hex)),
   );
-  if (cards.includes("backstep") && next.current === player) next.reversing = false;
   events.push({ type: "hexLifted", player, cards });
 }
 
@@ -163,15 +165,26 @@ export function counterpunch(next: GameState, point: number, events: GameEvent[]
   const me = next.current;
   const them = opponent(me);
   if (!next.traps[them].includes("counterpunch") || next.shielded[me]) return;
-  spring(next, them, "counterpunch", events);
   const board = cloneBoard(next.board);
   const target = board.points[point];
   if (!target || target.owner !== me) return;
   target.count -= 1;
   if (target.count === 0) target.owner = null;
   board.bar[me] += 1;
+  // With both players on the bar and both home boards shut, neither could ever move
+  // again. The trap holds rather than end the game in a lock.
+  if (shutOut(board, me) && shutOut(board, them)) return;
+  spring(next, them, "counterpunch", events);
   next.board = board;
   events.push({ type: "hit", player: me, point });
+  // Sending the caster to the bar is hitting them: it breaks the defender's Shackles.
+  if (next.hexes[them].includes("shackles")) liftHexes(next, them, ["shackles"], events);
+}
+
+/** Whether the player has checkers on the bar and no die could bring one in. */
+function shutOut(board: BoardState, player: Player): boolean {
+  if (board.bar[player] === 0) return false;
+  return [1, 2, 3, 4, 5, 6].every((die) => legalMovesForDie(board, player, die).length === 0);
 }
 
 /**
@@ -311,23 +324,32 @@ export function playCard(state: GameState, index: number): Result {
   } else if (card === "horseshoe" || card === "mirror") {
     next.wards = withPlayer(state.wards, player, [...state.wards[player], card]);
   } else if (card === "sageSmoke" || card === "curseEater") {
+    // A Backstep biting now is lifted apart from the hexes still waiting, which may include
+    // another Backstep that rebounded this turn.
     const waiting = state.hexes[player];
-    const all: HexId[] = state.reversing ? ["backstep", ...waiting] : [...waiting];
+    const biting = state.reversing ? 1 : 0;
+    const liftBiting = () => {
+      next.reversing = false;
+      events.push({ type: "hexLifted", player, cards: ["backstep"] });
+    };
     if (card === "curseEater") {
-      liftHexes(next, player, all, events);
+      if (biting) liftBiting();
+      liftHexes(next, player, [...waiting], events);
+      const eaten = biting + waiting.length;
       if (state.phase === "roll") {
-        next.bonusDice = withPlayer(state.bonusDice, player, state.bonusDice[player] + all.length);
+        next.bonusDice = withPlayer(state.bonusDice, player, state.bonusDice[player] + eaten);
       } else {
-        const extra = all.map(() => rollDie(rng));
+        const extra = Array.from({ length: eaten }, () => rollDie(rng));
         dice = { values: [...state.dice, ...extra], pairs: true };
       }
-    } else if (all.length > 0) {
-      // The hex biting now first, then the oldest still waiting.
-      liftHexes(next, player, all.slice(0, 1), events);
+    } else if (biting) {
+      liftBiting();
+    } else if (waiting.length > 0) {
+      liftHexes(next, player, waiting.slice(0, 1), events);
     } else {
       const values = [...state.dice];
       values[lowest()] = rollDie(rng);
-      dice = { values, pairs: false };
+      dice = { values, pairs: true };
     }
   } else if (card === "chisel") {
     const values = [...state.dice];

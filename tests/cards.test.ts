@@ -293,14 +293,28 @@ describe("wards", () => {
       expect(play(state).state.reversing).toBe(false);
     });
 
-    it("rerolls the lowest die when there is nothing to lift, without making doubles", () => {
+    it("rerolls the lowest die when there is nothing to lift; a pair it leaves is doubles", () => {
+      const doubled = new Set<boolean>();
       for (let seed = 0; seed < 60; seed++) {
         const after = play(
           game({ dice: [2, 5], rng: seed, cards: hand("white", "sageSmoke") }),
         ).state;
-        expect(after.dice).toHaveLength(2);
-        expect(after.dice[1]).toBe(5);
+        doubled.add(after.dice.length === 4);
+        if (after.dice.length === 4) expect(after.dice).toEqual([5, 5, 5, 5]);
+        else expect(after.dice[1]).toBe(5);
       }
+      expect(doubled).toEqual(new Set([true, false]));
+    });
+
+    it("lifts a biting Backstep without touching one that rebounded this turn", () => {
+      const state = game({
+        reversing: true,
+        hexes: { white: ["backstep"], black: [] },
+        cards: hand("white", "sageSmoke"),
+      });
+      const after = play(state).state;
+      expect(after.reversing).toBe(false);
+      expect(after.hexes.white).toEqual(["backstep"]);
     });
 
     it("has nothing to do before rolling when no hex is on you", () => {
