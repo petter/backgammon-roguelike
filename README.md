@@ -9,8 +9,11 @@ Backgammon with cards, played against a friend. Three.js + TypeScript + Vite.
 
 - `pnpm dev`: the whole game, server included, with hot reload
 - `pnpm dev --host`: same, reachable from other devices on your network
-- `pnpm gate`: lint, typecheck, tests, build
-- `pnpm format`: apply Biome fixes
+- `pnpm gate`: lint, format check, typecheck, tests, build
+- `pnpm fix`: apply oxlint fixes, then format with oxfmt
+
+A pre-commit hook (installed by `pnpm install`) runs `oxlint --fix` and `oxfmt` on staged
+files. Lint rules live in `.oxlintrc.json`; type-aware rules run via `oxlint-tsgolint`.
 
 ## Playing locally
 
