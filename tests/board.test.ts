@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allHome,
   applyMove,
   type BoardState,
   emptyBoard,
@@ -8,6 +9,7 @@ import {
   legalMovesForDie,
   type Player,
   place,
+  untouched,
 } from "../src/core/board.ts";
 
 function countFor(board: BoardState, player: Player): number {
@@ -104,5 +106,38 @@ describe("applyMove", () => {
     const board = initialBoard();
     applyMove(board, { player: "white", from: 23, to: 22, die: 1 });
     expect(board).toEqual(initialBoard());
+  });
+});
+
+describe("allHome", () => {
+  it("is false at the start, true once every checker in play is home", () => {
+    expect(allHome(initialBoard(), "white")).toBe(false);
+    const board = emptyBoard();
+    place(board, "white", 0, 10);
+    place(board, "white", 5, 3);
+    board.off.white = 2;
+    place(board, "black", 23, 15);
+    expect(allHome(board, "white")).toBe(true);
+    expect(allHome(board, "black")).toBe(true);
+  });
+
+  it("is false with one checker outside home or on the bar", () => {
+    const board = emptyBoard();
+    place(board, "black", 18, 14);
+    place(board, "black", 17, 1);
+    expect(allHome(board, "black")).toBe(false);
+    board.points[17] = { owner: null, count: 0 };
+    board.bar.black = 1;
+    expect(allHome(board, "black")).toBe(false);
+  });
+});
+
+describe("untouched", () => {
+  it("holds for the starting position and not after a move", () => {
+    const start = initialBoard();
+    expect(untouched(start, "white")).toBe(true);
+    const { board } = applyMove(start, { player: "white", from: 12, to: 9, die: 3 });
+    expect(untouched(board, "white")).toBe(false);
+    expect(untouched(board, "black")).toBe(true);
   });
 });

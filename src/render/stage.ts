@@ -31,6 +31,8 @@ export interface Stage {
   setSeat: (player: Player) => void;
   /** What sits on the playfield under a pointer position, if anything. */
   pick: (clientX: number, clientY: number) => PickTarget | null;
+  /** Where a spot on the playfield is on screen, in client pixels; `y` lifts it off the felt. */
+  toScreen: (x: number, z: number, y?: number) => { x: number; y: number };
   lens: Lens;
 }
 
@@ -112,6 +114,8 @@ export function createStage(container: HTMLElement): Stage {
     camera.position.copy(VIEW_TARGET).addScaledVector(viewDir, distance);
     camera.lookAt(VIEW_TARGET);
     camera.updateProjectionMatrix();
+    // Now rather than at the next frame, so `toScreen` is right straight after a change.
+    camera.updateMatrixWorld();
   };
   resize();
   window.addEventListener("resize", resize);
@@ -120,6 +124,7 @@ export function createStage(container: HTMLElement): Stage {
   const raycaster = new THREE.Raycaster();
   const playfield = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hitPoint = new THREE.Vector3();
+  const projected = new THREE.Vector3();
   const forward = new THREE.Vector3();
   const aim = (clientX: number, clientY: number) => {
     const rect = renderer.domElement.getBoundingClientRect();
@@ -143,6 +148,14 @@ export function createStage(container: HTMLElement): Stage {
     pick(clientX, clientY) {
       if (!aim(clientX, clientY).intersectPlane(playfield, hitPoint)) return null;
       return pickAt(hitPoint.x, hitPoint.z);
+    },
+    toScreen(x, z, height = 0) {
+      const at = projected.set(x, height, z).project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      return {
+        x: rect.left + ((at.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - at.y) / 2) * rect.height,
+      };
     },
     lens: {
       bounds: () => renderer.domElement.getBoundingClientRect(),

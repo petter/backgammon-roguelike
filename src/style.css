@@ -973,8 +973,10 @@ kbd {
 
 /* A short word to the player, just above the hand: why a card cannot be played, and the like. */
 #notice {
-  /* Fixed and above the overlays, so it is never dimmed by the pick screen. */
+  /* Fixed and above the overlays, so it is never dimmed by the pick screen or the coach. */
   position: fixed;
+  /* Seen, not touched: a tap goes through to whatever is under it. */
+  pointer-events: none;
   right: 18px;
   bottom: 236px;
   z-index: 20;

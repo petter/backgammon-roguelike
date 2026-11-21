@@ -1,0 +1,369 @@
+/*
+ * The coach: a card that says what to aim for, with the screen dimmed round the part of
+ * the board it is about. It takes no clicks; the board stays playable underneath.
+ */
+#coach {
+  --gold-light: #fff1c2;
+  --gold: #f2c25a;
+  --gold-dark: #8a5a14;
+
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+}
+
+#coach[hidden] {
+  display: none;
+}
+
+.coach-dim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+#coach.on .coach-dim {
+  opacity: 1;
+}
+
+.coach-shade {
+  fill: #0705038c;
+}
+
+/* What is shaded back inside a lit area, such as the opponent's checkers there: darker
+   than the rest, as it is drawn over the full light of home. */
+.coach-shade-over {
+  fill: #070503d4;
+}
+
+#coach-card {
+  position: absolute;
+  width: min(380px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 18px 22px 20px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  border-radius: 10px;
+  /* Opaque, so nothing it lies over shows through. */
+  background: var(--grain), radial-gradient(ellipse at 20% 0%, #4a2f16, #1f140b 70%);
+  box-shadow:
+    0 18px 40px #000c,
+    0 0 0 4px #1a1009cc,
+    0 0 0 5px color-mix(in srgb, var(--gold) 35%, transparent),
+    0 0 36px color-mix(in srgb, var(--gold) 22%, transparent);
+  color: #f3e7cf;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity 0.35s ease,
+    transform 0.45s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+#coach.on #coach-card {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.15s;
+}
+
+#coach-kicker {
+  margin: 0 0 4px;
+  color: var(--gold);
+  font:
+    700 12px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+#coach-title {
+  margin: 0 0 10px;
+  font:
+    700 clamp(21px, 2.3vw, 26px) / 1.15 Cinzel,
+    "Iowan Old Style",
+    Georgia,
+    serif;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
+  background: linear-gradient(180deg, var(--gold-light) 10%, var(--gold) 55%, #c98a2a 90%);
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #1a0e05);
+}
+
+#coach-body {
+  margin: 0;
+  font:
+    15px / 1.45 "Iowan Old Style",
+    "Palatino Linotype",
+    Palatino,
+    Georgia,
+    serif;
+  color: #e9dcc0;
+}
+
+/* The way on from a card that waits: a gold pill, the one thing on the card to press. */
+#coach-begin {
+  display: block;
+  margin: 12px 0 2px;
+  padding: 7px 20px 6px;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f6d47a, #c98f2c);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--gold) 45%, transparent);
+  color: #2a1606;
+  font:
+    700 14px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#coach-begin[hidden] {
+  display: none;
+}
+
+#coach-begin:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: 3px;
+}
+
+/* A die face in the text, at the size of a die rather than of a letter. */
+.coach-die {
+  display: inline-block;
+  margin: 0 0.08em;
+  color: var(--gold-light);
+  font:
+    1.7em / 0 system-ui,
+    sans-serif;
+  vertical-align: -0.12em;
+}
+
+#coach-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+/*
+ * How long the card stays: a fine gold line that runs down, on a faint track of its own
+ * just inside the card's bottom edge, so it reads as time and not as a broken border.
+ */
+#coach-card::after {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  content: "";
+}
+
+#coach.waits #coach-card::after {
+  display: none;
+}
+
+#coach-timer {
+  position: absolute;
+  z-index: 1;
+  left: 14px;
+  right: 14px;
+  bottom: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light));
+  transform-origin: left;
+}
+
+#coach.on #coach-timer {
+  animation: coach-timer linear forwards;
+}
+
+/* Once spent, the countdown stays empty while the card fades. */
+#coach:not(.on) #coach-timer {
+  visibility: hidden;
+}
+
+/* A card that waits for the player has no time running out. */
+#coach.waits #coach-timer {
+  display: none;
+}
+
+/* What the card talks about, kept in the light, also beats gently: the dice, say. */
+.coach-kept {
+  animation: coach-kept 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes coach-kept {
+  to {
+    filter: drop-shadow(0 0 6px var(--coach-gold, #f2c25a)) brightness(1.25);
+  }
+}
+
+@keyframes coach-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* A word on the lit area itself, so the eye finds it even before reading the card. */
+#coach-tag {
+  position: absolute;
+  padding: 5px 14px 4px;
+  border-radius: 6px;
+  background: #24170c;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent),
+    0 0 22px color-mix(in srgb, var(--gold) 55%, transparent),
+    0 4px 12px #000a;
+  color: var(--gold-light);
+  font:
+    700 14px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  translate: -50% -50%;
+  transform: scale(0.6);
+  transition:
+    opacity 0.3s ease,
+    transform 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+/* A tag set off to one side of what it names points at it. */
+#coach-tag:not([data-caret=""])::before {
+  position: absolute;
+  border: 7px solid transparent;
+  content: "";
+}
+
+/* Gold, like the tag's edge, so it reads against the dark it points across. */
+#coach-tag[data-caret="left"]::before {
+  top: 50%;
+  right: 100%;
+  margin-top: -7px;
+  border-right-color: var(--gold);
+}
+
+#coach-tag[data-caret="right"]::before {
+  top: 50%;
+  left: 100%;
+  margin-top: -7px;
+  border-left-color: var(--gold);
+}
+
+#coach-tag[data-caret="up"]::before {
+  bottom: 100%;
+  left: var(--caret-x, 50%);
+  margin-left: -7px;
+  border-bottom-color: var(--gold);
+}
+
+#coach-tag[data-caret="down"]::before {
+  top: 100%;
+  left: var(--caret-x, 50%);
+  margin-left: -7px;
+  border-top-color: var(--gold);
+}
+
+#coach.on #coach-tag {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.05s;
+}
+
+/* A disc of the player's colour before the kicker: these are your checkers. */
+.coach-swatch {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  margin: 0 0.5em -0.12em 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--gold) 70%, transparent),
+    inset 0 -2px 3px #0006;
+}
+
+.coach-swatch.white {
+  background: radial-gradient(circle at 35% 30%, #fffaf0, #d9ccb0);
+}
+
+/* Glossy, with a lit rim, so it reads as a black checker and not a hole in the card. */
+.coach-swatch.black {
+  background: radial-gradient(circle at 34% 28%, #9a9a9a 0 8%, #3c3c3c 22%, #0a0a0a 70%);
+  box-shadow:
+    0 0 0 1.5px var(--gold),
+    0 0 6px color-mix(in srgb, var(--gold) 60%, transparent),
+    inset 0 -2px 3px #000a;
+}
+
+/* The hand waits in the dark with the rest, so it does not outshine what the card names. */
+#hand {
+  transition: filter 0.4s;
+}
+
+body:has(#coach.on) #hand {
+  filter: brightness(0.45) saturate(0.6);
+}
+
+/* A part of the HUD the card lies over: out of the way before the card arrives. */
+#hud .row > .coach-covered {
+  opacity: 0;
+  transition-duration: 0.12s;
+}
+
+#coach.still *,
+#coach.still .coach-dim {
+  transition: none !important;
+}
+
+#coach.still #coach-timer,
+body:has(#coach.still) .coach-kept {
+  animation: none;
+}
+
+/* A phone: a tighter card, and tags in scale with the smaller board. */
+@media (max-width: 640px) {
+  /* The player pills step aside for any card: the status line above it says whose turn. */
+  body:has(#coach.on) #players {
+    opacity: 0;
+  }
+
+  #coach-card {
+    padding: 14px 16px 12px;
+  }
+
+  #coach-kicker {
+    font-size: 11px;
+  }
+
+  #coach-title {
+    margin-bottom: 6px;
+    font-size: 19px;
+  }
+
+  #coach-body {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  #coach-hint {
+    margin-top: 8px;
+  }
+
+  #coach-tag {
+    padding: 3px 8px 2px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+}

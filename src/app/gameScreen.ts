@@ -12,8 +12,10 @@ import { type DieSlot, DiceView } from "../render/dice.ts";
 import { shake, tossAll } from "../render/effects.ts";
 import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
+import type { Coach } from "../ui/coach.ts";
 import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
+import { createCoaching } from "./coaching.ts";
 
 const byValue = (x: number, y: number) => x - y;
 
@@ -29,6 +31,7 @@ export interface GameScreenDeps {
   stage: Stage;
   board: BoardView;
   hud: Hud;
+  coach: Coach;
 }
 
 export interface GameScreenOptions {
@@ -63,6 +66,7 @@ function slotsFor(faces: DOMRect[], count: number): DieSlot[] {
 }
 
 const sideOf = (player: Player) => (player === "white" ? 1 : -1);
+
 /** Doubles are four moves but two dice on the table. */
 const physical = (values: number[]) =>
   values.length === 4 && values.every((value) => value === values[0]) ? values.slice(0, 2) : values;
@@ -72,7 +76,7 @@ const physical = (values: number[]) =>
  * input into commands. Returns a function that tears it all down.
  */
 export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () => void {
-  const { stageEl, stage, board, hud } = deps;
+  const { stageEl, stage, board, hud, coach } = deps;
   const listeners = new AbortController();
   let view: PlayerView | null = null;
   let lobby: LobbyView | null = null;
@@ -82,6 +86,17 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   /** The latest update carried the winning move itself, so the result screen makes an entrance. */
   let justWon = false;
   let offline = false;
+  const coaching = createCoaching(
+    { stage, board, coach },
+    options.local,
+    (shown) => {
+      // The card pick waits for the coach, so it must come up now. Otherwise the HUD is left
+      // alone: this runs on the very press that dismissed the card, and a redraw would
+      // replace the hand card that press is about to click.
+      if (shown.phase === "pick") refresh();
+    },
+    () => rolling,
+  );
 
   const dice = new DiceView(stage.lens, (count) => slotsFor(hud.diceFaces(), count));
   stage.world.add(dice.group);
@@ -99,6 +114,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     rolling = true;
     dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
       rolling = false;
+      coaching.landed();
       refresh();
     });
   };
@@ -139,9 +155,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     const reachable = [
       ...new Set(targets.flatMap((m) => (typeof m.to === "number" ? [m.to] : []))),
     ];
+    // Until a checker is picked, show which ones can move at all, and which can leave.
+    const movable = selected === null ? [...new Set(moves.map((m) => m.from))] : [];
+    const sources = movable.map((from) => ({ from, at: top(from) }));
     board.setHints({
-      // Until a checker is picked, show which ones can move at all.
-      sources: selected === null ? [...new Set(moves.map((m) => m.from))].map(top) : [],
+      sources: sources.map((source) => source.at),
+      leaving: sources
+        .filter(({ from }) => moves.some((m) => m.from === from && m.to === "off"))
+        .map((source) => source.at),
       targets: reachable.map(landing),
       off: targets.some((m) => m.to === "off"),
     });
@@ -157,6 +178,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       local: options.local,
       message,
       justWon,
+      coaching: coaching.active(),
     });
   };
 
@@ -216,6 +238,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       return;
     }
     const starting = !view;
+    // A game that was over and now is not has been replaced by a rematch, even when the
+    // update is a snapshot without the rematch's events, as after a reconnect.
+    const rematched =
+      (view?.phase === "over" && update.view.phase !== "over") ||
+      update.events.some((event) => event.type === "gameStarted");
     if (starting) {
       options.onStarted();
       if (!options.local) stage.setSeat(update.view.you);
@@ -241,6 +268,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
     if (!checkers.matches(update.view.board)) checkers.reset(update.view.board);
+    coaching.update(view, update.view, starting || rematched);
     view = update.view;
     selected = null;
     refresh();
@@ -305,6 +333,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         }
       }
       selected = target?.kind === "point" ? target.index : null;
+      // Picking a checker that can move, not just any point, is acting on the lesson.
+      if (selected !== null && moves.some((m) => m.from === selected)) coaching.picked();
       // A move a die allows but the rules do not: say why, or it just looks broken.
       const from = selected ?? (view.board.bar[view.current] > 0 ? "bar" : null);
       if (
@@ -345,6 +375,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
+    coaching.stop();
     finale?.kill();
     session.close();
     listeners.abort();
