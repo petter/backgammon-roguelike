@@ -1,0 +1,529 @@
+/*
+ * The result screen. It takes the whole window: black bars close in like a film, a crest
+ * strikes down in the middle and the word lands under it. Gold for the winner, iron and
+ * ash for the loser. The animation itself lives in gameOver.ts; this is the resting look.
+ */
+#gameover {
+  --metal-light: #fff4c4;
+  --metal: #f2bf4f;
+  --metal-dark: #8a5512;
+  --glow: #ffb347;
+  --ribbon: #2a1a0c;
+
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #f6ecd6;
+  text-align: center;
+}
+
+#gameover:focus {
+  outline: none;
+}
+
+#gameover.defeat {
+  color: #d9dee6;
+  --metal-light: #e8eef5;
+  --metal: #9aa6b4;
+  --metal-dark: #3a414c;
+  --glow: #b3202066;
+  --ribbon: #1c1214;
+}
+
+#gameover[hidden] {
+  display: none;
+}
+
+#gameover > * {
+  grid-area: 1 / 1;
+}
+
+.go-backdrop,
+.go-sparks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.go-backdrop {
+  background: radial-gradient(ellipse at 50% 40%, #120a04b8 0%, #0a0604e6 55%, #000 100%);
+  backdrop-filter: blur(10px) saturate(0.5) brightness(0.3);
+}
+
+.defeat .go-backdrop {
+  background:
+    radial-gradient(ellipse at 50% 40%, #0a0606b0 0%, #0a0606e6 60%, #000 100%),
+    radial-gradient(ellipse at 50% 110%, #6a0f0f99, #0000 60%);
+  backdrop-filter: blur(10px) grayscale(1) brightness(0.3);
+}
+
+/* The HUD fades away behind the result; a notice, such as a refused rematch, still shows. */
+#hud .row > * {
+  transition: opacity 0.6s;
+}
+
+#hud.covered .row > :not(#notice) {
+  opacity: 0;
+}
+
+/* Above the rays and the particles, so the letterbox stays clean. */
+.go-bars {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Film bars, with a fine line of metal along their inner edge. */
+.go-bars i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9vh;
+  background: #000;
+}
+
+.go-bars i:first-child {
+  top: 0;
+  transform-origin: top;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--metal) 45%, transparent);
+}
+
+.go-bars i:last-child {
+  bottom: 0;
+  transform-origin: bottom;
+  box-shadow: 0 -1px 0 color-mix(in srgb, var(--metal) 45%, transparent);
+}
+
+/* The streak of light that splits the screen just before the crest strikes, through its middle. */
+.go-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200vw;
+  height: 2px;
+  margin: -1px 0 0 -100vw;
+  background: linear-gradient(90deg, #0000, #fff6d6 30%, #fff 50%, #fff6d6 70%, #0000);
+  box-shadow: 0 0 24px 4px #ffd56a99;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The flash of the strike, centred on the crest. */
+.go-flash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 240vmax;
+  height: 240vmax;
+  margin: -120vmax 0 0 -120vmax;
+  background: radial-gradient(circle closest-side, #fff8e0, #ffcf6066 25%, #0000 60%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The loser's flash is a red glow behind the crest, not light over it. */
+.defeat .go-flash {
+  z-index: -1;
+  background: radial-gradient(circle closest-side, #b31a1a, #5a0d0d88 30%, #0000 60%);
+  mix-blend-mode: normal;
+}
+
+.go-stack {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.3vh, 14px);
+  max-width: 100%;
+  padding: 10vh 16px;
+}
+
+.go-crest {
+  position: relative;
+  isolation: isolate;
+  width: clamp(120px, min(35vmin, 29vh), 320px);
+  aspect-ratio: 1;
+}
+
+.go-art,
+.go-art svg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.go-art {
+  filter: drop-shadow(0 10px 24px #000c)
+    drop-shadow(0 0 28px color-mix(in srgb, var(--glow) 55%, transparent));
+}
+
+.defeat .go-portrait {
+  filter: grayscale(0.85) brightness(0.7);
+}
+
+.go-crack {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+/* God rays turning slowly behind the crest: fine soft beams over a few broad ones. */
+.go-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 110vmax;
+  height: 110vmax;
+  margin: -55vmax 0 0 -55vmax;
+  background:
+    repeating-conic-gradient(#0000 0deg, #ffd56a36 2.5deg, #0000 5deg 18deg),
+    repeating-conic-gradient(from 4deg, #0000 0deg, #ffd56a1a 5deg, #0000 10deg 40deg);
+  mask: radial-gradient(circle closest-side, #000, #0008 37%, #0000);
+  animation: go-spin 70s linear infinite;
+  pointer-events: none;
+}
+
+/* The loser gets no light, only a dim red glow that breathes behind the broken crest. */
+.defeat .go-rays {
+  width: 70vmax;
+  height: 70vmax;
+  margin: -35vmax 0 0 -35vmax;
+  background: radial-gradient(circle closest-side, #8a141470, #4a0a0a40 45%, #0000);
+  mask: none;
+  animation: none;
+}
+
+.go-live.defeat .go-rays {
+  animation: go-breathe 6s ease-in-out infinite;
+}
+
+.go-ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--metal-light);
+  border-radius: 50%;
+  box-shadow:
+    0 0 30px var(--metal),
+    inset 0 0 30px var(--metal);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#result {
+  margin: 0;
+  padding-left: 0.1em;
+  font:
+    900 clamp(48px, min(13vw, 16vh), 168px) / 0.95 Cinzel,
+    "Iowan Old Style",
+    Georgia,
+    serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /*
+   * The edge and glow sit on the word, not on its letters: the letters' own filter is
+   * animated during the entrance.
+   */
+  filter: drop-shadow(0 3px 0 #2a1606)
+    drop-shadow(0 0 22px color-mix(in srgb, var(--glow) 60%, transparent));
+}
+
+.defeat #result {
+  filter: drop-shadow(0 3px 0 #0b0b0d) drop-shadow(0 0 26px var(--glow));
+}
+
+#result span {
+  display: inline-block;
+  color: transparent;
+  background:
+    linear-gradient(100deg, #0000 40%, #fffbe8 50%, #0000 60%) 200% 0 / 250% 100% no-repeat,
+    linear-gradient(
+      180deg,
+      var(--metal-light) 10%,
+      var(--metal) 48%,
+      var(--metal-dark) 52%,
+      var(--metal) 85%,
+      var(--metal-light)
+    );
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+/* Once everything has landed, a glint runs along the word every few seconds. */
+.go-live.victory #result span {
+  animation: go-sheen 4.5s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 70ms + 0.4s);
+}
+
+.go-live.victory .go-art {
+  animation: go-float 4s ease-in-out infinite;
+}
+
+.go-ribbon {
+  padding: 0.55em clamp(32px, 8vw, 96px);
+  background: linear-gradient(90deg, #0000, var(--ribbon) 18%, var(--ribbon) 82%, #0000);
+  border-block: 1px solid;
+  border-image: linear-gradient(90deg, #0000, var(--metal), #0000) 1;
+}
+
+.go-ribbon p {
+  margin: 0;
+}
+
+.go-headline {
+  font:
+    700 clamp(14px, 2.1vw, 20px) Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--metal-light);
+}
+
+.go-motto {
+  margin-top: 2px;
+  font:
+    italic clamp(13px, 1.6vw, 15px) "Iowan Old Style",
+    "Palatino Linotype",
+    Palatino,
+    Georgia,
+    serif;
+  opacity: 0.7;
+}
+
+#score {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 2vw, 22px);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.go-tally {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.go-tally.black {
+  flex-direction: row-reverse;
+}
+
+.go-name {
+  max-width: 28vw;
+  overflow: hidden;
+  font:
+    700 clamp(13px, 1.6vw, 16px) Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.go-tally b {
+  display: inline-block;
+  min-width: 1ch;
+  font:
+    900 clamp(34px, 5vw, 48px) / 1 Cinzel,
+    Georgia,
+    serif;
+  color: var(--metal-light);
+}
+
+.go-dash {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.go-pop {
+  animation: go-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.go-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+#rematch {
+  padding: 13px 48px;
+  border: 1px solid var(--metal);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #5c3b1b, #24150a);
+  box-shadow:
+    inset 0 0 0 3px #140c05,
+    inset 0 0 0 4px color-mix(in srgb, var(--metal) 40%, transparent),
+    0 0 26px color-mix(in srgb, var(--glow) 35%, transparent);
+  color: var(--metal-light);
+  font:
+    700 16px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+
+.defeat #rematch {
+  background: linear-gradient(180deg, #4a1717, #1a0a0a);
+}
+
+@media (hover: hover) {
+  #rematch:hover:not(:disabled) {
+    background: linear-gradient(180deg, #74502a, #2e1b0c);
+    box-shadow:
+      inset 0 0 0 3px #140c05,
+      inset 0 0 0 4px var(--metal),
+      0 0 40px color-mix(in srgb, var(--glow) 60%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .defeat #rematch:hover:not(:disabled) {
+    background: linear-gradient(180deg, #642020, #240d0d);
+  }
+}
+
+#rematch:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--metal) 70%, transparent);
+  outline-offset: 4px;
+}
+
+/* The score says at a glance who won: the loser's tally is dimmed. */
+.go-tally.lost b {
+  opacity: 0.55;
+}
+
+#rematch-status {
+  margin: 0;
+}
+
+#rematch-status:empty {
+  display: none;
+}
+
+#leave {
+  padding: 6px 12px;
+  font:
+    700 12px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.2em;
+  text-decoration: none;
+  text-transform: uppercase;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+
+#leave:hover,
+#leave:focus-visible {
+  background: none;
+  opacity: 1;
+}
+
+@keyframes go-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes go-sheen {
+  0%,
+  55% {
+    background-position:
+      200% 0,
+      0 0;
+  }
+  100% {
+    background-position:
+      -100% 0,
+      0 0;
+  }
+}
+
+@keyframes go-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes go-float {
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+@keyframes go-pop {
+  from {
+    scale: 1.9;
+    color: #fff;
+    text-shadow: 0 0 24px var(--metal);
+  }
+}
+
+@media (max-width: 640px) {
+  .go-bars i {
+    height: 6vh;
+  }
+
+  .go-stack {
+    padding-block: 7vh;
+  }
+
+  .go-crest {
+    width: clamp(120px, min(44vw, 29vh), 220px);
+  }
+}
+
+/* Phones held sideways: everything has to fit in a short window. */
+@media (max-height: 520px) {
+  .go-bars i {
+    height: 4vh;
+  }
+
+  .go-stack {
+    gap: 4px;
+    padding-block: 4vh;
+  }
+
+  .go-motto {
+    display: none;
+  }
+
+  .go-crest {
+    width: clamp(64px, 24vh, 150px);
+  }
+
+  /* Room for the sagging last letter of DEFEAT above the ribbon. */
+  .defeat .go-ribbon {
+    margin-top: 6px;
+  }
+
+  #rematch {
+    padding: 8px 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .go-rays,
+  .go-live.defeat .go-rays,
+  .go-live.victory .go-art,
+  .go-live.victory #result span,
+  .go-pop {
+    animation: none;
+  }
+}

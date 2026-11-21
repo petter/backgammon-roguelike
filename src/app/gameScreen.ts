@@ -1,3 +1,5 @@
+import { gsap } from "gsap";
+
 import type { Player } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
@@ -10,6 +12,7 @@ import { DiceView } from "../render/dice.ts";
 import { shake, tossAll } from "../render/effects.ts";
 import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
+import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
 
 const byValue = (x: number, y: number) => x - y;
@@ -58,6 +61,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let checkers: CheckersView | null = null;
   let selected: number | "bar" | null = null;
   let message = "";
+  /** The latest update carried the winning move itself, so the result screen makes an entrance. */
+  let justWon = false;
   let offline = false;
 
   const dice = new DiceView();
@@ -68,6 +73,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
    * however the animation was delayed.
    */
   let rolling = false;
+  /** The board's shake when the game is won, waiting for the result screen to land. */
+  let finale: gsap.core.Tween | null = null;
 
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
@@ -131,6 +138,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       rolling,
       local: options.local,
       message,
+      justWon,
     });
   };
 
@@ -163,8 +171,18 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         settleDice(null, event.player);
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
+      } else if (event.type === "gameWon") {
+        // The board takes the blow when the result screen's crest strikes down.
+        finale?.kill();
+        if (!prefersLessMotion()) {
+          finale = gsap.delayedCall(IMPACT_AT, () => {
+            shake(stage.world, 1.8);
+            tossAll(pieces.all(), 1.8);
+          });
+        }
       } else if (event.type === "gameStarted") {
         // A rematch: everything goes back to the starting position.
+        finale?.kill();
         pieces.reset(next.board);
         settleDice(null, event.first);
         text = `New game: ${name(event.first)} starts`;
@@ -185,6 +203,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (!options.local) stage.setSeat(update.view.you);
     }
     message = "";
+    justWon = update.events.some((event) => event.type === "gameWon");
     if (checkers) {
       message = play(update.events, checkers, update.view);
     } else {
@@ -308,6 +327,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
+    finale?.kill();
     session.close();
     listeners.abort();
     hud.actions = null;

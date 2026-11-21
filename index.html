@@ -27,12 +27,37 @@
       </div>
     </div>
 
-    <div id="gameover" hidden>
-      <h2 id="result">Game over</h2>
-      <p id="score"></p>
-      <button id="rematch" type="button">Rematch</button>
-      <p id="rematch-status" class="quiet" role="status" aria-live="polite"></p>
-      <button id="leave" type="button" class="quiet">Leave game</button>
+    <div
+      id="gameover"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="result"
+      tabindex="-1"
+      hidden
+    >
+      <div class="go-backdrop"></div>
+      <canvas class="go-sparks"></canvas>
+      <div class="go-stack">
+        <div class="go-crest">
+          <div class="go-rays"></div>
+          <div class="go-line"></div>
+          <div class="go-ring"></div>
+          <div class="go-art"></div>
+          <div class="go-flash"></div>
+        </div>
+        <h2 id="result">Game over</h2>
+        <div class="go-ribbon">
+          <p class="go-headline"></p>
+          <p class="go-motto"></p>
+        </div>
+        <p id="score"></p>
+        <div class="go-actions">
+          <button id="rematch" type="button">Rematch</button>
+          <button id="leave" type="button" class="quiet">Leave game</button>
+          <p id="rematch-status" class="quiet" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="go-bars"><i></i><i></i></div>
     </div>
 
     <div id="offline" role="alert" hidden>
