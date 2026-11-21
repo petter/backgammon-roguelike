@@ -60,6 +60,21 @@ function cardButton(card: CardId, onClick: () => void): HTMLButtonElement {
   return button;
 }
 
+/**
+ * A hand card grows to full size when pointed at. This works out how far it must slide
+ * sideways so that the full-size card stays inside the window, and hands that to the CSS.
+ */
+function keepOnScreen(card: HTMLElement): void {
+  const margin = 8;
+  const half = card.offsetWidth / 2;
+  // Layout position, which the scaling does not move: the card grows about this centre.
+  const origin = card.offsetParent?.getBoundingClientRect().left ?? 0;
+  const centre = origin + card.offsetLeft + half;
+  const least = margin + half - centre;
+  const most = window.innerWidth - margin - half - centre;
+  card.style.setProperty("--shift", `${Math.max(least, Math.min(0, most))}px`);
+}
+
 interface ChipModel {
   player: Player;
   name: string;
@@ -162,6 +177,8 @@ export function createHud(): Hud {
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
           const button = cardButton(card, () => hud.actions?.onPlay(index));
+          button.addEventListener("pointerenter", () => keepOnScreen(button));
+          button.addEventListener("focus", () => keepOnScreen(button));
           button.disabled = !(myTurn && !model.rolling && canPlayCard(view, card));
           return button;
         }),
