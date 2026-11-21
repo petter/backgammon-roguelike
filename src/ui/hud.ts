@@ -35,6 +35,8 @@ export interface HudModel {
   message: string;
   /** The game was won in the latest update, as it happened rather than from a snapshot. */
   justWon: boolean;
+  /** The coach has the screen: the card pick waits until it is done. */
+  coaching: boolean;
 }
 
 export interface Hud {
@@ -158,7 +160,9 @@ export function createHud(): Hud {
       const name = (player: Player) => lobby.players[player]?.name ?? player;
       const other: Player = view.you === "white" ? "black" : "white";
 
-      turn.textContent = turnText(model, name);
+      // While the coach holds back the card pick, it does not also ask for one.
+      const pickHeld = model.coaching && myTurn && view.phase === "pick";
+      turn.textContent = pickHeld ? "" : turnText(model, name);
       // U+2680 is die face 1; the six faces are consecutive.
       const faces = view.dice.map((d) => String.fromCodePoint(0x267f + d));
       const diceNow = `${model.rolling ? "rolling" : "shown"}:${faces.join("")}`;
@@ -265,7 +269,7 @@ export function createHud(): Hud {
       if (view.phase === "over") gameOver.render(model);
       else gameOver.hide();
 
-      const picking = myTurn && view.phase === "pick" && view.offer.length > 0;
+      const picking = myTurn && view.phase === "pick" && view.offer.length > 0 && !model.coaching;
       offer.hidden = !picking;
       offerCards.replaceChildren(
         ...(picking

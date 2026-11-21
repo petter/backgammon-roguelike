@@ -23,7 +23,21 @@
           <button id="end" type="button">End turn <kbd>E</kbd></button>
         </div>
         <div id="hand"></div>
-        <div id="notice" role="status" aria-live="polite" hidden></div>
+      </div>
+    </div>
+
+    <!-- Outside the HUD, whose layer sits under the coach: a notice is always seen. -->
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+
+    <div id="coach" hidden>
+      <div id="coach-tag" aria-hidden="true"></div>
+      <div id="coach-card" role="status" aria-live="polite">
+        <p id="coach-kicker"></p>
+        <h2 id="coach-title"></h2>
+        <p id="coach-body"></p>
+        <button id="coach-begin" type="button" hidden>Begin</button>
+        <p id="coach-hint">Click or press any key to dismiss</p>
+        <span id="coach-timer"></span>
       </div>
     </div>
 

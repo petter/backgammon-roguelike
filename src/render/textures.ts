@@ -298,3 +298,136 @@ export function stoneTexture(
   speckle(context, size, size, 6, seed + 1);
   return toTexture(c);
 }
+
+/**
+ * An opening in a frame, in world units: along its top edge between two distances from
+ * the left end, and down one side edge from the top by `down`. A way in.
+ */
+export interface FrameGap {
+  from: number;
+  to: number;
+  side: "left" | "right";
+  down: number;
+}
+
+/**
+ * A frame of light round a `w` by `d` area: a bright soft-edged line along its border and
+ * a faint wash inside, with `spread` world units of glow beyond the border on every side.
+ * White, to be tinted by the material. `gap` leaves part of the border open.
+ */
+export function frameGlowTexture(
+  w: number,
+  d: number,
+  spread: number,
+  gap?: FrameGap,
+): THREE.CanvasTexture {
+  const px = 64;
+  const [c, context] = canvas(Math.round((w + spread * 2) * px), Math.round((d + spread * 2) * px));
+  const x = spread * px;
+  const y = spread * px;
+  const radius = 0.22 * px;
+  const outline = () => {
+    context.beginPath();
+    context.roundRect(x, y, w * px, d * px, radius);
+  };
+  // The wash: strongest along the border, dying away towards the middle.
+  const wash = context.createRadialGradient(
+    c.width / 2,
+    c.height / 2,
+    0,
+    c.width / 2,
+    c.height / 2,
+    Math.max(w, d) * px * 0.7,
+  );
+  // Faint, so the points keep their own colours under it: the line carries the emphasis.
+  wash.addColorStop(0, "rgba(255,255,255,0.05)");
+  wash.addColorStop(1, "rgba(255,255,255,0.17)");
+  outline();
+  context.fillStyle = wash;
+  context.fill();
+  // The line, drawn twice: once wide and blurred for the glow, once fine and crisp.
+  context.strokeStyle = "#fff";
+  context.shadowColor = "#fff";
+  context.shadowBlur = spread * px * 0.8;
+  context.lineWidth = 0.09 * px;
+  outline();
+  context.stroke();
+  context.shadowBlur = 0;
+  context.lineWidth = 0.04 * px;
+  outline();
+  context.stroke();
+  if (gap) {
+    // Erase the line and its glow along that stretch, keeping the wash inside.
+    // Faded in and out at the ends, so the line tapers off rather than stopping square.
+    const fade = 0.6 * px;
+    const from = x + gap.from * px;
+    const to = x + gap.to * px;
+    const ends = context.createLinearGradient(from - fade, 0, to + fade, 0);
+    const span = to - from + fade * 2;
+    ends.addColorStop(0, gap.from > 0 ? "rgba(0,0,0,0)" : "#000");
+    ends.addColorStop(fade / span, "#000");
+    ends.addColorStop(1 - fade / span, "#000");
+    ends.addColorStop(1, "rgba(0,0,0,0)");
+    context.globalCompositeOperation = "destination-out";
+    context.fillStyle = ends;
+    context.fillRect(from - fade, 0, span, y + 0.05 * px);
+    // Down the side edge too, fading out below the opening.
+    const edge = gap.side === "left" ? 0 : x + w * px - 0.05 * px;
+    const depth = gap.down * px;
+    const fall = context.createLinearGradient(0, y, 0, y + depth + fade);
+    fall.addColorStop(0, "#000");
+    fall.addColorStop(depth / (depth + fade), "#000");
+    fall.addColorStop(1, "rgba(0,0,0,0)");
+    context.fillStyle = fall;
+    context.fillRect(edge, 0, x + 0.05 * px, y + depth + fade);
+    context.globalCompositeOperation = "source-over";
+  }
+  return clamped(toTexture(c));
+}
+
+/** A soft-glowing chevron pointing along +U, white, to be tinted by the material. */
+export function chevronTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const [c, context] = canvas(size, size);
+  context.strokeStyle = "#fff";
+  context.lineWidth = 17;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.shadowColor = "#fff";
+  context.shadowBlur = 14;
+  context.beginPath();
+  context.moveTo(size * 0.36, size * 0.2);
+  context.lineTo(size * 0.68, size * 0.5);
+  context.lineTo(size * 0.36, size * 0.8);
+  context.stroke();
+  return clamped(toTexture(c));
+}
+
+/**
+ * A crisp ring with a soft glow either side, white, to be tinted by the material: a clear
+ * closed outline rather than a pool of light. `inner` and `outer` are fractions of the radius.
+ */
+export function crispRingTexture(inner: number, outer: number): THREE.CanvasTexture {
+  const size = 256;
+  const [c, context] = canvas(size, size);
+  const half = size / 2;
+  const middle = ((inner + outer) / 2) * half;
+  context.beginPath();
+  context.arc(half, half, middle, 0, Math.PI * 2);
+  // A dark rim under the band, which tinting leaves dark, so it stands clear of pale
+  // checkers crowded round it.
+  context.strokeStyle = "rgba(0,0,0,0.85)";
+  context.lineWidth = (outer - inner) * half * 1.8;
+  context.stroke();
+  context.strokeStyle = "rgba(255,255,255,0.9)";
+  context.shadowColor = "#fff";
+  context.shadowBlur = 8;
+  context.lineWidth = (outer - inner) * half;
+  context.stroke();
+  // A bright core down the middle of the band.
+  context.shadowBlur = 0;
+  context.strokeStyle = "#fff";
+  context.lineWidth = (outer - inner) * half * 0.35;
+  context.stroke();
+  return clamped(toTexture(c, false));
+}

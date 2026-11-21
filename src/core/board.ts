@@ -193,3 +193,27 @@ export function sweepHome(
   });
   return { board: next, events };
 }
+
+/** How many of the player's checkers stand on a point. */
+function mineAt(board: BoardState, player: Player, index: number): number {
+  const point = pointAt(board, index);
+  return point.owner === player ? point.count : 0;
+}
+
+/** Whether every one of the player's checkers still in play is in their home board. */
+export function allHome(board: BoardState, player: Player): boolean {
+  return (
+    board.bar[player] === 0 &&
+    board.points.every((_, index) => mineAt(board, player, index) === 0 || isHome(player, index))
+  );
+}
+
+/** Whether the player's checkers all stand where the game set them up. */
+export function untouched(board: BoardState, player: Player): boolean {
+  const start = initialBoard();
+  return (
+    board.bar[player] === 0 &&
+    board.off[player] === 0 &&
+    board.points.every((_, index) => mineAt(board, player, index) === mineAt(start, player, index))
+  );
+}
