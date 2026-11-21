@@ -332,7 +332,8 @@ kbd {
       #fff0 58%
     )
     var(--gloss-at, 22%) 0 / 260% 100%;
-  mask-image: linear-gradient(#000 0 52%, #0000 62%);
+  /* Gone before the type line, so the band never hazes the printed rail. */
+  mask-image: linear-gradient(#000 0 34%, #0000 44%);
   transition: background-position 0.55s ease-out;
 }
 
@@ -485,6 +486,12 @@ kbd {
   white-space: nowrap;
 }
 
+.card-name-long {
+  padding-inline: 0.3em;
+  font-size: 0.82em;
+  letter-spacing: 0;
+}
+
 .card-art {
   position: relative;
   height: 6em;
@@ -537,8 +544,9 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.4em;
   margin: -0.42em 0 -0.14em;
-  padding: 0.12em 0.5em;
+  padding: 0.12em 0.4em;
   /* A rail across the frame, as wide as the picture: square-cornered and without an outline,
      so it reads as a printed band and not as a button. */
   border-radius: 0.1em;
@@ -563,22 +571,88 @@ kbd {
 }
 
 .card-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.22em;
   font-size: 0.8em;
   font-variant-caps: small-caps;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
+}
+
+/* The kind's glyph, dark on a disc of the same ink it has on a player's marks. */
+.card-kind-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.36em;
+  height: 1.36em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff8, #fff0 60%), var(--kind-ink, #e9dcbd);
+  box-shadow:
+    0 0 0 1px #000000b3,
+    inset 0 -1px 0 #0000004d;
+  color: #1c1410;
+}
+
+.card-kind-glyph svg {
+  display: block;
+  width: 72%;
+  height: 72%;
+}
+
+/* On the disc, cut-out details show the disc's ink through the dark glyph. */
+.card-kind-glyph .cut {
+  fill: var(--kind-ink, #e9dcbd);
+}
+
+.card-kind-glyph .cut-line {
+  stroke: var(--kind-ink, #e9dcbd);
+}
+
+/* Curses, wards and traps print their kind word in their ink too, to sort a hand at a glance. */
+.kind-curse {
+  --kind-ink: #dcc2ff;
+  color: #e6d4ff;
+}
+
+.kind-ward {
+  --kind-ink: #a9c4e0;
+  color: #cfe0f2;
+}
+
+.kind-trap {
+  --kind-ink: #ffb98a;
+  color: #ffd2b0;
+}
+
+.kind-tempo,
+.kind-wild {
+  --kind-ink: #ffd27a;
+}
+
+.kind-dice,
+.kind-tactic {
+  --kind-ink: #e9dcbd;
+}
+
+/* "Legendary" is the longest rarity name: it is set a hair tighter to leave the gem room. */
+.rarity-legendary .card-rarity {
+  gap: 0.64em;
+  font-size: 0.5em;
+  letter-spacing: 0;
 }
 
 .card-rarity {
   display: flex;
   align-items: center;
   /* The gem is turned on its corner and may carry a bezel, so the gap allows for both. */
-  gap: 1em;
+  gap: 0.66em;
   color: var(--rarity-ink, var(--rarity));
   font:
     700 0.56em / 1.2 system-ui,
     sans-serif;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   /* A crisp printed edge, not a glow. */
   text-shadow: 0 1px 0 #000000b3;
   text-transform: uppercase;
@@ -622,7 +696,11 @@ kbd {
   display: flex;
 }
 
-/* Rare: silver. The gem is set in a silver bezel. */
+/* Rare: silver. The gem is set in a silver bezel, which needs a little more room. */
+.rarity-rare .card-rarity {
+  gap: 0.86em;
+}
+
 .rarity-rare .card-gem {
   box-shadow: 0 0 0 1.5px #dfe4ea;
 }
@@ -1305,8 +1383,10 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
     letter-spacing: 0.1em;
   }
 
-  /* The hand already spans the screen, so there is no room for cards to slide aside. */
-  #hand .card:has(~ .card:is(:hover, .card-raised, :focus-visible)) {
+  /* The hand already spans the screen, so there is no room for cards to slide aside. As
+     specific as the rule it overrides, or the cards before a raised one slide off screen. */
+  #hand
+    .card:has(~ .card:is(:hover, .card-raised, :focus-visible)):not(.card-raised, :focus-visible) {
     translate: none;
   }
 
@@ -1424,8 +1504,33 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
   }
 
   /* The checker dot already shows each player's colour on cramped landscape screens. */
-  .player > span:not(.portrait, .dot, .wins, .quiet) {
+  .player > span:not(.portrait, .dot, .wins, .quiet, .marks) {
     display: none;
+  }
+
+  /* Hexes, wards and traps stay visible: one tight row of glyphs and counts. */
+  .player .marks {
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+
+  .player .mark {
+    padding: 1px 3px;
+  }
+
+  .player .mark-glyph {
+    width: 12px;
+    height: 12px;
+  }
+
+  .player .mark-label {
+    display: none;
+  }
+
+  .player .mark-count {
+    display: block;
+    font-size: 10px;
   }
 
   .player .portrait {

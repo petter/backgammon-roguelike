@@ -1,257 +1,71 @@
 import {
   applyMove,
-  type BoardEvent,
-  type BoardState,
   CHECKERS_PER_PLAYER,
   initialBoard,
-  legalMovesForDie,
-  loneEnemiesAtHome,
   type Move,
   opponent,
   type Player,
-  sweepHome,
 } from "./board.ts";
+import { breakShackles, cardBlock, counterpunch, playCard, rollDice } from "./cardPlay.ts";
 import { type CardId, starterDeck } from "./cards.ts";
-import { createRng, type Rng, rollDie, shuffle } from "./rng.ts";
+import { legalMoves, stillReversing } from "./moves.ts";
+import { createRng, type Rng, shuffle } from "./rng.ts";
+import {
+  type CardTurn,
+  cloneCards,
+  type Command,
+  type GameEvent,
+  GameError,
+  type GameState,
+  type PlayerCards,
+  type Result,
+  withPlayer,
+} from "./state.ts";
+
+export { cardBlock } from "./cardPlay.ts";
+export { diceToPlay, legalMoves, possibleMoves } from "./moves.ts";
+export {
+  type CardTurn,
+  type Command,
+  type GameEvent,
+  GameError,
+  type GameState,
+  type Phase,
+  type PlayerCards,
+  type Result,
+  type TurnInfo,
+  type WinReason,
+} from "./state.ts";
 
 export const OFFER_SIZE = 3;
 export const HAND_LIMIT = 5;
 
-/** `pick`: choose one offered card. `roll`: roll the dice. `move`: play checkers and cards. */
-export type Phase = "pick" | "roll" | "move" | "over";
-
-/** How a finished game ended: normal bear-off, or victory claimed after the opponent left. */
-export type WinReason = "bearOff" | "abandoned";
-
-export interface PlayerCards {
-  /** Draw pile; the last element is the top. */
-  deck: CardId[];
-  hand: CardId[];
-  discard: CardId[];
-  /** Cards on offer during this player's pick phase. */
-  offer: CardId[];
-}
-
-/** Plain data throughout, so it survives JSON and can live in any store. */
-export interface GameState {
-  board: BoardState;
-  current: Player;
-  /** Dice still to be played this turn. Doubles appear four times. */
-  dice: number[];
-  phase: Phase;
-  winner: Player | null;
-  /** How the game was won, once `phase === "over"`. */
-  winReason: WinReason | null;
-  cards: Record<Player, PlayerCards>;
-  /** A shielded player's lone checkers cannot be hit. Lasts until their next turn. */
-  shielded: Record<Player, boolean>;
-  /** Games won in this match so far. Carried over by a rematch. */
-  wins: Record<Player, number>;
-  /** Who has asked to play again. Only ever set once the game is over. */
-  rematch: Record<Player, boolean>;
-  /**
-   * RNG state. Secret: whoever knows it can predict every roll and draw. It is only 32 bits,
-   * so a server must also replace it with fresh entropy before each command; otherwise a
-   * player could recover it from the dice they see.
-   */
-  rng: number;
-}
-
-export type Command =
-  | { type: "pickCard"; index: number }
-  | { type: "roll" }
-  | { type: "move"; from: number | "bar"; to: number | "off"; die: number }
-  | { type: "playCard"; index: number }
-  | { type: "endTurn" }
-  /** Claims victory once the opponent has been disconnected past the grace period. */
-  | { type: "claimVictory" }
-  /** Asks to play again. Only once the game is over; the new game starts when both have. */
-  | { type: "rematch" };
-
-/** `cards` and `card` are `null` once redacted for the opponent. */
-export type GameEvent =
-  | BoardEvent
-  | { type: "cardsOffered"; player: Player; cards: CardId[] | null }
-  | { type: "cardPicked"; player: Player; card: CardId | null }
-  | { type: "cardPlayed"; player: Player; card: CardId }
-  | { type: "diceRolled"; player: Player; dice: number[] }
-  /** A card changed the dice. `doubled`: it left an exact pair, which became four dice. */
-  | { type: "diceChanged"; player: Player; dice: number[]; doubled: boolean }
-  | { type: "shieldRaised"; player: Player }
-  | { type: "turnEnded"; player: Player; next: Player }
-  | { type: "gameWon"; winner: Player }
-  | { type: "rematchOffered"; player: Player }
-  /** A rematch began: the board is set up afresh. The first turn's events follow. */
-  | { type: "gameStarted"; first: Player };
-
-export interface Result {
-  state: GameState;
-  events: GameEvent[];
-}
-
-/** A command the rules reject. Safe to show to the player who sent it. */
-export class GameError extends Error {}
-
-/** The public facts that decide which checker moves are legal. */
-export type TurnInfo = Pick<GameState, "board" | "current" | "dice" | "phase" | "shielded">;
-
-/**
- * Every single-checker move one of the remaining dice allows, with no regard for what it
- * leaves playable afterwards. `legalMoves` is the one the rules go by.
- */
-export function possibleMoves(turn: TurnInfo): Move[] {
-  if (turn.phase !== "move") return [];
-  const shielded = turn.shielded[opponent(turn.current)];
-  return [...new Set(turn.dice)].flatMap((die) =>
-    legalMovesForDie(turn.board, turn.current, die, shielded),
-  );
-}
-
-/**
- * How much of a roll can be played: how many dice, and the highest die that can begin such
- * a play. The die only matters when a single one can be played.
- */
-interface Play {
-  count: number;
-  high: number;
-}
-
-/** Positions examined before the search gives up and leaves the roll unrestricted. */
-const SEARCH_LIMIT = 50_000;
-
-class SearchTooLarge extends Error {}
-
-/** Shared by every step of one search: positions already solved, and how many more may be. */
-interface Search {
-  seen: Map<string, Play>;
-  left: number;
-}
-
-/** The most that can be played from a position with the given dice. */
-function bestPlay(
-  board: BoardState,
-  player: Player,
-  dice: number[],
-  shielded: boolean,
-  search: Search,
-): Play {
-  if (dice.length === 0) return { count: 0, high: 0 };
-  const key = `${JSON.stringify(board)}|${dice.toSorted((a, b) => a - b).join("")}`;
-  const known = search.seen.get(key);
-  if (known) return known;
-  if (--search.left < 0) throw new SearchTooLarge();
-
-  let best: Play = { count: 0, high: 0 };
-  // Highest die first, so the first play found of any length begins with the highest die.
-  byDie: for (const die of [...new Set(dice)].toSorted((a, b) => b - a)) {
-    const rest = [...dice];
-    rest.splice(rest.indexOf(die), 1);
-    for (const move of legalMovesForDie(board, player, die, shielded)) {
-      const after = bestPlay(applyMove(board, move).board, player, rest, shielded, search);
-      if (1 + after.count > best.count) best = { count: 1 + after.count, high: die };
-      // Nothing can beat using every die.
-      if (best.count === dice.length) break byDie;
-    }
-  }
-  search.seen.set(key, best);
-  return best;
-}
-
-/**
- * The moves the rules allow now. A roll must be played so as to use as many dice as
- * possible, and when only one can be played, the highest that can: so a move is legal only
- * if it can begin such a play. This is the backgammon rule for two dice, carried over
- * unchanged to turns where cards have left more.
- */
-export function legalMoves(turn: TurnInfo): Move[] {
-  const moves = possibleMoves(turn);
-  if (moves.length === 0) return moves;
-  const player = turn.current;
-  const shielded = turn.shielded[opponent(player)];
-  const search: Search = { seen: new Map(), left: SEARCH_LIMIT };
-  try {
-    const most = bestPlay(turn.board, player, turn.dice, shielded, search);
-    return moves.filter((move) => {
-      const rest = [...turn.dice];
-      rest.splice(rest.indexOf(move.die), 1);
-      const after = bestPlay(applyMove(turn.board, move).board, player, rest, shielded, search);
-      // One die only: it must be the highest that can be played at all.
-      return 1 + after.count === most.count && (most.count > 1 || move.die === most.high);
-    });
-  } catch (error) {
-    // A position too tangled to search fully (many dice, many choices): leave it open
-    // rather than stall. Client and server reach the same verdict, since both run this.
-    if (error instanceof SearchTooLarge) return moves;
-    throw error;
-  }
-}
-
-/** How many of the dice the rules require to be played from here. For explaining a refusal. */
-export function diceToPlay(turn: TurnInfo): number {
-  const [move] = legalMoves(turn);
-  if (!move) return 0;
-  const dice = [...turn.dice];
-  dice.splice(dice.indexOf(move.die), 1);
-  return 1 + diceToPlay({ ...turn, board: applyMove(turn.board, move).board, dice });
-}
-
-/**
- * Why a card cannot be played right now, in words for the player, or `null` if it can.
- * A card that would change nothing is not playable: it would be thrown away for no effect.
- * Everything this looks at is public, so a client can ask the same question as the server.
- */
-export function cardBlock(turn: TurnInfo, card: CardId): string | null {
-  if (turn.phase !== "move") return "Roll before playing a card";
-  const them = opponent(turn.current);
-  switch (card) {
-    case "reroll":
-      return turn.dice.length > 0 ? null : "Second Wind needs dice left to reroll";
-    case "loaded":
-      if (turn.dice.length === 0) return "Loaded Die needs a die left to change";
-      return turn.dice.some((die) => die < 6) ? null : "Every die you have left is already a 6";
-    case "charm":
-      return null;
-    case "shield":
-      return turn.shielded[turn.current] ? "Bulwark is already protecting your checkers" : null;
-    case "quake":
-      if (turn.shielded[them]) return "Their Bulwark protects their checkers from Quake";
-      return loneEnemiesAtHome(turn.board, turn.current).length > 0
-        ? null
-        : "Quake would do nothing: no lone enemy checker is in your home board";
-  }
-}
-
-export function canPlayCard(turn: TurnInfo, card: CardId): boolean {
-  return cardBlock(turn, card) === null;
-}
-
-function withCards(state: GameState, player: Player, cards: PlayerCards): GameState["cards"] {
-  return player === "white"
-    ? { white: cards, black: state.cards.black }
-    : { white: state.cards.white, black: cards };
-}
-
-function cloneCards(cards: PlayerCards): PlayerCards {
-  return {
-    deck: [...cards.deck],
-    hand: [...cards.hand],
-    discard: [...cards.discard],
-    offer: [...cards.offer],
-  };
+export function canPlayCard(
+  turn: CardTurn,
+  card: CardId,
+  traps: Parameters<typeof cardBlock>[2],
+): boolean {
+  return cardBlock(turn, card, traps) === null;
 }
 
 function freshCards(rng: Rng): PlayerCards {
   return { deck: shuffle(starterDeck(), rng), hand: [], discard: [], offer: [] };
 }
 
+const neither = { white: false, black: false } as const;
+
 /** Hands the turn to `player`: drops their shield and deals their card offer. */
 function beginTurn(state: GameState, player: Player): Result {
   const rng = createRng(state.rng);
   const mine = cloneCards(state.cards[player]);
   const events: GameEvent[] = [];
+  let extraOffer = state.extraOffer;
 
   if (mine.hand.length < HAND_LIMIT) {
-    while (mine.offer.length < OFFER_SIZE) {
+    // Keen Eye's extra card waits for a turn with a pick.
+    const size = OFFER_SIZE + (state.extraOffer[player] ? 1 : 0);
+    extraOffer = withPlayer(state.extraOffer, player, false);
+    while (mine.offer.length < size) {
       if (mine.deck.length === 0) {
         mine.deck = shuffle(mine.discard, rng);
         mine.discard = [];
@@ -270,8 +84,10 @@ function beginTurn(state: GameState, player: Player): Result {
       current: player,
       dice: [],
       phase: picking ? "pick" : "roll",
-      cards: withCards(state, player, mine),
-      shielded: { ...state.shielded, [player]: false },
+      cards: withPlayer(state.cards, player, mine),
+      shielded: withPlayer(state.shielded, player, false),
+      extraOffer,
+      reversing: false,
       rng: rng.state,
     },
     events,
@@ -319,22 +135,19 @@ export function newGame(
       winner: null,
       winReason: null,
       cards,
-      shielded: { white: false, black: false },
+      shielded: { ...neither },
+      hexes: { white: [], black: [] },
+      wards: { white: [], black: [] },
+      traps: { white: [], black: [] },
+      extraOffer: { ...neither },
+      bonusDice: { white: 0, black: 0 },
+      reversing: false,
       wins,
-      rematch: { white: false, black: false },
+      rematch: { ...neither },
       rng: rng.state,
     },
     first,
   );
-}
-
-/**
- * Two matching dice are doubles and play four times, whether rolled or made by a card.
- * Only an exact pair counts: three dice with two alike stay as they are.
- */
-function asDoubles(dice: number[]): number[] {
-  const [a, b] = dice;
-  return dice.length === 2 && a !== undefined && a === b ? [a, a, a, a] : dice;
 }
 
 function pickCard(state: GameState, index: number): Result {
@@ -347,21 +160,14 @@ function pickCard(state: GameState, index: number): Result {
   mine.discard.push(...mine.offer.filter((_, i) => i !== index));
   mine.offer = [];
   return {
-    state: { ...state, phase: "roll", cards: withCards(state, player, mine) },
+    state: { ...state, phase: "roll", cards: withPlayer(state.cards, player, mine) },
     events: [{ type: "cardPicked", player, card }],
   };
 }
 
 function roll(state: GameState): Result {
   if (state.phase !== "roll") throw new GameError("You cannot roll right now");
-  const rng = createRng(state.rng);
-  const a = rollDie(rng);
-  const b = rollDie(rng);
-  const dice = asDoubles([a, b]);
-  return {
-    state: { ...state, dice, phase: "move", rng: rng.state },
-    events: [{ type: "diceRolled", player: state.current, dice }],
-  };
+  return rollDice(state);
 }
 
 function moveChecker(state: GameState, wanted: Omit<Move, "player">): Result {
@@ -375,54 +181,24 @@ function moveChecker(state: GameState, wanted: Omit<Move, "player">): Result {
   const dice = [...state.dice];
   dice.splice(dice.indexOf(legal.die), 1);
   const events: GameEvent[] = [...applied.events];
-  const moved: GameState = { ...state, board: applied.board, dice };
+  const moved: GameState = {
+    ...state,
+    board: applied.board,
+    dice,
+    reversing: stillReversing(state.reversing, legal),
+  };
+  if (legal.to !== "off" && applied.events.some((event) => event.type === "hit")) {
+    breakShackles(moved, applied.events, events);
+    counterpunch(moved, legal.to, events);
+  }
 
-  if (applied.board.off[player] < CHECKERS_PER_PLAYER) return { state: moved, events };
+  if (moved.board.off[player] < CHECKERS_PER_PLAYER) return { state: moved, events };
   events.push({ type: "gameWon", winner: player });
   const wins = { ...moved.wins, [player]: moved.wins[player] + 1 };
   return {
     state: { ...moved, dice: [], phase: "over", winner: player, winReason: "bearOff", wins },
     events,
   };
-}
-
-function playCard(state: GameState, index: number): Result {
-  const player = state.current;
-  const mine = cloneCards(state.cards[player]);
-  const card = mine.hand[index];
-  if (card === undefined) throw new GameError("No such card in hand");
-  const blocked = cardBlock(state, card);
-  if (blocked) throw new GameError(blocked);
-  mine.hand.splice(index, 1);
-  mine.discard.push(card);
-
-  const rng = createRng(state.rng);
-  const events: GameEvent[] = [{ type: "cardPlayed", player, card }];
-  const next: GameState = { ...state, cards: withCards(state, player, mine) };
-
-  if (card === "reroll") {
-    next.dice = state.dice.map(() => rollDie(rng));
-  } else if (card === "loaded") {
-    next.dice = [...state.dice];
-    next.dice[next.dice.indexOf(Math.min(...next.dice))] = 6;
-  } else if (card === "charm") {
-    next.dice = [...state.dice, rollDie(rng)];
-  } else if (card === "shield") {
-    next.shielded = { ...state.shielded, [player]: true };
-    events.push({ type: "shieldRaised", player });
-  } else {
-    const swept = sweepHome(state.board, player);
-    next.board = swept.board;
-    events.push(...swept.events);
-  }
-  if (next.dice !== state.dice) {
-    const changed = next.dice;
-    next.dice = asDoubles(changed);
-    events.push({ type: "diceChanged", player, dice: next.dice, doubled: next.dice !== changed });
-  }
-
-  next.rng = rng.state;
-  return { state: next, events };
 }
 
 function endTurn(state: GameState): Result {

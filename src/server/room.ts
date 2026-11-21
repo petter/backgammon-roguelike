@@ -6,7 +6,6 @@ import {
   GameError,
   type GameEvent,
   type GameSeeds,
-  type GameState,
   newGame,
 } from "../core/game.ts";
 import { redactEvent, viewFor } from "../core/view.ts";
@@ -27,6 +26,7 @@ import {
   PRESENCE_LEASE_MS,
   publishPresence,
 } from "./presence.ts";
+import { upToDate } from "./savedGame.ts";
 import {
   type ClaimTimings,
   type GameStore,
@@ -93,20 +93,6 @@ function randomCode(entropy: Entropy): string {
     { length: CODE_LENGTH },
     () => CODE_ALPHABET[entropy.int(CODE_ALPHABET.length)],
   ).join("");
-}
-
-/**
- * A game saved before newer fields existed gets sensible defaults. If that game is already
- * won, the win is counted and treated as a normal bear-off.
- */
-function upToDate(
-  game: Omit<GameState, "wins" | "rematch" | "winReason"> &
-    Partial<Pick<GameState, "wins" | "rematch" | "winReason">>,
-): GameState {
-  const none = { white: 0, black: 0, ...(game.winner ? { [game.winner]: 1 } : {}) };
-  const no = { white: false, black: false };
-  const winReason = game.winReason ?? (game.winner ? "bearOff" : null);
-  return { ...game, wins: game.wins ?? none, rematch: game.rematch ?? no, winReason };
 }
 
 function seatOf(room: Room, token: string): Player | null {

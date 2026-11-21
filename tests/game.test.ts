@@ -74,7 +74,7 @@ describe("starterDeck", () => {
     // The two cards that swing a game hardest are the two rarest.
     expect(CARDS.loaded.rarity).toBe("legendary");
     expect(CARDS.quake.rarity).toBe("epic");
-    expect(deck).toHaveLength(11);
+    expect(deck).toHaveLength(54);
   });
 });
 
@@ -566,7 +566,9 @@ describe("dealing", () => {
       state = applyCommand(state, player, { type: "roll" }).state;
       while (state.cards[player].hand.length > 2) {
         const now = state;
-        const index = now.cards[player].hand.findIndex((c) => canPlayCard(now, c));
+        const index = now.cards[player].hand.findIndex((c) =>
+          canPlayCard(now, c, now.traps[player]),
+        );
         if (index === -1) break;
         state = applyCommand(state, player, { type: "playCard", index }).state;
       }
@@ -578,7 +580,7 @@ describe("dealing", () => {
       for (const who of ["white", "black"] as const) {
         const mine = state.cards[who];
         const all = [...mine.deck, ...mine.hand, ...mine.discard, ...mine.offer];
-        expect(all.toSorted()).toEqual(starterDeck().toSorted());
+        expect([...all, ...state.traps[who]].toSorted()).toEqual(starterDeck().toSorted());
         expect(checkersOf(state.board, who)).toBe(15);
       }
     }
@@ -769,8 +771,8 @@ describe("cards", () => {
     const refused = (state: GameState, reason: string, index = 0) => {
       const before = structuredClone(state);
       const card = state.cards[state.current].hand[index]!;
-      expect(cardBlock(state, card)).toBe(reason);
-      expect(canPlayCard(state, card)).toBe(false);
+      expect(cardBlock(state, card, [])).toBe(reason);
+      expect(canPlayCard(state, card, [])).toBe(false);
       expect(() => applyCommand(state, state.current, { type: "playCard", index })).toThrow(
         new GameError(reason),
       );
@@ -795,12 +797,12 @@ describe("cards", () => {
       state = applyCommand(state, "black", { type: "endTurn" }).state;
       expect(state.shielded.white).toBe(false);
       state = { ...state, phase: "move" };
-      expect(cardBlock(state, "shield")).toBeNull();
+      expect(cardBlock(state, "shield", [])).toBeNull();
       expect(play(state).state.shielded.white).toBe(true);
     });
 
     it("Bulwark is allowed even with no lone checker yet, since one may be left later", () => {
-      expect(cardBlock(game(), "shield")).toBeNull();
+      expect(cardBlock(game(), "shield", [])).toBeNull();
     });
 
     it("Quake needs a lone enemy checker in your home board", () => {
@@ -826,8 +828,8 @@ describe("cards", () => {
     it("Quake counts targets from the side of whoever plays it", () => {
       const board = emptyBoard();
       place(board, "white", 20, 1);
-      expect(cardBlock(game({ board, current: "black" }), "quake")).toBeNull();
-      expect(cardBlock(game({ board, current: "white" }), "quake")).not.toBeNull();
+      expect(cardBlock(game({ board, current: "black" }), "quake", [])).toBeNull();
+      expect(cardBlock(game({ board, current: "white" }), "quake", [])).not.toBeNull();
     });
 
     it("dice cards explain what they are missing", () => {
@@ -843,12 +845,13 @@ describe("cards", () => {
         game({ dice: [6, 6], cards: hand("white", "loaded") }),
         "Every die you have left is already a 6",
       );
-      expect(cardBlock(game({ dice: [] }), "charm")).toBeNull();
+      expect(cardBlock(game({ dice: [] }), "charm", [])).toBeNull();
     });
 
-    it("nothing can be played before rolling", () => {
+    it("nothing but a hex-lifting ward can be played before rolling", () => {
       for (const card of CARD_IDS) {
-        expect(cardBlock(game({ phase: "roll" }), card)).toBe("Roll before playing a card");
+        if (card === "sageSmoke" || card === "curseEater") continue;
+        expect(cardBlock(game({ phase: "roll" }), card, [])).toBe("Roll before playing a card");
       }
     });
 
@@ -867,16 +870,23 @@ describe("cards", () => {
         const shielded = { white: rng.int(3) === 0, black: rng.int(3) === 0 };
         for (const card of CARD_IDS) {
           const state = game({ board, dice, shielded, rng: seed, cards: hand("white", card) });
-          if (!canPlayCard(state, card)) continue;
+          if (!canPlayCard(state, card, [])) continue;
           const after = play(state).state;
-          const changed =
-            JSON.stringify([after.board, after.shielded]) !==
-              JSON.stringify([state.board, state.shielded]) || after.dice.length !== dice.length;
-          // Second Wind and Loaded Die keep the count but must have had dice to change.
-          expect(
-            changed || ((card === "reroll" || card === "loaded") && dice.length > 0),
-            card,
-          ).toBe(true);
+          const table = (s: GameState) =>
+            JSON.stringify([
+              s.board,
+              s.shielded,
+              s.dice.toSorted((x, y) => x - y),
+              s.hexes,
+              s.wards,
+              s.traps,
+              s.extraOffer,
+              s.bonusDice,
+              s.reversing,
+            ]);
+          // Rerolls may land on the same faces, but must have had dice to roll.
+          const rerolls = card === "reroll" || card === "loaded" || card === "sageSmoke";
+          expect(table(after) !== table(state) || (rerolls && dice.length > 0), card).toBe(true);
         }
       }
     });

@@ -22,8 +22,8 @@ describe("viewFor", () => {
 
   it("shows only pile sizes for both players", () => {
     expect(viewFor(state, "white").counts).toEqual({
-      white: { hand: 1, deck: 2, discard: 0 },
-      black: { hand: 2, deck: 1, discard: 1 },
+      white: { hand: 1, deck: 2, discard: 0, traps: 0 },
+      black: { hand: 2, deck: 1, discard: 1, traps: 0 },
     });
   });
 
@@ -31,14 +31,20 @@ describe("viewFor", () => {
     expect(Object.keys(viewFor(state, "black")).toSorted()).toEqual(
       [
         "board",
+        "bonusDice",
         "counts",
         "current",
         "dice",
+        "extraOffer",
         "hand",
+        "hexes",
         "offer",
         "phase",
         "rematch",
+        "reversing",
         "shielded",
+        "traps",
+        "wards",
         "winReason",
         "winner",
         "wins",

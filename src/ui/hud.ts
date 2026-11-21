@@ -7,6 +7,7 @@ import { createCard, fanCard } from "./card.ts";
 import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
 import { createGameOver } from "./gameOver.ts";
+import { type Mark, markRow, marksFor } from "./marks.ts";
 
 export interface HudActions {
   onRoll: () => void;
@@ -98,6 +99,7 @@ interface ChipModel {
   hand: number;
   shielded: boolean;
   away: boolean;
+  marks: Mark[];
 }
 
 /** One player's colour, name and state. The player on turn is outlined. */
@@ -123,6 +125,8 @@ function playerChip(model: ChipModel): HTMLElement {
   if (model.away) parts.push("left");
   details.textContent = parts.join(", ");
   chip.append(portrait, dot, label, colour, details);
+  const marks = markRow(model.marks);
+  if (marks) chip.append(marks);
   if (model.scored) {
     const wins = document.createElement("span");
     wins.className = "wins";
@@ -191,6 +195,7 @@ export function createHud(): Hud {
           hand: view.counts[player].hand,
           shielded: view.shielded[player],
           away: !model.local && player === other && !model.opponentOnline,
+          marks: marksFor(view, player),
         }),
       ),
     );
@@ -318,7 +323,10 @@ export function createHud(): Hud {
           // clicks and key presses, so that trying it says why instead of doing nothing.
           const turnName = name(view.current);
           let blocked: string | null = `It is ${turnName}'s turn`;
-          if (myTurn) blocked = model.rolling ? "Wait for the dice to land" : cardBlock(view, card);
+          if (myTurn)
+            blocked = model.rolling
+              ? "Wait for the dice to land"
+              : cardBlock(view, card, view.traps);
           else if (view.phase === "over") blocked = "The game is over";
           const button = createCard(card, () => {
             // A finger cannot point at a card without pressing it, so the first tap only
