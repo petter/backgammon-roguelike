@@ -13,7 +13,13 @@ import {
   TRAY_X,
   type Vec3,
 } from "./layout.ts";
-import { clothTexture, dropShadowTexture, wellShadeTexture, woodTexture } from "./textures.ts";
+import {
+  clothTexture,
+  dropShadowTexture,
+  glowRingTexture,
+  wellShadeTexture,
+  woodTexture,
+} from "./textures.ts";
 
 const RIM = 0.5;
 const RIM_H = 0.3;
@@ -36,8 +42,8 @@ const wood = new THREE.MeshPhysicalMaterial({
   clearcoat: 0.55,
   clearcoatRoughness: 0.22,
 });
-const brass = new THREE.MeshStandardMaterial({ color: 0xa8823f, metalness: 1, roughness: 0.32 });
-const weave = tiled(clothTexture("#d8d8d8", 21, 40), 3);
+const brass = new THREE.MeshStandardMaterial({ color: 0xc09a4c, metalness: 1, roughness: 0.22 });
+const weave = tiled(clothTexture("#d8d8d8", 21, 0), 3);
 const felt = new THREE.MeshStandardMaterial({
   color: 0x1b5139,
   map: weave,
@@ -60,22 +66,26 @@ const pointColors = [pointMaterial(0xc4a067), pointMaterial(0x6a1c1a)] as const;
 /** A fine gilt cord laid under every point, so its edges read clean against the felt. */
 const piping = new THREE.MeshStandardMaterial({ color: 0x8c6a38, roughness: 0.6, metalness: 0.3 });
 
+/** Fraction of the halo's radius where its light peaks: just outside the checker's rim. */
+const HALO_PEAK = 0.76;
 /** Where a selected checker can go: bright mint, far from every colour on the board. */
 const TARGET_COLOR = 0x35ffb0;
 /** Which checkers can move: a warm amber halo, readable on both checker colours. */
-const SOURCE_COLOR = 0xffb02e;
+const SOURCE_COLOR = 0xffc24a;
 
 const overlay = (color: number, opacity: number) =>
   new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
 const targetFill = overlay(TARGET_COLOR, 0.5);
 const targetSpot = overlay(TARGET_COLOR, 0.9);
 const targetEdge = overlay(0xffffff, 0.95);
-const sourceRing = overlay(SOURCE_COLOR, 0.95);
+const sourceRing = overlay(SOURCE_COLOR, 1);
+sourceRing.map = glowRingTexture(HALO_PEAK);
+sourceRing.blending = THREE.AdditiveBlending;
 // One slow pulse shared by every hint, so they draw the eye without flickering.
 for (const [material, low] of [
   [targetFill, 0.22],
   [targetSpot, 0.45],
-  [sourceRing, 0.55],
+  [sourceRing, 0.5],
 ] as const) {
   gsap.to(material, { opacity: low, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: -1 });
 }
@@ -97,15 +107,14 @@ function targetMarker(): THREE.Group {
   return marker;
 }
 
-/** A halo around the rim of a checker that is able to move, clear of its face. */
+/** Outer radius of the halo under a movable checker. */
+const HALO_R = CHECKER_R * 1.4;
+/** A soft pool of light under a checker that is able to move, glowing out round its rim. */
 function sourceMarker(): THREE.Mesh {
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(CHECKER_R * 0.98, CHECKER_R * 1.2, 48),
-    sourceRing,
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.visible = false;
-  return ring;
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(HALO_R * 2, HALO_R * 2), sourceRing);
+  halo.rotation.x = -Math.PI / 2;
+  halo.visible = false;
+  return halo;
 }
 
 export interface BoardHints {
@@ -148,18 +157,18 @@ export function createBoard(): BoardView {
 
   // Brass stringing: down both edges of the bar, and round the top of the rails.
   for (const s of [-1, 1]) {
-    group.add(flat(0.025, fieldD, brass, { x: (s * (BAR_W - 0.1)) / 2, y: 0.0145, z: 0 }));
+    group.add(flat(0.025, fieldD, brass, { x: (s * (BAR_W - 0.1)) / 2, y: 0.016, z: 0 }));
     group.add(
-      flat(fieldW + 0.26, 0.025, brass, { x: 0, y: RIM_H + 0.001, z: s * (FIELD_HALF_D + 0.13) }),
+      flat(fieldW + 0.26, 0.04, brass, { x: 0, y: RIM_H + 0.001, z: s * (FIELD_HALF_D + 0.13) }),
     );
     group.add(
-      flat(0.025, fieldD + 0.26, brass, { x: s * (FIELD_HALF_W + 0.13), y: RIM_H + 0.001, z: 0 }),
+      flat(0.04, fieldD + 0.26, brass, { x: s * (FIELD_HALF_W + 0.13), y: RIM_H + 0.001, z: 0 }),
     );
   }
 
   // Each half of the playfield sits in a well: shade it in along the walls.
   const halfW = FIELD_HALF_W - BAR_W / 2;
-  const wellShade = shade(wellShadeTexture(halfW, fieldD, 0.45), 0.5);
+  const wellShade = shade(wellShadeTexture(halfW, fieldD, 0.45), 0.45);
   for (const s of [-1, 1]) {
     group.add(flat(halfW, fieldD, wellShade, { x: s * (BAR_W / 2 + halfW / 2), y: 0.014, z: 0 }));
   }
@@ -208,7 +217,7 @@ export function createBoard(): BoardView {
 
   const pointGlows: THREE.Mesh[] = [];
   for (let p = 0; p < POINT_COUNT; p++) {
-    group.add(triangle(p, 0.008, piping, 0.03));
+    group.add(triangle(p, 0.008, piping, 0.02));
     group.add(triangle(p, 0.012, pointColors[p % 2 === 0 ? 0 : 1]));
     const pointGlow = triangle(p, 0.016, targetFill);
     pointGlow.receiveShadow = false;
@@ -242,7 +251,8 @@ export function createBoard(): BoardView {
       sourceMarkers.forEach((marker, i) => {
         const at = hints.sources[i];
         marker.visible = at !== undefined;
-        if (at) marker.position.set(at.x, at.y + CHECKER_H / 2 + 0.012, at.z);
+        // Down on the surface the checker stands on, so its neighbours cover the overlap.
+        if (at) marker.position.set(at.x, at.y - CHECKER_H / 2 + 0.024, at.z);
       });
     },
   };

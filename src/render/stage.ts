@@ -68,8 +68,8 @@ export function createStage(container: HTMLElement): Stage {
   shadowCam.bottom = -8.5;
   shadowCam.far = 40;
   scene.add(sun);
-  // A cool rim from the far side, picking out the edges of the dark checkers.
-  const rim = new THREE.DirectionalLight(0xaec6e8, 0.45);
+  // A soft rim from the far side, picking out the edges of the dark checkers.
+  const rim = new THREE.DirectionalLight(0xd8c8b4, 0.3);
   rim.position.set(8, 7, -7);
   scene.add(rim);
 
@@ -78,7 +78,7 @@ export function createStage(container: HTMLElement): Stage {
   weave.repeat.set(20, 20);
   const table = new THREE.Mesh(
     new THREE.CircleGeometry(30, 64),
-    new THREE.MeshStandardMaterial({ color: 0x3b2a20, map: weave, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0x4a3528, map: weave, roughness: 0.95 }),
   );
   table.rotation.x = -Math.PI / 2;
   table.position.y = TABLE_Y;
@@ -87,7 +87,7 @@ export function createStage(container: HTMLElement): Stage {
   const dusk = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 60),
     new THREE.MeshBasicMaterial({
-      map: vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,0.9)", 0.3),
+      map: vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,0.9)", 0.38),
       transparent: true,
       depthWrite: false,
     }),

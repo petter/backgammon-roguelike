@@ -159,6 +159,12 @@ export function vignetteTexture(inner: string, outer: string, reach = 0.72): THR
   return texture;
 }
 
+function clamped(texture: THREE.CanvasTexture): THREE.CanvasTexture {
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
+}
+
 /** Pixels per world unit for the soft shadow textures below. */
 const SHADE_PX = 48;
 
@@ -177,7 +183,7 @@ export function wellShadeTexture(w: number, d: number, fade: number): THREE.Canv
   context.rect(-far - c.width, -c.height, c.width * 3, c.height * 3);
   context.rect(-far, 0, c.width, c.height);
   context.fill("evenodd");
-  return toTexture(c, false);
+  return clamped(toTexture(c, false));
 }
 
 /** A blurred dark rectangle: `w` by `d`, plus `spread` world units of falloff on every side. */
@@ -196,7 +202,7 @@ export function dropShadowTexture(w: number, d: number, spread: number): THREE.C
     (w + spread) * SHADE_PX,
     (d + spread) * SHADE_PX,
   );
-  return toTexture(c, false);
+  return clamped(toTexture(c, false));
 }
 
 /** A round soft shadow: dark in the middle, clear at the edge. */
@@ -216,7 +222,25 @@ export function contactShadowTexture(): THREE.CanvasTexture {
   gradient.addColorStop(1, "rgba(0,0,0,0)");
   context.fillStyle = gradient;
   context.fillRect(0, 0, size, size);
-  return toTexture(c, false);
+  return clamped(toTexture(c, false));
+}
+
+/**
+ * A soft ring of light for a checker's halo: clear in the middle, brightest at `peak`
+ * (a fraction of the radius), fading to nothing at the edge.
+ */
+export function glowRingTexture(peak: number): THREE.CanvasTexture {
+  const size = 256;
+  const [c, context] = canvas(size, size);
+  const half = size / 2;
+  const gradient = context.createRadialGradient(half, half, 0, half, half, half);
+  gradient.addColorStop(0, "rgba(255,255,255,0)");
+  gradient.addColorStop(peak * 0.8, "rgba(255,255,255,0)");
+  gradient.addColorStop(peak, "rgba(255,255,255,1)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  return clamped(toTexture(c, false));
 }
 
 /**
@@ -243,9 +267,9 @@ export function stoneTexture(base: string, vein: string, seed: number): THREE.Ca
       points.push([x, y]);
     }
     for (const [width, alpha] of [
-      [18, 0.04],
-      [8, 0.06],
-      [2, 0.12],
+      [18, 0.07],
+      [8, 0.11],
+      [2, 0.2],
     ] as const) {
       context.globalAlpha = alpha * (0.5 + random());
       context.lineWidth = width * (0.5 + random());

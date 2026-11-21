@@ -102,11 +102,11 @@ export function flat(w: number, d: number, material: THREE.Material, at: Vec3): 
   return mesh;
 }
 
-/** A transparent black overlay whose alpha comes from a texture. */
+/** A transparent overlay drawn from a black texture whose alpha holds the shade. */
 export function shade(texture: THREE.Texture, opacity: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    alphaMap: texture,
+    // Not `alphaMap`: that reads the green channel, which is zero in a black texture.
+    map: texture,
     transparent: true,
     opacity,
     depthWrite: false,
@@ -122,7 +122,7 @@ export function triangle(point: number, y: number, material: THREE.Material, gro
   const s = pointSide(point);
   // Wound counter-clockwise seen from above, so the face points up on both edges.
   const base = s * FIELD_HALF_D;
-  const tip = s * (FIELD_HALF_D - TRIANGLE_LEN - grow * 2.5);
+  const tip = s * (FIELD_HALF_D - TRIANGLE_LEN - grow * 1.4);
   const half = s * (0.46 + grow);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
