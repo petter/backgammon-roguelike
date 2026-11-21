@@ -189,6 +189,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   searchingPlaque.append(searching.element);
   const buttons = [...home.querySelectorAll("button"), ...step.querySelectorAll("button")];
   let view: View = "home";
+  /** Bumped by every change of view, so a view transition that has been overtaken does nothing. */
+  let shown = 0;
 
   /** Shows the message next to what it is about: the code, the form, or the menu. */
   const say = (message: string, aboutCode = false) => {
@@ -203,6 +205,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   };
 
   const show = (next: View, focus = true) => {
+    shown++;
     view = next;
     root.dataset.view = next;
     home.hidden = next !== "home";
@@ -305,6 +308,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       if (view === "invited") glide(() => show(why === "full" ? "full" : "expired", false));
     },
     showWaiting(roomCode, link) {
+      shown++;
       root.hidden = false;
       root.dataset.view = "waiting";
       home.hidden = true;
@@ -316,7 +320,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       waiting.show(roomCode, link);
     },
     showSearching(player) {
+      const mine = ++shown;
       glide(() => {
+        // A match can arrive, and the lobby be hidden, before the transition gets here.
+        if (mine !== shown) return;
         root.hidden = false;
         root.dataset.view = "searching";
         home.hidden = true;
@@ -333,6 +340,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       for (const button of buttons) button.disabled = busy;
     },
     hide() {
+      shown++;
       root.hidden = true;
       searching.stop();
     },

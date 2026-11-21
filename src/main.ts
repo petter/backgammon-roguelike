@@ -133,12 +133,16 @@ function seek(player: PlayerChoice): void {
   search = mine;
 }
 
-async function cancelSeek(): Promise<void> {
+/**
+ * Gives up looking for a stranger. If one was found just before, they are already at the
+ * table, so the player joins them rather than leave them waiting alone; `otherwise` runs
+ * when there was no such stranger.
+ */
+async function cancelSeek(otherwise: () => void): Promise<void> {
   if (!search) return;
   const seat = await stopSearch();
-  // A stranger was found just before: they are already at the table, so join them.
   if (seat) enterRoom(seat.code, seat.token);
-  else lobby.showMenu();
+  else otherwise();
 }
 
 /** Refusals that are about the code itself: no game has it, or its game is full. */
@@ -174,7 +178,7 @@ const lobby = createLobbyUi({
   onLocal: startLocal,
   onCancel: toMenu,
   onSeek: seek,
-  onCancelSeek: () => void cancelSeek(),
+  onCancelSeek: () => void cancelSeek(() => lobby.showMenu()),
 });
 
 /** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
@@ -201,7 +205,8 @@ new MutationObserver(() => {
 }).observe(lobbyEl, { attributes: true, attributeFilter: ["hidden"] });
 
 function route(): void {
-  void stopSearch();
+  // The Back button during a search cancels it, just as Cancel does.
+  void cancelSeek(() => {});
   leaveGame();
   const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;

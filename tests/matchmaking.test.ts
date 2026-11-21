@@ -128,17 +128,44 @@ describe("findMatch", () => {
     expect(await search.cancel()).toEqual(seat);
   });
 
-  it("drops a ticket that arrives after the search was cancelled", async () => {
+  /** A server whose answer to the first request for a ticket is held back until released. */
+  function slowSeek(cancelReply?: MatchReply) {
     let answer: (reply: Response) => void = () => {};
-    const server = fakeServer([]);
+    const server = fakeServer([], cancelReply);
     const fetchAll = server.env.fetch;
     server.env.fetch = ((path: string, init?: RequestInit) =>
       path === "/api/match"
         ? new Promise<Response>((resolve) => (answer = resolve))
         : fetchAll(path, init)) as typeof fetch;
+    return { server, answer: (reply: MatchReply) => answer(Response.json(reply)) };
+  }
+
+  it("gives up a ticket that arrives after a cancel", async () => {
+    const { server, answer } = slowSeek();
     const search = findMatch(player, recorder().handlers, server.env);
-    expect(await search.cancel()).toBeNull();
-    answer(Response.json({ ticket: "late", seat: null }));
+    const cancelled = search.cancel();
+    answer({ ticket: "late", seat: null });
+    expect(await cancelled).toBeNull();
+    expect(server.calls.map((c) => c.path)).toEqual(["/api/match/late/cancel"]);
+  });
+
+  it("hands back a seat that arrives after a cancel, instead of leaving it empty", async () => {
+    const { server, answer } = slowSeek();
+    const { seats, handlers } = recorder();
+    const search = findMatch(player, handlers, server.env);
+    const cancelled = search.cancel();
+    answer({ ticket: "late", seat });
+    expect(await cancelled).toEqual(seat);
+    await settled(server);
+    expect(seats).toEqual([]);
+    expect(server.calls).toEqual([]);
+  });
+
+  it("gives up a ticket that arrives after the page went away", async () => {
+    const { server, answer } = slowSeek();
+    findMatch(player, recorder().handlers, server.env);
+    server.page.hide();
+    answer({ ticket: "late", seat: null });
     await settled(server);
     expect(server.calls.map((c) => c.path)).toEqual(["/api/match/late/cancel"]);
   });

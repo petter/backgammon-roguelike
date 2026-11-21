@@ -71,24 +71,35 @@ export function findMatch(
   /** Bumped whenever the loop is to stop; a loop from an earlier run then ends itself. */
   let run = 0;
   let request = new AbortController();
+  /** The request for a ticket, while it is on its way. */
+  let seeking: Promise<MatchReply> | null = null;
 
   const drop = (stale: string) => {
     void env
       .fetch(`/api/match/${stale}/cancel`, { method: "POST", keepalive: true })
       .catch(() => {});
   };
-  /** Asks for a ticket. Never aborted: it answers at once, and its ticket must not be lost. */
+  /**
+   * Asks for a ticket. Never aborted: it answers at once, and what it brings must not be
+   * lost. A cancel made meanwhile waits for it; if the page went away instead, the ticket
+   * it brings is given up.
+   */
   const seek = async (mine: number): Promise<MatchReply> => {
-    const reply = await read(
-      await env.fetch("/api/match", {
+    const asking = env
+      .fetch("/api/match", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(player),
-      }),
-    );
-    // Stopped while asking: the ticket it brings would otherwise wait on for a while.
-    if (mine !== run) drop(reply.ticket);
-    return reply;
+      })
+      .then(read);
+    seeking = asking;
+    try {
+      const reply = await asking;
+      if (mine !== run && !stopped) drop(reply.ticket);
+      return reply;
+    } finally {
+      if (seeking === asking) seeking = null;
+    }
   };
   /**
    * Waits on a ticket; `null` if the server no longer knows it. Aborted when the search
@@ -157,10 +168,23 @@ export function findMatch(
   return {
     async cancel() {
       if (stopped) return null;
+      const asking = seeking;
       finish();
-      if (!ticket) return null;
+      let held = ticket;
+      if (asking) {
+        try {
+          const reply = await asking;
+          // Matched on arrival: a stranger is already seated at that table.
+          if (reply.seat) return reply.seat;
+          held = reply.ticket;
+        } catch {
+          // No ticket was handed out, so there is nothing to give up.
+          return null;
+        }
+      }
+      if (!held) return null;
       try {
-        const response = await env.fetch(`/api/match/${ticket}/cancel`, {
+        const response = await env.fetch(`/api/match/${held}/cancel`, {
           method: "POST",
           keepalive: true,
         });
