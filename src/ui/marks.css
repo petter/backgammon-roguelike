@@ -39,6 +39,14 @@
   height: 12px;
 }
 
+.mark-glyph .cut {
+  fill: #0007;
+}
+
+.mark-glyph .cut-line {
+  stroke: #0007;
+}
+
 .mark-glyph svg {
   display: block;
   width: 100%;
@@ -56,7 +64,7 @@
 }
 
 .mark-trap {
-  --mark: #f0b48a;
+  --mark: #ffc9a3;
   --mark-bg: #3d1c14;
 }
 
@@ -67,6 +75,17 @@
 
 .mark-count {
   display: none;
+}
+
+/* Where the top bar runs short of room, a tag shows its glyph and count; names are in the title. */
+@media (max-width: 1360px) {
+  .mark-label {
+    display: none;
+  }
+
+  .mark-count {
+    display: block;
+  }
 }
 
 /* On a phone the chips are tight: a tag keeps its glyph and count; the names move to the title. */

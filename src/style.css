@@ -565,37 +565,67 @@ kbd {
   letter-spacing: 0.02em;
 }
 
-/* The kind's glyph, in the same ink it has on a player's marks. */
+/* The kind's glyph, dark on a disc of the same ink it has on a player's marks. */
 .card-kind-glyph {
-  display: block;
+  display: grid;
   flex: none;
-  width: 0.98em;
-  height: 0.98em;
-  color: var(--kind-ink, #e9dcbd);
-  filter: drop-shadow(0 1px 0 #000000b3);
+  place-items: center;
+  width: 1.36em;
+  height: 1.36em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff8, #fff0 60%), var(--kind-ink, #e9dcbd);
+  box-shadow:
+    0 0 0 1px #000000b3,
+    inset 0 -1px 0 #0000004d;
+  color: #1c1410;
 }
 
 .card-kind-glyph svg {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 72%;
+  height: 72%;
 }
 
+/* On the disc, cut-out details show the disc's ink through the dark glyph. */
+.card-kind-glyph .cut {
+  fill: var(--kind-ink, #e9dcbd);
+}
+
+.card-kind-glyph .cut-line {
+  stroke: var(--kind-ink, #e9dcbd);
+}
+
+/* Curses, wards and traps print their kind word in their ink too, to sort a hand at a glance. */
 .kind-curse {
-  --kind-ink: #d6b8ff;
+  --kind-ink: #dcc2ff;
+  color: #e6d4ff;
 }
 
 .kind-ward {
   --kind-ink: #e6edf4;
+  color: #f0f4f8;
 }
 
 .kind-trap {
-  --kind-ink: #f0b48a;
+  --kind-ink: #ffb98a;
+  color: #ffd2b0;
 }
 
 .kind-tempo,
 .kind-wild {
   --kind-ink: #ffd27a;
+}
+
+.kind-dice,
+.kind-tactic {
+  --kind-ink: #e9dcbd;
+}
+
+/* "Legendary" is the longest rarity name: it is set a hair tighter to leave the gem room. */
+.rarity-legendary .card-rarity {
+  gap: 0.64em;
+  font-size: 0.5em;
+  letter-spacing: 0;
 }
 
 .card-rarity {

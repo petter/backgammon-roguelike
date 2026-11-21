@@ -1,7 +1,8 @@
 import type { CardKind } from "../core/cards.ts";
 
 /**
- * Small printed glyphs on a 12 by 12 grid, in `currentColor`. A card prints its kind's
+ * Small printed glyphs on a 12 by 12 grid, in `currentColor`. Details marked `cut` or
+ * `cut-line` are cut out of the glyph; the stylesheet colours them for where it sits. A card prints its kind's
  * glyph on the type line, and the same glyph marks what that kind leaves on the table, so
  * a hex on a player's chip and the curse card that cast it look alike.
  */
@@ -9,19 +10,19 @@ export const GLYPHS = {
   // A crescent cupping a star: something cast in the dark.
   hex: `<path d="M8.6 1.6a4.8 4.8 0 1 0 1.8 8.2A3.8 3.8 0 1 1 8.6 1.6z"/><path d="M8.4 4.2l.5 1.1 1.1.2-.8.8.2 1.1-1-.5-1 .5.2-1.1-.8-.8 1.1-.2z"/>`,
   // A heater shield with a raised boss.
-  ward: `<path d="M6 .9l4.4 1.7V6c0 2.7-1.9 4.3-4.4 5.1C3.5 10.3 1.6 8.7 1.6 6V2.6z"/><circle cx="6" cy="5.6" r="1.5" fill="#0006"/>`,
+  ward: `<path d="M6 .9l4.4 1.7V6c0 2.7-1.9 4.3-4.4 5.1C3.5 10.3 1.6 8.7 1.6 6V2.6z"/><circle cx="6" cy="5.6" r="1.5" class="cut"/>`,
   // A card back lying tilted, its lattice showing: something set face down.
-  trap: `<g transform="rotate(-14 6 6)"><rect x="2.4" y="1" width="7.2" height="10" rx="1.1"/><path d="M6 2.6l2 3.4-2 3.4-2-3.4z" fill="#0007"/><circle cx="6" cy="6" r="0.8"/></g>`,
+  trap: `<g transform="rotate(-12 6 6)"><rect x="1.6" y="1.2" width="8.8" height="9.6" rx="1.2"/><rect x="3" y="2.6" width="6" height="6.8" rx="0.6" class="cut-line" fill="none" stroke-width="0.8"/><path d="M6 4.6l1.2 1.4L6 7.4 4.8 6z" class="cut"/></g>`,
   // A four-pointed spark.
   boon: `<path d="M6 .8l1.2 3.9 3.9 1.3-3.9 1.2L6 11.2 4.8 7.2.9 6l3.9-1.3z"/>`,
   // A die face showing three.
-  dice: `<rect x="1.4" y="1.4" width="9.2" height="9.2" rx="2"/><g fill="#0008"><circle cx="3.9" cy="3.9" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="8.1" cy="8.1" r="1"/></g>`,
+  dice: `<rect x="1.4" y="1.4" width="9.2" height="9.2" rx="2"/><g class="cut"><circle cx="3.9" cy="3.9" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="8.1" cy="8.1" r="1"/></g>`,
   // A checker seen from above.
-  tactic: `<circle cx="6" cy="6" r="4.8"/><circle cx="6" cy="6" r="2.6" fill="none" stroke="#0007" stroke-width="0.9"/>`,
+  tactic: `<circle cx="6" cy="6" r="4.8"/><circle cx="6" cy="6" r="2.6" class="cut-line" fill="none" stroke-width="0.9"/>`,
   // An hourglass.
   tempo: `<path d="M2.6 1h6.8v1.2L6.8 6l2.6 3.8V11H2.6V9.8L5.2 6 2.6 2.2z"/>`,
   // A coin on its edge, half lit.
-  wild: `<circle cx="6" cy="6" r="4.8"/><path d="M6 1.2a4.8 4.8 0 0 1 0 9.6z" fill="#0006"/>`,
+  wild: `<circle cx="6" cy="6" r="4.8"/><path d="M6 1.2a4.8 4.8 0 0 1 0 9.6z" class="cut"/>`,
 } as const;
 
 export type GlyphId = keyof typeof GLYPHS;

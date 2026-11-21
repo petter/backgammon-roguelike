@@ -79,8 +79,8 @@ function chain(a: Point, c: Point, b: Point, count: number, broken = -1): string
 /** A manacle: a heavy gold cuff seen at a slant, its hinge towards the chain. */
 function manacle([x, y]: Point, turn: number): string {
   return `<g transform="rotate(${turn} ${x} ${y})">
-<ellipse cx="${x}" cy="${y}" rx="11" ry="7" fill="none" stroke="#5a3408" stroke-width="6.2"/>
-<ellipse cx="${x}" cy="${y}" rx="11" ry="7" fill="none" stroke="url(#art-shackles-gold)" stroke-width="4.4"/>
+<ellipse cx="${x}" cy="${y}" rx="11" ry="5.4" fill="none" stroke="#5a3408" stroke-width="6.2"/>
+<ellipse cx="${x}" cy="${y}" rx="11" ry="5.4" fill="none" stroke="url(#art-shackles-gold)" stroke-width="4.4"/>
 <path d="M${x - 9} ${y - 3.6}q4-4.4 10-4.6" stroke="#fff8e6" stroke-width="1.1" stroke-linecap="round" fill="none"/>
 <rect x="${x + 9}" y="${y - 2.4}" width="4" height="4.8" rx="1" fill="#c9952b" ${edge("#5a3408")}/></g>`;
 }
@@ -134,10 +134,10 @@ ${shadow(60, 71, 26, 3.4, 0.45)}
   // A brass chisel driven into a die, splitting it cleanly in two.
   chisel: `${land("chisel", ["#d7e8d2", "#9cc59a"], "#5f9a64", "#3f7a4a")}
 <defs><linearGradient id="art-chisel-steel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#eef1f4"/><stop offset="1" stop-color="#7d858e"/></linearGradient><linearGradient id="art-chisel-brass" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f4d58a"/><stop offset="1" stop-color="#a8741c"/></linearGradient><clipPath id="art-chisel-left"><rect x="0" y="0" width="60" height="84"/></clipPath><clipPath id="art-chisel-right"><rect x="60" y="0" width="60" height="84"/></clipPath></defs>
-${shadow(62, 70, 24, 3.6, 0.36)}
-<g clip-path="url(#art-chisel-left)"><g transform="translate(-3.4 1) rotate(-5 60 52)">${die([60, 52], 15, [6, 4, 2], IVORY)}</g></g>
-<g clip-path="url(#art-chisel-right)"><g transform="translate(3.4 1) rotate(5 60 52)">${die([60, 52], 15, [6, 3, 1], IVORY)}</g></g>
-<path d="M58.6 37l1.4 10 1.4-10z" fill="#2e2618"/>
+${shadow(46, 70, 14, 3, 0.36)}${shadow(78, 70, 14, 3, 0.36)}
+<g clip-path="url(#art-chisel-left)"><g transform="translate(-7 2) rotate(-11 60 60)">${die([60, 52], 15, [6, 4, 2], IVORY)}</g></g>
+<g clip-path="url(#art-chisel-right)"><g transform="translate(7 2) rotate(11 60 60)">${die([60, 52], 15, [6, 3, 1], IVORY)}</g></g>
+
 <path d="M57.4 36l2.6 8 2.6-8-.6-14h-4z" fill="url(#art-chisel-steel)" ${edge("#4b555e")}/>
 <rect x="56.4" y="4" width="7.2" height="17" rx="1.8" fill="url(#art-chisel-brass)" ${edge("#6b4a10")}/><rect x="55.4" y="19" width="9.2" height="3.4" rx="1" fill="#c9952b" ${edge("#6b4a10")}/>
 <path d="M58 6v12" stroke="#fff4cf" stroke-width="1.1" stroke-linecap="round" opacity="0.85"/>
@@ -146,37 +146,37 @@ ${shadow(62, 70, 24, 3.6, 0.36)}
 
   // A lone checker hops from stone to stone towards a safe stack, under a pale dawn.
   quietStep: `${land("quietStep", ["#5f7f99", "#a9bfca"], "#6f927a", "#4c7258")}
-<path d="M20 63Q30 40 44 48" stroke="#fff" stroke-width="1.2" stroke-dasharray="1.6 2.6" stroke-linecap="round" fill="none" opacity="0.9"/>
-<path d="M41.4 45.4l3 2.6-3.9.8" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+<path d="M20 63Q30 40 44 48" stroke="#fff" stroke-width="2" stroke-dasharray="2.4 2.6" stroke-linecap="round" fill="none" opacity="0.9"/>
+<path d="M41.4 45.4l3 2.6-3.9.8" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
 <g><ellipse cx="20" cy="69" rx="11" ry="3.6" fill="#8d958c" ${edge("#4f574e")}/><path d="M11 68q9-3 18 0" stroke="#7fae6a" stroke-width="1.6" fill="none"/></g>
 <g><ellipse cx="50" cy="66" rx="13" ry="4" fill="#8d958c" ${edge("#4f574e")}/><path d="M39 65q11-3.4 22 0" stroke="#7fae6a" stroke-width="1.6" fill="none"/></g>
 <g><ellipse cx="86" cy="63" rx="15" ry="4.4" fill="#8d958c" ${edge("#4f574e")}/><path d="M73 62q13-3.6 26 0" stroke="#7fae6a" stroke-width="1.6" fill="none"/></g>
 ${shadow(55, 63.4, 11, 2, 0.3)}${checker([50, 57], 11, 0, IVORY_CHECKER)}
-${shadow(92, 60.6, 13, 2.2, 0.3)}${checker([86, 55], 11.5, 0, IVORY_CHECKER)}${checker([86, 47], 11.5, 0, IVORY_CHECKER)}${checker([86, 39], 11.5, 0, IVORY_CHECKER)}`,
+${shadow(92, 60.6, 13, 2.2, 0.3)}${checker([86, 56], 9.5, 0, IVORY_CHECKER)}${checker([86, 49.4], 9.5, 0, IVORY_CHECKER)}`,
 
   // Long floorboards; one has sprung up at its end. Three dice landed; the fourth drops
   // Long floorboards; one has sprung up like a lever. Three dice landed on the floor; the
-  // fourth tumbles into the gap the board left.
-  looseBoard: `<defs><radialGradient id="art-looseBoard-lamp" cx="0.2" cy="0.1" r="0.9"><stop offset="0" stop-color="#7a5636"/><stop offset="1" stop-color="#2a1a10"/></radialGradient><linearGradient id="art-looseBoard-floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5a30"/><stop offset="1" stop-color="#5a341a"/></linearGradient><linearGradient id="art-looseBoard-plank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c89058"/><stop offset="1" stop-color="#8a5a30"/></linearGradient></defs>
-<rect width="120" height="84" fill="url(#art-looseBoard-lamp)"/>
-<rect y="34" width="120" height="50" fill="url(#art-looseBoard-floor)"/>
-<path d="M0 34h120" stroke="#1a0f08" stroke-width="1.2"/>
-<g stroke="#2e1a0c" stroke-width="0.9"><path d="M0 46h120M0 60h120M0 74h120"/><path d="M100 34v12M14 74v10"/></g>
-<g stroke="#b07a46" stroke-width="0.5" opacity="0.6" fill="none"><path d="M6 40q30 1.6 60 0M24 53q40 1.6 84 0M4 79q40 1.6 90 0"/></g>
-<rect x="18" y="60.5" width="84" height="13.5" fill="#120a05"/>
-${die([74, 68], 6, [6, 3, 5], IVORY, 34)}
-<path d="M18 74.4l84-24 0 2.4-84 24z" fill="#4a2a12"/>
-<path d="M18 60.5l84-24v14l-84 24z" fill="url(#art-looseBoard-plank)" ${edge("#3e2412")}/>
-<path d="M22 62.6l76-21.6" stroke="#f0c48c" stroke-width="0.8" opacity="0.8"/>
-<g fill="#2e1a0c"><circle cx="24" cy="66.8" r="0.8"/><circle cx="96" cy="46" r="0.8"/></g>
-${shadow(16, 52, 10, 2, 0.4)}${shadow(46, 46, 10, 2, 0.35)}${shadow(110, 62, 8, 1.6, 0.35)}
-${die([14, 40], 10, [6, 4, 5], IVORY, -10)}${die([44, 34], 10, [6, 5, 3], IVORY, 8)}${die([110, 52], 8, [6, 2, 4], IVORY, 14)}
-<g stroke="#f2e6cc" stroke-width="1" stroke-linecap="round" opacity="0.8"><path d="M70 50l2 6"/><path d="M78 50l-1 6"/><path d="M84 55l-3 4"/></g>`,
+  // Long floorboards under a cool lamplit wall; one board has sprung up like a lever. Three
+  // dice landed; the fourth tumbles into the black gap the board left.
+  looseBoard: `<defs><linearGradient id="art-looseBoard-wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26303e"/><stop offset="1" stop-color="#4a5466"/></linearGradient><linearGradient id="art-looseBoard-floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a6638"/><stop offset="1" stop-color="#6a3e1e"/></linearGradient><linearGradient id="art-looseBoard-plank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e0a868"/><stop offset="1" stop-color="#9a6436"/></linearGradient></defs>
+<rect width="120" height="84" fill="url(#art-looseBoard-wall)"/>
+<rect y="36" width="120" height="48" fill="url(#art-looseBoard-floor)"/>
+<path d="M0 36h120" stroke="#1a0f08" stroke-width="1.4"/>
+<g stroke="#3a2210" stroke-width="0.9"><path d="M0 48h120M0 62h120M0 76h120"/><path d="M100 36v12M14 76v8"/></g>
+<g stroke="#c08a52" stroke-width="0.5" opacity="0.6" fill="none"><path d="M6 42q30 1.6 60 0M24 55q40 1.6 84 0M4 80q40 1.6 90 0"/></g>
+<rect x="18" y="62.5" width="84" height="13.5" fill="#000"/>
+${die([76, 70], 6.4, [6, 3, 5], IVORY, 34)}
+<path d="M18 76.4l84-24 0 2.4-84 24z" fill="#4a2a12"/>
+<path d="M18 62.5l84-24v14l-84 24z" fill="url(#art-looseBoard-plank)" ${edge("#3e2412")}/>
+<path d="M22 64.6l76-21.6" stroke="#ffe0b0" stroke-width="0.9" opacity="0.85"/>
+<g fill="#3e2412"><circle cx="24" cy="68.8" r="0.9"/><circle cx="96" cy="48" r="0.9"/></g>
+${shadow(18, 52, 12, 2.4, 0.45)}${shadow(48, 47, 12, 2.4, 0.4)}
+${die([16, 38], 12.5, [6, 4, 5], IVORY, -10)}${die([46, 32], 12.5, [6, 5, 3], IVORY, 8)}
+<g stroke="#f2e6cc" stroke-width="1.1" stroke-linecap="round" opacity="0.85"><path d="M72 52l2 6"/><path d="M80 52l-1 6"/><path d="M86 57l-3 4"/></g>`,
 
   // A brass magnifying glass over four fanned cards, a gold die swelling in the lens.
   keenEye: `<defs><linearGradient id="art-keenEye-paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3e4bc"/><stop offset="1" stop-color="#cfb27a"/></linearGradient><radialGradient id="art-keenEye-glass" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stop-color="#f6fbff" stop-opacity="0.75"/><stop offset="1" stop-color="#a9c6d8" stop-opacity="0.35"/></radialGradient><clipPath id="art-keenEye-lens"><circle cx="66" cy="34" r="15"/></clipPath><linearGradient id="art-keenEye-brass" x1="0" y1="0" x2="1" y2="1">${goldStops}</linearGradient></defs>
-<rect width="120" height="84" fill="url(#art-keenEye-paper)"/>
-<g stroke="#a8875a" stroke-width="0.5" opacity="0.5"><path d="M8 12h40M8 18h34M8 24h38"/></g>
+<rect width="120" height="84" fill="#3a2414"/><path d="M0 44Q60 38 120 44V84H0z" fill="url(#art-keenEye-paper)"/><path d="M0 44Q60 38 120 44" stroke="#2a1a0e" stroke-width="1" fill="none"/>
 ${[-24, -8, 8, 24]
   .map(
     (turn, i) =>
@@ -185,44 +185,49 @@ ${[-24, -8, 8, 24]
   .join("")}
 ${shadow(74, 44, 15, 4, 0.22)}
 <path d="M76 45l16 18" stroke="#3e2412" stroke-width="7" stroke-linecap="round"/><path d="M76 45l16 18" stroke="#8a5a2c" stroke-width="5" stroke-linecap="round"/><path d="M78 46l12 14" stroke="#c08850" stroke-width="1.2" stroke-linecap="round"/>
-<g clip-path="url(#art-keenEye-lens)"><rect x="50" y="18" width="32" height="32" fill="#e9dfc8"/><rect x="56" y="20" width="20" height="28" rx="2" fill="#f6ecd4" ${edge("#8a7850")}/><rect x="58.4" y="22.4" width="15.2" height="11" fill="#7fa8c9" ${edge("#4b6a85")}/><path d="M58.4 30q4-3 7.6-1t7.6-1.4V33.4H58.4z" fill="#4f8a5c"/><circle cx="70" cy="26" r="1.8" fill="#fff4cf"/><path d="M58.4 36h15.2M58.4 39h12M58.4 42h14" stroke="#8a7850" stroke-width="0.8"/><text x="66" y="47" font-size="4.4" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#7a4a0c">4</text></g>
+<g clip-path="url(#art-keenEye-lens)"><rect x="50" y="18" width="32" height="32" fill="#e9dfc8"/><rect x="56" y="20" width="20" height="28" rx="2" fill="#f6ecd4" ${edge("#8a7850")}/><rect x="58.4" y="22.4" width="15.2" height="11" fill="#7fa8c9" ${edge("#4b6a85")}/><path d="M58.4 30q4-3 7.6-1t7.6-1.4V33.4H58.4z" fill="#4f8a5c"/><circle cx="70" cy="26" r="1.8" fill="#fff4cf"/><rect x="58.4" y="34.4" width="15.2" height="3" fill="#2a2017"/><path d="M60 39.6h12M60 42h10M60 44.4h11" stroke="#8a7850" stroke-width="0.8"/></g>
 <circle cx="66" cy="34" r="15" fill="url(#art-keenEye-glass)"/>
 <circle cx="66" cy="34" r="15.5" fill="none" stroke="#5a3408" stroke-width="4.4"/><circle cx="66" cy="34" r="15.5" fill="none" stroke="url(#art-keenEye-brass)" stroke-width="3"/>
 <path d="M56 26a13 13 0 0 1 9-5" stroke="#fff" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.9"/>`,
 
-  // A gold coin spinning in the air above a tavern table.
+  // A big gold coin spinning above a tavern table, a die waiting beneath it.
   coinToss: `<defs><linearGradient id="art-coinToss-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbe3a6"/><stop offset="1" stop-color="#e0a050"/></linearGradient><linearGradient id="art-coinToss-gold" x1="0" y1="0" x2="1" y2="1">${goldStops}</linearGradient><linearGradient id="art-coinToss-table" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a6436"/><stop offset="1" stop-color="#5e3a1c"/></linearGradient></defs>
 <rect width="120" height="84" fill="url(#art-coinToss-sky)"/>
 <path d="M0 60h120v24H0z" fill="url(#art-coinToss-table)"/><path d="M0 60h120" stroke="#3e2412" stroke-width="1.2"/><path d="M0 61.4h120" stroke="#d29a5c" stroke-width="0.8" opacity="0.7"/>
 <path d="M10 70q30-2 58 1M40 78q30-2 70 0" stroke="#4a2c14" stroke-width="0.6" fill="none" opacity="0.6"/>
-${shadow(64, 66, 9, 1.8, 0.3)}
-<g stroke="#fff6d6" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.8"><path d="M44 58Q38 40 48 26"/><path d="M80 58Q88 42 76 26"/></g>
-<g transform="rotate(-24 62 30)"><ellipse cx="62" cy="31.6" rx="14" ry="6.4" fill="#8a5a12" ${edge("#4a2c06")}/><ellipse cx="62" cy="30" rx="14" ry="6.4" fill="url(#art-coinToss-gold)" ${edge("#6b4a10")}/><ellipse cx="62" cy="30" rx="10" ry="4.4" fill="none" stroke="#a8741c" stroke-width="0.9"/><path d="M56 28.4l3 3.2 5-5 3 3" stroke="#7a4a0c" stroke-width="1" fill="none" stroke-linejoin="round"/><path d="M51 27.6q5-3.2 12-3.4" stroke="#fffbe6" stroke-width="1.2" stroke-linecap="round" fill="none"/></g>
-<g fill="#fffbe6"><path d="M90 14l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M34 20l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></g>`,
+<g stroke="#fff6d6" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.8"><path d="M30 52Q22 34 34 18"/><path d="M90 52Q98 34 86 18"/></g>
+${shadow(62, 70, 12, 2.2, 0.35)}${die([60, 62], 7, [3, 1, 2], IVORY, -8)}
+<g transform="rotate(-18 60 28)"><ellipse cx="60" cy="31" rx="21" ry="12" fill="#8a5a12" ${edge("#4a2c06")}/><ellipse cx="60" cy="28" rx="21" ry="12" fill="url(#art-coinToss-gold)" ${edge("#6b4a10")}/><ellipse cx="60" cy="28" rx="16" ry="8.6" fill="none" stroke="#a8741c" stroke-width="1"/>
+<path d="M51 31.4h18l1.6-8-5 3.6-3.6-6-3.6 6-5-3.6z" fill="#c9952b" ${edge("#7a4a0c")}/><g fill="#fff2c4"><circle cx="51.4" cy="23.6" r="1"/><circle cx="60" cy="20.4" r="1"/><circle cx="68.6" cy="23.6" r="1"/></g>
+<path d="M43 24q8-6.6 20-7" stroke="#fffbe6" stroke-width="1.4" stroke-linecap="round" fill="none"/></g>
+<g fill="#fffbe6"><path d="M98 12l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M20 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></g>`,
 
   // A checker has slid back along its own track in the sand, away from home; its old print
   // lies ahead of it, and the arrow along the ground points the way it was made to go.
   backstep: `${land("backstep", ["#2c3566", "#9a8cb6"], "#cdb07a", "#b8955a")}
-<g fill="#9a7a48" opacity="0.75"><ellipse cx="96" cy="70" rx="12" ry="3.4"/></g>
-<ellipse cx="96" cy="70" rx="12" ry="3.4" fill="none" stroke="#7a5a30" stroke-width="0.9" stroke-dasharray="2 1.6"/>
+<ellipse cx="96" cy="70" rx="12" ry="3.6" fill="#9a7a48" opacity="0.6"/>
+<ellipse cx="96" cy="70" rx="12" ry="3.6" fill="none" stroke="#fff3d6" stroke-width="1" stroke-dasharray="2.4 1.8" opacity="0.9"/>
 <path d="M84 71.4H40" stroke="#9a7a48" stroke-width="5.4" stroke-linecap="round" opacity="0.55"/>
 <path d="M84 71.4H40" stroke="#7a5a30" stroke-width="0.7" stroke-dasharray="1.4 2.2"/>
 ${footprint([104, 60], 180, 0.5)}${footprint([112, 62], 180, 0.4)}
 ${shadow(34, 70, 15, 2.8, 0.4)}${checker([30, 62], 13, -6, IVORY_CHECKER)}
-<path d="M90 56H52" stroke="#3a2a14" stroke-width="5.2" stroke-linecap="round" opacity="0.35" transform="translate(0.8 1.2)"/>
-<path d="M90 56H54" stroke="#fff3d6" stroke-width="3.4" stroke-linecap="round"/>
-<path d="M58 49.4L50 56l8 6.6" stroke="#fff3d6" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M96 60C90 44 66 40 54 50l-1.4-4.6L44 56l11.6 2.6-2-4.6C64 46 84 48 90 62z" fill="#000" opacity="0.28" transform="translate(1 1.4)"/>
+<path d="M96 60C90 44 66 40 54 50l-1.4-4.6L44 56l11.6 2.6-2-4.6C64 46 84 48 90 62z" fill="#fff3d6" ${edge("#8a6a3c")}/>
+<path d="M90 55C84 47 70 45 60 49" stroke="#fff" stroke-width="0.9" stroke-linecap="round" fill="none" opacity="0.9"/>
 ${star(16, 10, 0.7)}${star(58, 8, 0.6)}${star(98, 14, 0.8)}
 <path d="M106 18a7 7 0 1 0 6 11 5.6 5.6 0 1 1-6-11z" fill="#efe6c8" ${edge("#9a8e6a")}/>`,
 
-  // Two dice somersault over the felt, the faces they will show printed faintly beneath.
-  flipBones: `<defs><linearGradient id="art-flipBones-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a3a52"/><stop offset="1" stop-color="#c49a64"/></linearGradient><linearGradient id="art-flipBones-felt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8462"/><stop offset="1" stop-color="#1f4a35"/></linearGradient></defs>
+  // A die turned over in the air: the 1 it showed, faint below, has become a 6.
+  flipBones: `<defs><linearGradient id="art-flipBones-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4a62"/><stop offset="1" stop-color="#d0a870"/></linearGradient><linearGradient id="art-flipBones-felt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8462"/><stop offset="1" stop-color="#1f4a35"/></linearGradient></defs>
 <rect width="120" height="84" fill="url(#art-flipBones-sky)"/>
-<path d="M0 56Q60 52 120 56V84H0z" fill="url(#art-flipBones-felt)"/><path d="M0 56Q60 52 120 56" stroke="${INK}" stroke-width="1" fill="none" opacity="0.6"/>
-<g opacity="0.28">${die([38, 66], 6, [1, 2, 3], IVORY)}${die([84, 66], 6, [2, 1, 4], IVORY)}</g>
-${shadow(40, 72, 11, 2, 0.32)}${shadow(84, 72, 11, 2, 0.32)}
-<g stroke="#fff3d6" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.85"><path d="M22 34a17 17 0 0 1 30-14"/><path d="M50 15.6l2.2 4.6-5 .6"/><path d="M98 30a17 17 0 0 0-28-12"/><path d="M71.6 13.6l-1.8 4.6 5 .4"/></g>
-${die([38, 36], 12, [6, 5, 4], IVORY, -32)}${die([82, 34], 12, [5, 6, 3], IVORY, 26)}`,
+<path d="M0 58Q60 54 120 58V84H0z" fill="url(#art-flipBones-felt)"/><path d="M0 58Q60 54 120 58" stroke="${INK}" stroke-width="1" fill="none" opacity="0.6"/>
+${shadow(30, 70, 11, 2.2, 0.3)}
+<g opacity="0.55">${die([28, 56], 9, [1, 2, 4], IVORY)}</g>
+${shadow(80, 70, 15, 2.6, 0.36)}
+<path d="M30 40C34 18 58 10 70 22" stroke="#3a2a14" stroke-width="4.6" stroke-linecap="round" fill="none" opacity="0.3" transform="translate(0.8 1.2)"/>
+<path d="M30 40C34 18 58 10 70 22" stroke="#fff3d6" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+<path d="M63.6 21.4l7 1.2 0.6-7" stroke="#fff3d6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+${die([80, 42], 16, [6, 5, 3], IVORY, 18)}`,
 
   // A gilded hand mirror planted on a ridge throws a violet hex back into the storm.
   mirror: `${land("mirror", ["#241d40", "#7a5a8a"], "#b8792e", "#8a5420")}
@@ -231,8 +236,8 @@ ${die([38, 36], 12, [6, 5, 4], IVORY, -32)}${die([82, 34], 12, [5, 6, 3], IVORY,
 <path d="M0 8l12 6-4 4 14 6-2 3 20 4" stroke="#e2ccff" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
 <path d="M44 33l-12 9 2 3-14 6 3 3-22 6" stroke="#b07cff" stroke-width="4.4" stroke-linejoin="round" fill="none" opacity="0.35"/>
 <path d="M44 33l-12 9 2 3-14 6 3 3-22 6" stroke="#e2ccff" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
-${shadow(66, 73, 16, 2.8, 0.4)}
-<path d="M58 52v20" stroke="#5a3408" stroke-width="5.4" stroke-linecap="round"/><path d="M58 52v20" stroke="url(#art-mirror-gold)" stroke-width="3.6" stroke-linecap="round"/>
+${shadow(66, 69, 16, 2.8, 0.4)}
+<path d="M58 52v16" stroke="#5a3408" stroke-width="5.4" stroke-linecap="round"/><path d="M58 52v16" stroke="url(#art-mirror-gold)" stroke-width="3.6" stroke-linecap="round"/>
 <circle cx="58" cy="54" r="3" fill="#f0c95a" ${edge("#5a3408")}/>
 <ellipse cx="58" cy="32" rx="15.5" ry="20" fill="url(#art-mirror-gold)" ${edge("#5a3408")}/>
 <ellipse cx="58" cy="32" rx="11.6" ry="16" fill="url(#art-mirror-glass)" ${edge("#5a3408")}/>
@@ -244,7 +249,7 @@ ${shadow(66, 73, 16, 2.8, 0.4)}
   counterpunch: `<defs><linearGradient id="art-counterpunch-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40283a"/><stop offset="1" stop-color="#a0603a"/></linearGradient><linearGradient id="art-counterpunch-felt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8468"/><stop offset="1" stop-color="#27493a"/></linearGradient><linearGradient id="art-counterpunch-steel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f4f5"/><stop offset="1" stop-color="#6b7680"/></linearGradient></defs>
 <rect width="120" height="84" fill="url(#art-counterpunch-sky)"/>
 <path d="M0 54Q60 50 120 54V84H0z" fill="url(#art-counterpunch-felt)"/><path d="M0 54Q60 50 120 54" stroke="${INK}" stroke-width="1" fill="none" opacity="0.6"/>
-<ellipse cx="60" cy="70" rx="11" ry="3" fill="#0b1711"/>
+<path d="M47 68h26l-2 5H49z" fill="#0b1711"/><path d="M73 68l9-10 2 2-9 11z" fill="#8a5a2c" stroke="#3e2412" stroke-width="0.9" stroke-linejoin="round"/>
 <path d="M60 70l-7-3 14-3-14-3 14-3-14-3 14-3-14-3 7-2" stroke="#2a3138" stroke-width="3" stroke-linejoin="round" fill="none"/>
 <path d="M60 70l-7-3 14-3-14-3 14-3-14-3 14-3-14-3 7-2" stroke="url(#art-counterpunch-steel)" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
 <path d="M50 44h20v-3H50z" fill="#8b929b" ${edge("#2a3138")}/>
@@ -269,9 +274,9 @@ ${die([84, 54], 8, [2, 3, 1], BONE, -8)}${die([106, 56], 8, [1, 4, 2], BONE, 6)}
   // A brass lantern draws violet wisps in at its vents and spills gold dice from its door.
   curseEater: `${land("curseEater", ["#241838", "#5b3d70"], "#3b2c48", "#261c32")}
 <defs>${glow("art-curseEater-light", "#ffcf6a")}<linearGradient id="art-curseEater-brass" x1="0" y1="0" x2="1" y2="0">${goldStops}</linearGradient></defs>
-${ribbon("M0 16C16 10 30 22 44 16S54 10 56 14C48 14 46 20 40 22 28 26 14 14 0 16z", 0.7, "#b98cff")}
-${ribbon("M120 22C104 14 90 26 78 18S68 12 64 15C72 16 76 22 82 24 94 28 106 18 120 22z", 0.7, "#b98cff")}
-${ribbon("M8 34C20 28 34 34 46 26 38 32 30 38 8 34z", 0.45, "#d8bfff")}
+${ribbon("M0 34C12 24 20 34 30 26S46 10 56 16C46 14 40 22 33 27 22 36 12 27 0 34z", 0.7, "#b98cff")}${ribbon("M6 14C14 10 20 16 26 12 22 16 14 16 6 14z", 0.5, "#d8bfff")}
+${ribbon("M120 34C108 24 100 34 90 26S74 10 64 16C74 14 80 22 87 27 98 36 108 27 120 34z", 0.7, "#b98cff")}${ribbon("M114 14C106 10 100 16 94 12 98 16 106 16 114 14z", 0.5, "#d8bfff")}
+
 <circle cx="60" cy="40" r="26" fill="url(#art-curseEater-light)"/>
 ${shadow(66, 70, 20, 3, 0.45)}
 <path d="M60 4a5 5 0 0 1 0 10" stroke="#5a3408" stroke-width="2.6" fill="none"/><path d="M60 4a5 5 0 0 1 0 10" stroke="url(#art-curseEater-brass)" stroke-width="1.4" fill="none"/>
@@ -282,8 +287,8 @@ ${shadow(66, 70, 20, 3, 0.45)}
 <path d="M60 24v30M50 39h20" stroke="#8a5a12" stroke-width="1.6"/>
 <rect x="48" y="54" width="24" height="5" rx="1" fill="url(#art-curseEater-brass)" ${edge("#5a3408")}/>
 <path d="M51 26v26" stroke="#fffbe6" stroke-width="1" stroke-linecap="round" opacity="0.8"/>
-${shadow(34, 71, 10, 1.8, 0.45)}${shadow(16, 69, 8, 1.6, 0.45)}
-${die([34, 62], 8.4, [5, 3, 1], GOLD, -14)}${die([16, 62], 7, [3, 2, 6], GOLD, 20)}${die([42, 46], 6.4, [2, 4, 1], GOLD, -30)}`,
+${shadow(32, 72, 11, 2, 0.45)}${shadow(90, 72, 11, 2, 0.45)}
+<path d="M72 58q8 2 12 0" stroke="#ffd27a" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/><path d="M48 58q-8 2-12 0" stroke="#ffd27a" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/>${die([30, 62], 9.6, [5, 3, 1], GOLD, -14)}${die([90, 62], 9.6, [3, 2, 6], GOLD, 16)}`,
 
   // Gold manacles chained to a dulled die on a windswept bluff; one link is cracking.
   shackles: `<defs><linearGradient id="art-shackles-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a3050"/><stop offset="0.55" stop-color="#c8603a"/><stop offset="1" stop-color="#f0a040"/></linearGradient><linearGradient id="art-shackles-gold" x1="0" y1="0" x2="1" y2="1">${goldStops}</linearGradient></defs>
@@ -292,7 +297,7 @@ ${ribbon("M0 20C30 14 50 24 80 18S110 12 120 14C100 16 88 22 76 23 50 28 28 18 0
 <path d="M0 60Q34 54 70 58T120 56V84H0z" fill="#9a5a22"/><path d="M0 60Q34 54 70 58T120 56" stroke="${INK}" stroke-width="1" fill="none" opacity="0.5"/>
 ${shadow(64, 72, 26, 3.8, 0.45)}
 ${die([60, 52], 17, [6, 5, 4], DULL)}
-${chain([28, 44], [40, 58], [55, 36], 6, 3)}${chain([65, 36], [80, 58], [92, 42], 6)}
+${chain([26, 64], [38, 66], [55, 36], 7, 3)}${chain([65, 36], [84, 62], [96, 64], 7)}
 <circle cx="60" cy="35.4" r="3.2" fill="none" stroke="#5a3408" stroke-width="2.8"/><circle cx="60" cy="35.4" r="3.2" fill="none" stroke="url(#art-shackles-gold)" stroke-width="1.5"/>
-${manacle([20, 40], -20)}${manacle([100, 38], 20)}`,
+${shadow(20, 69, 12, 2.4, 0.4)}${shadow(102, 69, 12, 2.4, 0.4)}${manacle([18, 64], -6)}${manacle([102, 64], 6)}`,
 } satisfies Partial<Record<CardId, string>>;
