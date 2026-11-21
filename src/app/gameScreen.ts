@@ -8,7 +8,7 @@ import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
 import type { BoardView } from "../render/board.ts";
 import { CheckersView } from "../render/checkers.ts";
-import { DiceView } from "../render/dice.ts";
+import { type DieSlot, DiceView } from "../render/dice.ts";
 import { shake, tossAll } from "../render/effects.ts";
 import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
@@ -44,6 +44,24 @@ export interface GameScreenOptions {
   onLeave: () => void;
 }
 
+/**
+ * Where each thrown die should fly to: its face in the HUD. Doubles show four faces for two
+ * dice, so each die then lands between the two faces it stands for.
+ */
+function slotsFor(faces: DOMRect[], count: number): DieSlot[] {
+  const per = faces.length === count * 2 ? 2 : 1;
+  return Array.from({ length: count }, (_, i) => faces.slice(i * per, i * per + per)).flatMap(
+    (group) => {
+      const first = group[0];
+      const last = group.at(-1);
+      if (!first || !last) return [];
+      return [
+        { x: (first.left + last.right) / 2, y: (first.top + first.bottom) / 2, size: first.height },
+      ];
+    },
+  );
+}
+
 const sideOf = (player: Player) => (player === "white" ? 1 : -1);
 /** Doubles are four moves but two dice on the table. */
 const physical = (values: number[]) =>
@@ -65,7 +83,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let justWon = false;
   let offline = false;
 
-  const dice = new DiceView();
+  const dice = new DiceView(stage.lens, (count) => slotsFor(hud.diceFaces(), count));
   stage.world.add(dice.group);
   /**
    * Whether dice are in the air. Set by the throw itself and cleared when its animation
@@ -84,10 +102,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       refresh();
     });
   };
-  /** Takes the dice away, or sets them down at rest. Either way nothing is in the air. */
-  const settleDice = (values: number[] | null, player: Player) => {
+  /** Takes the dice away, or notes them as already thrown. Either way nothing is in the air. */
+  const settleDice = (values: number[] | null) => {
     rolling = false;
-    if (values && values.length > 0) dice.show(physical(values), sideOf(player));
+    if (values && values.length > 0) dice.show(physical(values));
     else dice.clear();
   };
 
@@ -168,7 +186,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         throwDice(event.dice, event.player, next.board);
         if (event.doubled && text) text += ": doubles!";
       } else if (event.type === "turnEnded") {
-        settleDice(null, event.player);
+        settleDice(null);
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
       } else if (event.type === "gameWon") {
@@ -184,7 +202,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         // A rematch: everything goes back to the starting position.
         finale?.kill();
         pieces.reset(next.board);
-        settleDice(null, event.first);
+        settleDice(null);
         text = `New game: ${name(event.first)} starts`;
       }
     }
@@ -213,12 +231,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     // Dice belong to the move phase. An update without events is a snapshot: a reload, a
     // reconnect or a resync after something was missed. The dice on the board may then be
     // missing or out of date, so they are set down to match what the snapshot says is left.
-    const { phase, dice: remaining, current } = update.view;
+    const { phase, dice: remaining } = update.view;
     const snapshot = update.events.length === 0;
-    if (phase !== "move") settleDice(null, current);
+    if (phase !== "move") settleDice(null);
     else if (snapshot && (rolling || !sameDice(dice.values, physical(remaining)))) {
       // Also when a throw is still in the air: a snapshot carries no throw to wait for.
-      settleDice(remaining, current);
+      settleDice(remaining);
     }
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
@@ -334,7 +352,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     hud.setOffline(false);
     board.setHints();
     if (checkers) stage.world.remove(checkers.group);
-    settleDice(null, "white");
+    settleDice(null);
     stage.world.remove(dice.group);
     stage.setSeat("white");
   };

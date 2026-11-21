@@ -101,6 +101,23 @@ describe("simulateThrow", () => {
     }
   });
 
+  it("tumbles dice over their edges until they fall flat by themselves", () => {
+    // A die that rolled like a ball would stop at any angle and need a big final turn to lie
+    // flat. A cube topples onto a face, so the last moments barely turn it.
+    const finalTurns: number[] = [];
+    for (let seed = 0; seed < 100; seed++) {
+      const { dice } = simulateThrow([2, 5], seed % 2 === 0 ? 1 : -1, board, createRng(seed).next);
+      for (const { frames } of dice) {
+        const last = frames.length - 7;
+        const before = Math.max(0, last - Math.round(0.25 / SIM_DT) * 7);
+        finalTurns.push(pose(frames, before).q.angleTo(pose(frames, last).q));
+      }
+    }
+    finalTurns.sort((a, b) => a - b);
+    const typical = finalTurns[Math.floor(finalTurns.length * 0.9)]!;
+    expect(typical).toBeLessThan((5 * Math.PI) / 180);
+  });
+
   it("is the same throw for the same random sequence", () => {
     const a = simulateThrow([4, 4], -1, board, createRng(5).next);
     const b = simulateThrow([4, 4], -1, board, createRng(5).next);
