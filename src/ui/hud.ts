@@ -6,6 +6,7 @@ import type { LobbyView } from "../net/protocol.ts";
 import { createCard, fanCard } from "./card.ts";
 import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
+import { createGameOver } from "./gameOver.ts";
 
 export interface HudActions {
   onRoll: () => void;
@@ -129,11 +130,10 @@ export function createHud(): Hud {
   const offer = el("offer");
   const offerCards = el("offer-cards");
   const notice = el("notice");
-  const gameOver = el("gameover");
-  const result = el("result");
-  const score = el("score");
-  const rematch = el("rematch", HTMLButtonElement);
-  const rematchStatus = el("rematch-status");
+  const gameOver = createGameOver({
+    onRematch: () => hud.actions?.onRematch(),
+    onLeave: () => hud.actions?.onLeave(),
+  });
   /** The hand card a touch has raised to be read, and the hand it belongs to. */
   let raised: { index: number; hand: string } | null = null;
   /** What kind of pointer last pressed a hand card: "touch", "pen", "mouse" or nothing. */
@@ -242,19 +242,8 @@ export function createHud(): Hud {
       );
       for (const card of hand.querySelectorAll<HTMLElement>(".card-raised")) keepOnScreen(card);
 
-      const over = view.phase === "over";
-      gameOver.hidden = !over;
-      if (over) {
-        result.textContent = turnText(model, name);
-        score.textContent = `${name("white")} ${view.wins.white} \u2013 ${view.wins.black} ${name("black")}`;
-        const asked = view.rematch[view.you];
-        rematch.textContent = model.local ? "Play again" : "Rematch";
-        rematch.disabled = asked;
-        let status = "";
-        if (asked) status = `Waiting for ${name(other)}\u2026`;
-        else if (view.rematch[other]) status = `${name(other)} wants a rematch`;
-        rematchStatus.textContent = status;
-      }
+      if (view.phase === "over") gameOver.render(model);
+      else gameOver.hide();
 
       const picking = myTurn && view.phase === "pick" && view.offer.length > 0;
       offer.hidden = !picking;
@@ -284,7 +273,7 @@ export function createHud(): Hud {
     hide() {
       root.hidden = true;
       offer.hidden = true;
-      gameOver.hidden = true;
+      gameOver.hide();
       raised = null;
       notice.hidden = true;
       offlineBanner.hidden = true;
@@ -293,8 +282,6 @@ export function createHud(): Hud {
   };
   roll.addEventListener("click", () => hud.actions?.onRoll());
   end.addEventListener("click", () => hud.actions?.onEnd());
-  rematch.addEventListener("click", () => hud.actions?.onRematch());
-  el("leave").addEventListener("click", () => hud.actions?.onLeave());
   // A tap anywhere else puts a raised card back.
   document.addEventListener("pointerdown", (event) => {
     if (raised && !(event.target instanceof Element && event.target.closest("#hand .card")))

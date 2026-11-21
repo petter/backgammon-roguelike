@@ -1104,53 +1104,6 @@ input {
   margin: 8px 0 0;
 }
 
-/* The end of a game, said over the middle of the board, which stays visible behind it. */
-#gameover {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  z-index: 15;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: min(320px, calc(100vw - 32px));
-  padding: 22px 24px;
-  border: 1px solid #c9a56b;
-  border-radius: 14px;
-  background: #1c1612f2;
-  box-shadow: 0 14px 40px #000c;
-  text-align: center;
-  translate: -50% -50%;
-}
-
-#gameover[hidden] {
-  display: none;
-}
-
-#gameover h2,
-#gameover p {
-  margin: 0;
-}
-
-#gameover h2 {
-  font-size: 26px;
-}
-
-#score {
-  font-variant-numeric: tabular-nums;
-}
-
-#rematch {
-  padding: 10px 22px;
-  border-color: #ffd24a;
-  font-weight: 600;
-}
-
-#rematch-status {
-  min-height: 1.4em;
-}
-
 #lobby-error {
   min-height: 1.4em;
   margin: 12px 0 0;
