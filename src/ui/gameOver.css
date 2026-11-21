@@ -383,17 +383,19 @@
   background: linear-gradient(180deg, #4a1717, #1a0a0a);
 }
 
-#rematch:hover:not(:disabled) {
-  background: linear-gradient(180deg, #74502a, #2e1b0c);
-  box-shadow:
-    inset 0 0 0 3px #140c05,
-    inset 0 0 0 4px var(--metal),
-    0 0 40px color-mix(in srgb, var(--glow) 60%, transparent);
-  transform: translateY(-1px);
-}
+@media (hover: hover) {
+  #rematch:hover:not(:disabled) {
+    background: linear-gradient(180deg, #74502a, #2e1b0c);
+    box-shadow:
+      inset 0 0 0 3px #140c05,
+      inset 0 0 0 4px var(--metal),
+      0 0 40px color-mix(in srgb, var(--glow) 60%, transparent);
+    transform: translateY(-1px);
+  }
 
-.defeat #rematch:hover:not(:disabled) {
-  background: linear-gradient(180deg, #642020, #240d0d);
+  .defeat #rematch:hover:not(:disabled) {
+    background: linear-gradient(180deg, #642020, #240d0d);
+  }
 }
 
 #rematch:focus-visible {
@@ -503,7 +505,12 @@
   }
 
   .go-crest {
-    width: clamp(64px, 26vh, 150px);
+    width: clamp(64px, 24vh, 150px);
+  }
+
+  /* Room for the sagging last letter of DEFEAT above the ribbon. */
+  .defeat .go-ribbon {
+    margin-top: 6px;
   }
 
   #rematch {

@@ -117,8 +117,12 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       const fade = 1 - p.age / p.life;
-      // Ambient particles fade in and out over a couple of seconds, so none pops.
-      const alpha = p.streak ? fade : Math.min(1, p.age * 2) * Math.min(1, (p.life - p.age) / 2);
+      // Ambient particles fade in and out over a couple of seconds, so none pops. A burst's
+      // dust (it has drag) is there at once and just fades.
+      const burst = p.drag > 0;
+      let alpha = Math.min(1, p.age * 2) * Math.min(1, (p.life - p.age) / 2);
+      if (p.streak) alpha = fade;
+      else if (burst) alpha = fade * 1.75;
       if (p.streak) {
         context.strokeStyle = `hsla(${p.hue}, 100%, ${60 + 30 * fade}%, ${alpha})`;
         context.lineWidth = p.size;
@@ -134,8 +138,12 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
           context.fillStyle = `hsla(220, 8%, 70%, ${alpha * 0.4})`;
           context.ellipse(p.x, p.y, p.size * 1.3, p.size * 0.45, p.sway, 0, Math.PI * 2);
         } else {
-          context.fillStyle = `hsla(${p.hue}, 100%, 62%, ${alpha * 0.85})`;
-          context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          // Victory's embers glow; the loser's few red ones are dim and small.
+          const victory = outcome === "victory";
+          context.fillStyle = victory
+            ? `hsla(${p.hue}, 100%, 62%, ${alpha * 0.85})`
+            : `hsla(${p.hue}, 90%, 45%, ${alpha * 0.5})`;
+          context.arc(p.x, p.y, victory ? p.size : Math.min(p.size, 1.6), 0, Math.PI * 2);
         }
         context.fill();
       }
@@ -201,7 +209,7 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
           size: victory ? 1.4 + Math.random() * 2.2 : 1.5 + Math.random() * 2.5,
           hue: victory ? 30 + Math.random() * 25 : -1,
           streak: victory,
-          sway: 0,
+          sway: Math.random() * Math.PI * 2,
           drag: victory ? 1.6 : 3,
         });
       }

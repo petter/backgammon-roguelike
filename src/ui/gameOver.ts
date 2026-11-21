@@ -250,13 +250,14 @@ export function createGameOver(actions: {
         .fromTo(
           [glint, crack],
           { strokeDashoffset: 1 },
-          { strokeDashoffset: 0, duration: 0.3, ease: "power1.in" },
+          // Unrounded: the dash runs from 1 to 0, which GSAP would snap to whole pixels.
+          { strokeDashoffset: 0, duration: 0.3, ease: "power1.in", autoRound: false },
           impact + 0.15,
         )
         .fromTo(
           splinters,
           { strokeDashoffset: 1 },
-          { strokeDashoffset: 0, duration: 0.2, ease: "power1.in" },
+          { strokeDashoffset: 0, duration: 0.2, ease: "power1.in", autoRound: false },
           impact + 0.4,
         )
         .fromTo(rays, { opacity: 0 }, { opacity: 1, duration: 1.4 }, impact)
