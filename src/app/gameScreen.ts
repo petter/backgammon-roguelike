@@ -201,6 +201,29 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
           shake(stage.world, 1.4);
           tossAll(pieces.all());
         }
+      } else if (event.type === "hexCast") {
+        text = `${name(event.player)} is hexed: ${CARDS[event.card].name}`;
+      } else if (event.type === "hexWarded") {
+        const ward = `${name(event.player)}'s ${CARDS[event.ward].name}`;
+        const hex = CARDS[event.card].name;
+        text = event.ward === "mirror" ? `${ward} throws ${hex} back` : `${ward} blocks ${hex}`;
+      } else if (event.type === "hexStruck") {
+        text =
+          event.card === "backstep"
+            ? `Backstep: ${name(event.player)}'s next move goes backwards`
+            : `${CARDS[event.card].name} bites ${name(event.player)}'s roll`;
+      } else if (event.type === "hexLifted") {
+        const freed = event.cards.map((card) => CARDS[card].name).join(" and ");
+        text = `${name(event.player)} is free of ${freed}`;
+      } else if (event.type === "trapSet") {
+        text = event.card
+          ? `${name(event.player)} set ${CARDS[event.card].name}, face down`
+          : `${name(event.player)} set a trap`;
+      } else if (event.type === "trapSprung") {
+        text = `${name(event.player)}'s ${CARDS[event.card].name} springs!`;
+        shake(stage.world, 0.5, 0.3);
+      } else if (event.type === "coinFlipped") {
+        text += event.heads ? ": heads!" : ": tails";
       } else if (event.type === "diceRolled") {
         throwDice(event.dice, event.player, next.board);
       } else if (event.type === "diceChanged") {
