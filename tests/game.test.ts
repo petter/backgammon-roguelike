@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyMove, emptyBoard, initialBoard, place } from "../src/core/board.ts";
+import { applyMove, emptyBoard, initialBoard, type Move, place } from "../src/core/board.ts";
 import {
   CARD_IDS,
   CARDS,
@@ -12,6 +12,7 @@ import {
   applyCommand,
   canPlayCard,
   cardBlock,
+  diceToPlay,
   GameError,
   type GameState,
   HAND_LIMIT,
@@ -330,6 +331,34 @@ describe("using as many dice as possible", () => {
     );
   });
 
+  it("allows any die to start when every start uses the same number of dice", () => {
+    // Two checkers left and three dice: any die bears off the first, another the second.
+    const board = emptyBoard();
+    place(board, "white", 0, 2);
+    place(board, "black", 23, 15);
+    board.off.white = 13;
+    const state = game({ board, dice: [1, 2, 3] });
+    expect(
+      legalMoves(state)
+        .map((m) => m.die)
+        .sort(),
+    ).toEqual([1, 2, 3]);
+    expect(diceToPlay(state)).toBe(2);
+  });
+
+  it("counts the dice to play, so a refusal can be explained correctly", () => {
+    // The 1 must go first (3 to 2), which keeps the 2 playable: two dice, not "the higher".
+    const board = emptyBoard();
+    place(board, "white", 0, 1);
+    place(board, "white", 3, 1);
+    place(board, "black", 1, 2);
+    place(board, "black", 23, 13);
+    board.off.white = 13;
+    const state = game({ board, dice: [1, 2] });
+    expect(pairs(legalMoves(state))).toEqual(["3>2 (1)"]);
+    expect(diceToPlay(state)).toBe(2);
+  });
+
   it("requires the higher die when either can be played but not both", () => {
     const board = emptyBoard();
     place(board, "white", 9, 1);
@@ -435,7 +464,17 @@ describe("using as many dice as possible", () => {
         return best;
       };
       const promised = most(state);
-      expect(legalMoves(state).length > 0, `seed ${seed}`).toBe(possibleMoves(state).length > 0);
+      expect(diceToPlay(state), `seed ${seed}`).toBe(promised);
+      // Exactly the moves that can begin a longest play; with one die only, the highest.
+      const after = (move: Move) => {
+        const next = { ...state, board: applyMove(state.board, move).board, dice: [...state.dice] };
+        next.dice.splice(next.dice.indexOf(move.die), 1);
+        return next;
+      };
+      const longest = possibleMoves(state).filter((move) => 1 + most(after(move)) === promised);
+      const high = Math.max(...longest.map((move) => move.die));
+      const expected = promised === 1 ? longest.filter((move) => move.die === high) : longest;
+      expect(pairs(legalMoves(state)), `seed ${seed}`).toEqual(pairs(expected));
 
       let used = 0;
       for (let moves = legalMoves(state); moves.length > 0; moves = legalMoves(state)) {

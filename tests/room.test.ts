@@ -915,6 +915,19 @@ describe("playing", () => {
     });
   });
 
+  it("counts the win of a game that was finished before matches had a score", async () => {
+    const { store, code, white, black } = await table();
+    const room = (await store.load(code)) as Room;
+    const { wins: _wins, rematch: _rematch, ...old } = room.game as NonNullable<Room["game"]>;
+    const over = { ...old, phase: "over", winner: "black", dice: [] } as unknown as Room["game"];
+    await store.save({ ...room, version: room.version + 1, game: over }, room.version);
+    await store.publish(code, { room: (await store.load(code)) as Room, events: [] });
+    expect(white.last().view?.wins).toEqual({ white: 0, black: 1 });
+    await white.send({ type: "rematch" });
+    await black.send({ type: "rematch" });
+    expect(black.last().view).toMatchObject({ winner: null, wins: { white: 0, black: 1 } });
+  });
+
   it("reports a room that vanished as a fatal error", async () => {
     let gone = false;
     const inner = createMemoryStore();

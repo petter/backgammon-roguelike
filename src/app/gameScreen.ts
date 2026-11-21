@@ -1,6 +1,6 @@
 import type { Player } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
-import { type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
+import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
@@ -275,7 +275,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         possibleMoves(view).some((m) => m.from === from)
       ) {
         hud.notify(
-          moves.length === 1 && view.dice.length > 1
+          diceToPlay(view) === 1
             ? "You must play the higher die when only one can be played"
             : "You must use as many dice as you can; moving that checker first would waste one",
         );

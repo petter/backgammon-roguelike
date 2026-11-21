@@ -226,6 +226,13 @@ export function createHud(): Hud {
           button.addEventListener("pointerdown", (event) => {
             pressedWith = event.pointerType;
           });
+          // A press that never becomes a click must not colour the next key press.
+          button.addEventListener("pointercancel", () => {
+            pressedWith = "";
+          });
+          button.addEventListener("keydown", () => {
+            pressedWith = "";
+          });
           if (raised?.index === index) button.classList.add("card-raised");
           button.addEventListener("pointerenter", () => keepOnScreen(button));
           button.addEventListener("focus", () => keepOnScreen(button));

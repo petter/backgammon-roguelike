@@ -75,9 +75,12 @@ function randomCode(entropy: Entropy): string {
   ).join("");
 }
 
-/** A game saved before matches kept a score has none; give it an empty one. */
+/**
+ * A game saved before matches kept a score has none; give it one. If that game is already
+ * won, the win is the one thing known about the match, so it is counted.
+ */
 function upToDate(game: GameState): GameState {
-  const none = { white: 0, black: 0 };
+  const none = { white: 0, black: 0, ...(game.winner ? { [game.winner]: 1 } : {}) };
   const no = { white: false, black: false };
   return { ...game, wins: game.wins ?? none, rematch: game.rematch ?? no };
 }

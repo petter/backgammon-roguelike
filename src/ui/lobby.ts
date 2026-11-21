@@ -44,7 +44,11 @@ function remember(key: string, value: string): void {
 }
 
 /** Fills the picker: one radio button per character, drawn as its medallion. */
-function characterPicker(root: HTMLElement, chosen: CharacterId): () => CharacterId {
+function characterPicker(
+  root: HTMLElement,
+  chosen: CharacterId,
+  onChange: (character: CharacterId) => void,
+): () => CharacterId {
   const motto = document.createElement("p");
   motto.className = "quiet motto";
   const options = document.createElement("div");
@@ -66,6 +70,7 @@ function characterPicker(root: HTMLElement, chosen: CharacterId): () => Characte
     input.addEventListener("change", () => {
       current = id;
       show();
+      onChange(id);
     });
     const art = document.createElement("span");
     art.className = "portrait";
@@ -90,7 +95,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   let link = "";
 
   name.value = recall(NAME_KEY);
-  const character = characterPicker(el("characters"), characterOf(recall(CHARACTER_KEY)));
+  // Remembered as soon as it is picked, so a reload of the start screen keeps it.
+  const character = characterPicker(el("characters"), characterOf(recall(CHARACTER_KEY)), (id) =>
+    remember(CHARACTER_KEY, id),
+  );
   const player = (): PlayerChoice => {
     remember(NAME_KEY, name.value.trim());
     remember(CHARACTER_KEY, character());
