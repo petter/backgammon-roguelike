@@ -52,27 +52,32 @@ export function woodTexture(light: string, dark: string, seed: number): THREE.Ca
   const [c, context] = canvas(w, h);
   const { next: random } = createRng(seed);
   const gradient = context.createLinearGradient(0, 0, 0, h);
-  for (let i = 0; i <= 8; i++) gradient.addColorStop(i / 8, random() < 0.5 ? light : dark);
+  const bands = Array.from({ length: 8 }, () => (random() < 0.5 ? light : dark));
+  // The last stop repeats the first, so the texture tiles across the grain too.
+  [...bands, bands[0] ?? light].forEach((color, i) => gradient.addColorStop(i / 8, color));
   context.fillStyle = gradient;
   context.fillRect(0, 0, w, h);
-  context.globalAlpha = 0.5;
+  context.globalAlpha = 0.3;
   context.fillStyle = light;
   context.fillRect(0, 0, w, h);
   for (let i = 0; i < 420; i++) {
     const y0 = random() * h;
     const amp = 2 + random() * 6;
-    const freq = (1 + random() * 3) / w;
+    // Whole waves per width, so the fibres meet themselves across the seam.
+    const cycles = 1 + Math.floor(random() * 3);
     const phase = random() * Math.PI * 2;
     context.globalAlpha = 0.05 + random() * 0.22;
     context.strokeStyle = random() < 0.75 ? dark : light;
     context.lineWidth = 0.6 + random() * 2.2;
-    context.beginPath();
-    for (let x = 0; x <= w; x += 16) {
-      const y = y0 + Math.sin(x * freq * Math.PI * 2 + phase) * amp;
-      if (x === 0) context.moveTo(x, y);
-      else context.lineTo(x, y);
+    for (const wrap of [-h, 0, h]) {
+      context.beginPath();
+      for (let x = 0; x <= w; x += 16) {
+        const y = wrap + y0 + Math.sin((x / w) * cycles * Math.PI * 2 + phase) * amp;
+        if (x === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
+      context.stroke();
     }
-    context.stroke();
   }
   // A few knots' worth of darker, wider streaks.
   for (let i = 0; i < 6; i++) {
@@ -87,23 +92,31 @@ export function woodTexture(light: string, dark: string, seed: number): THREE.Ca
   return toTexture(c);
 }
 
-/** Close-woven cloth: a soft mottled base with fine crossing fibres. */
-export function clothTexture(base: string, seed: number): THREE.CanvasTexture {
+/**
+ * Close-woven cloth: fine crossing fibres over a base, optionally mottled by `blots`
+ * soft patches of light and shade.
+ */
+export function clothTexture(base: string, seed: number, blots = 90): THREE.CanvasTexture {
   const size = 512;
   const [c, context] = canvas(size, size);
   const { next: random } = createRng(seed);
   context.fillStyle = base;
   context.fillRect(0, 0, size, size);
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < blots; i++) {
     const r = 20 + random() * 70;
-    const x = random() * size;
-    const y = random() * size;
-    const blot = context.createRadialGradient(x, y, 0, x, y, r);
     const tone = random() < 0.5 ? "0,0,0" : "255,255,255";
-    blot.addColorStop(0, `rgba(${tone},0.05)`);
-    blot.addColorStop(1, `rgba(${tone},0)`);
-    context.fillStyle = blot;
-    context.fillRect(x - r, y - r, r * 2, r * 2);
+    const x0 = random() * size;
+    const y0 = random() * size;
+    // Drawn on every neighbouring tile too, so a blot crossing an edge wraps round.
+    for (const [x, y] of [-size, 0, size].flatMap((dx) =>
+      [-size, 0, size].map((dy) => [x0 + dx, y0 + dy] as const),
+    )) {
+      const blot = context.createRadialGradient(x, y, 0, x, y, r);
+      blot.addColorStop(0, `rgba(${tone},0.035)`);
+      blot.addColorStop(1, `rgba(${tone},0)`);
+      context.fillStyle = blot;
+      context.fillRect(x - r, y - r, r * 2, r * 2);
+    }
   }
   for (let i = 0; i < 2600; i++) {
     const x = random() * size;
@@ -144,4 +157,104 @@ export function vignetteTexture(inner: string, outer: string, reach = 0.72): THR
   texture.wrapS = THREE.ClampToEdgeWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
   return texture;
+}
+
+/** Pixels per world unit for the soft shadow textures below. */
+const SHADE_PX = 48;
+
+/**
+ * Soft darkening along the inside edges of a `w` by `d` well, fading out over `fade`
+ * world units, as if the walls around it held back the light.
+ */
+export function wellShadeTexture(w: number, d: number, fade: number): THREE.CanvasTexture {
+  const [c, context] = canvas(Math.round(w * SHADE_PX), Math.round(d * SHADE_PX));
+  const far = c.width * 4;
+  // A ring around the canvas casts its blurred shadow inwards; the ring itself is offscreen.
+  context.shadowColor = "#000";
+  context.shadowBlur = fade * SHADE_PX;
+  context.shadowOffsetX = far;
+  context.beginPath();
+  context.rect(-far - c.width, -c.height, c.width * 3, c.height * 3);
+  context.rect(-far, 0, c.width, c.height);
+  context.fill("evenodd");
+  return toTexture(c, false);
+}
+
+/** A blurred dark rectangle: `w` by `d`, plus `spread` world units of falloff on every side. */
+export function dropShadowTexture(w: number, d: number, spread: number): THREE.CanvasTexture {
+  const [c, context] = canvas(
+    Math.round((w + spread * 2) * SHADE_PX),
+    Math.round((d + spread * 2) * SHADE_PX),
+  );
+  const far = c.width * 4;
+  context.shadowColor = "#000";
+  context.shadowBlur = spread * SHADE_PX;
+  context.shadowOffsetX = far;
+  context.fillRect(
+    spread * SHADE_PX * 0.5 - far,
+    spread * SHADE_PX * 0.5,
+    (w + spread) * SHADE_PX,
+    (d + spread) * SHADE_PX,
+  );
+  return toTexture(c, false);
+}
+
+/** A round soft shadow: dark in the middle, clear at the edge. */
+export function contactShadowTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const [c, context] = canvas(size, size);
+  const gradient = context.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
+  gradient.addColorStop(0, "rgba(0,0,0,1)");
+  gradient.addColorStop(0.6, "rgba(0,0,0,0.85)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  return toTexture(c, false);
+}
+
+/**
+ * Polished stone for a checker face: a base colour with soft drifting veins of `vein`,
+ * drawn as several faint passes so they blur into the base.
+ */
+export function stoneTexture(base: string, vein: string, seed: number): THREE.CanvasTexture {
+  const size = 512;
+  const [c, context] = canvas(size, size);
+  const { next: random } = createRng(seed);
+  context.fillStyle = base;
+  context.fillRect(0, 0, size, size);
+  context.strokeStyle = vein;
+  context.lineCap = "round";
+  for (let i = 0; i < 14; i++) {
+    let x = random() * size;
+    let y = random() * size;
+    let angle = random() * Math.PI * 2;
+    const points: Array<[number, number]> = [[x, y]];
+    for (let step = 0; step < 40; step++) {
+      angle += (random() - 0.5) * 0.6;
+      x += Math.cos(angle) * 12;
+      y += Math.sin(angle) * 12;
+      points.push([x, y]);
+    }
+    for (const [width, alpha] of [
+      [18, 0.04],
+      [8, 0.06],
+      [2, 0.12],
+    ] as const) {
+      context.globalAlpha = alpha * (0.5 + random());
+      context.lineWidth = width * (0.5 + random());
+      context.beginPath();
+      points.forEach(([px, py], k) => (k === 0 ? context.moveTo(px, py) : context.lineTo(px, py)));
+      context.stroke();
+    }
+  }
+  context.globalAlpha = 1;
+  speckle(context, size, size, 6, seed + 1);
+  return toTexture(c);
 }

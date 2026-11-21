@@ -3,14 +3,19 @@ import * as THREE from "three";
 
 import type { BoardEvent, BoardState, Player } from "../core/board.ts";
 import { hopToRest, setLifted, setRest } from "./effects.ts";
-import { CHECKER_H, CHECKER_R, type Place, slotPosition } from "./layout.ts";
+import { CHECKER_H, CHECKER_R, type Place, slotPosition, type Vec3 } from "./layout.ts";
+import { contactShadowTexture, stoneTexture } from "./textures.ts";
 
 const H = CHECKER_H / 2;
 const R = CHECKER_R;
-/** Depth of the dish turned into the top face, inside the raised rim. */
-const DISH = 0.018;
+/** Depth of the bowl turned into the top face, inside the raised rim. */
+const DISH = 0.032;
+/** Inner edge of the flat rim, where the bowl begins. */
+const RIM_IN = R * 0.84;
+/** Radius of the brass ring set into the bowl. */
+const INLAY_R = R * 0.72;
 
-/** Points along a quarter circle, for rounded edges on the turned profile. */
+/** Points along a circular arc, for rounded edges on the turned profile. */
 function arc(cx: number, cy: number, r: number, from: number, to: number): THREE.Vector2[] {
   const steps = 6;
   return Array.from({ length: steps + 1 }, (_, i) => {
@@ -19,49 +24,73 @@ function arc(cx: number, cy: number, r: number, from: number, to: number): THREE
   });
 }
 
-const v = (x: number, y: number) => new THREE.Vector2(x, y);
+/** Height of the bowl's surface at radius `r`: a smooth parabola, lowest in the middle. */
+function bowlY(r: number): number {
+  const edge = RIM_IN - 0.015;
+  return H - DISH + (DISH - 0.015) * (r / edge) ** 2;
+}
 
 /**
- * A turned checker: rounded base and shoulder, a raised rim around a shallow dish,
- * and a low dome in the centre, so the top face catches light in rings.
+ * A turned checker: rounded base and shoulder, a flat rim, and a smooth bowl inside it,
+ * whose curve sweeps a highlight across the face as the light moves.
  */
 function checkerGeometry(): THREE.LatheGeometry {
+  const edge = RIM_IN - 0.015;
+  const bowl = Array.from({ length: 11 }, (_, i) => {
+    const r = edge * (1 - i / 10);
+    return new THREE.Vector2(r, bowlY(r));
+  });
   const profile = [
-    v(0, -H),
+    new THREE.Vector2(0, -H),
     ...arc(R - 0.03, -H + 0.03, 0.03, -Math.PI / 2, 0),
-    ...arc(R - 0.04, H - 0.04, 0.04, 0, Math.PI / 2),
-    ...arc(R * 0.84, H - 0.012, 0.012, Math.PI / 2, Math.PI),
-    v(R * 0.81, H - DISH),
-    v(R * 0.5, H - DISH),
-    v(R * 0.3, H - DISH + 0.005),
-    v(0, H - DISH + 0.008),
+    ...arc(R - 0.05, H - 0.05, 0.05, 0, Math.PI / 2),
+    ...arc(RIM_IN, H - 0.015, 0.015, Math.PI / 2, Math.PI),
+    ...bowl.slice(1),
   ];
-  return new THREE.LatheGeometry(profile, 64);
+  const geometry = new THREE.LatheGeometry(profile, 64);
+  // Map the stone texture straight down onto the face, rather than around the lathe.
+  const pos = geometry.getAttribute("position");
+  const uv = geometry.getAttribute("uv");
+  for (let i = 0; i < pos.count; i++) {
+    uv.setXY(i, pos.getX(i) / (2 * R) + 0.5, pos.getZ(i) / (2 * R) + 0.5);
+  }
+  return geometry;
 }
 
 const geometry = checkerGeometry();
-/** A thin brass ring set into the dish of every checker. */
-const inlayGeometry = new THREE.RingGeometry(R * 0.6, R * 0.68, 64).rotateX(-Math.PI / 2);
+/** A fine brass wire laid into the bowl of every checker. */
+const inlayGeometry = new THREE.TorusGeometry(INLAY_R, 0.007, 8, 96).rotateX(Math.PI / 2);
 const inlayMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd4a957,
+  color: 0xb08a45,
   metalness: 1,
   roughness: 0.3,
 });
 const materials: Record<Player, THREE.Material> = {
   white: new THREE.MeshPhysicalMaterial({
-    color: 0xf1e6cc,
-    roughness: 0.4,
-    clearcoat: 0.6,
-    clearcoatRoughness: 0.25,
+    map: stoneTexture("#e9dcbf", "#bfa77a", 41),
+    roughness: 0.38,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.2,
   }),
   black: new THREE.MeshPhysicalMaterial({
-    color: 0x1d1c22,
-    roughness: 0.3,
+    map: stoneTexture("#121116", "#3c3946", 42),
+    roughness: 0.32,
     clearcoat: 1,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 2.2,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 1.2,
   }),
 };
+/** A soft dark disc under each checker, grounding it on the felt or the checker below. */
+const contactGeometry = new THREE.CircleGeometry(R * 1.22, 40).rotateX(-Math.PI / 2);
+const contactShadow = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+  alphaMap: contactShadowTexture(),
+  transparent: true,
+  depthWrite: false,
+});
+const CONTACT_OPACITY = 0.5;
+/** Height above its rest at which a lifted checker's contact shadow has faded out. */
+const CONTACT_FADE = 0.25;
 
 const PLAYERS = ["white", "black"] as const;
 
@@ -162,10 +191,22 @@ export class CheckersView {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.player = player;
+    // Each checker is turned from its own piece of stone, so the veins never line up.
+    mesh.rotation.y = Math.random() * Math.PI * 2;
     const inlay = new THREE.Mesh(inlayGeometry, inlayMaterial);
-    inlay.position.y = H - DISH + 0.004;
+    inlay.position.y = bowlY(INLAY_R) + 0.002;
     inlay.receiveShadow = true;
-    mesh.add(inlay);
+    const contact = new THREE.Mesh(contactGeometry, contactShadow.clone());
+    // Just above the points and their hint glow, which would otherwise cover it.
+    contact.position.y = -H + 0.02;
+    contact.renderOrder = -1;
+    // The shadow belongs on the surface below: it fades as the checker lifts away.
+    contact.onBeforeRender = () => {
+      const lift = mesh.position.y - (mesh.userData.rest as Vec3).y;
+      contact.material.opacity =
+        CONTACT_OPACITY * THREE.MathUtils.clamp(1 - lift / CONTACT_FADE, 0, 1);
+    };
+    mesh.add(inlay, contact);
     const stack = this.stack(place);
     const rest = slotPosition(place, stack.length);
     setRest(mesh, rest);

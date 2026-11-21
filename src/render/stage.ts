@@ -40,7 +40,7 @@ export function createStage(container: HTMLElement): Stage {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
   container.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -48,25 +48,30 @@ export function createStage(container: HTMLElement): Stage {
   // A soft studio room, reflected in the lacquer of the checkers and the frame.
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.45;
+  scene.environmentIntensity = 0.3;
   pmrem.dispose();
   const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 200);
 
-  scene.add(new THREE.HemisphereLight(0xfff1dc, 0x2a1d14, 0.55));
-  const sun = new THREE.DirectionalLight(0xffeedd, 2.4);
-  sun.position.set(-6, 14, 6);
+  scene.add(new THREE.HemisphereLight(0xf6e6ce, 0x1e140e, 0.4));
+  // A warm key from low over one shoulder, so checkers and rails throw real shadows.
+  const sun = new THREE.DirectionalLight(0xffe6c7, 2.1);
+  sun.position.set(-8.5, 10.5, 6.5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = 4;
+  sun.shadow.normalBias = 0.01;
+  sun.shadow.radius = 2.5;
   const shadowCam = sun.shadow.camera;
-  shadowCam.left = -11;
-  shadowCam.right = 11;
-  shadowCam.top = 9;
-  shadowCam.bottom = -9;
+  shadowCam.left = -10.5;
+  shadowCam.right = 10.5;
+  shadowCam.top = 8.5;
+  shadowCam.bottom = -8.5;
   shadowCam.far = 40;
   scene.add(sun);
+  // A cool rim from the far side, picking out the edges of the dark checkers.
+  const rim = new THREE.DirectionalLight(0xaec6e8, 0.45);
+  rim.position.set(8, 7, -7);
+  scene.add(rim);
 
   // The table, outside `world` so it stays put while the board shakes on it.
   const weave = clothTexture("#a8a8a8", 31);
@@ -131,7 +136,8 @@ export function createStage(container: HTMLElement): Stage {
     setSeat(player) {
       side = player === "white" ? 1 : -1;
       // The light moves with the camera, so both players see the checkers lit the same way.
-      sun.position.set(-6 * side, 14, 6 * side);
+      sun.position.set(-8.5 * side, 10.5, 6.5 * side);
+      rim.position.set(8 * side, 7, -7 * side);
       resize();
     },
     pick(clientX, clientY) {
