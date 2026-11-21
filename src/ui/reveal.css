@@ -1,0 +1,161 @@
+/*
+ * A card that just changed the game, shown over the board: a trap turns face up as it
+ * springs, a hex flares as it bites. Seen, not touched: taps go through to the board.
+ * Timings match FACE_UP_AT and GONE_AT in reveal.ts.
+ */
+/* At the left edge, clear of the bar in the middle, where a checker it sends must be seen. */
+#reveal {
+  position: fixed;
+  top: 50%;
+  left: clamp(12px, 3vw, 48px);
+  z-index: 13;
+  display: flex;
+  gap: 18px;
+  pointer-events: none;
+  translate: 0 -50%;
+}
+
+.reveal {
+  --ink: #ffc9a3;
+  --glow: #ff7a3d;
+  --delay: 0s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation:
+    reveal-in 0.25s var(--delay) cubic-bezier(0.2, 1.4, 0.4, 1) both,
+    reveal-out 0.35s calc(var(--delay) + 3s) ease-in forwards;
+}
+
+.reveal-hex {
+  --ink: #e6d4ff;
+  --glow: #a46bff;
+}
+
+/* Sized like a large card; the back's em is its own width, so it is set to the face's. */
+.reveal-flipper {
+  display: block;
+  width: 11.54em;
+  height: 16.3em;
+  perspective: 900px;
+}
+
+.reveal-spin {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.66em;
+  transform-style: preserve-3d;
+  transform: rotateY(180deg);
+  animation: reveal-glow 0.9s calc(var(--delay) + 0.5s) ease-out both;
+}
+
+.reveal-trap .reveal-spin {
+  animation:
+    reveal-turn 0.35s calc(var(--delay) + 0.2s) cubic-bezier(0.3, 1.5, 0.5, 1) both,
+    reveal-glow 0.9s calc(var(--delay) + 0.5s) ease-out both;
+}
+
+.reveal-back,
+.reveal-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.reveal .reveal-back {
+  width: auto;
+  height: auto;
+  margin: 0;
+  font-size: 11.54em;
+}
+
+.reveal-face {
+  transform: rotateY(180deg);
+}
+
+.reveal-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 15em;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 55%, transparent);
+  border-radius: 8px;
+  background: #1c1612f2;
+  box-shadow: 0 6px 18px #000a;
+  color: #efe6d2;
+  text-align: center;
+  animation: reveal-in 0.25s calc(var(--delay) + 0.5s) ease-out both;
+}
+
+.reveal-caption strong {
+  color: var(--ink);
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.8);
+  }
+}
+
+@keyframes reveal-out {
+  to {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.95);
+  }
+}
+
+@keyframes reveal-turn {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+@keyframes reveal-glow {
+  from {
+    box-shadow: 0 0 0 0 var(--glow);
+  }
+  30% {
+    box-shadow: 0 0 36px 10px var(--glow);
+  }
+  to {
+    box-shadow: 0 0 18px 2px color-mix(in srgb, var(--glow) 40%, transparent);
+  }
+}
+
+@media (max-width: 640px) {
+  .reveal-caption {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-caption {
+    animation:
+      reveal-fade 0.2s var(--delay) both,
+      reveal-fade 0.3s calc(var(--delay) + 3s) reverse forwards;
+  }
+
+  .reveal-spin,
+  .reveal-trap .reveal-spin {
+    animation: none;
+  }
+}
+
+@keyframes reveal-fade {
+  from {
+    opacity: 0;
+  }
+}

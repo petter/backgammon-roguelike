@@ -18,7 +18,9 @@ export function setRest(checker: THREE.Object3D, rest: Vec3): void {
 export function hopToRest(checker: THREE.Object3D, delay = 0, height = 1.3): number {
   const rest = restOf(checker);
   const pos = checker.position;
-  gsap.killTweensOf(pos);
+  // A hop that waits lets one already under way finish, as a hitter lands before a trap
+  // sends it on to the bar. One that starts at once takes over.
+  if (delay === 0) gsap.killTweensOf(pos);
   gsap.to(pos, { x: rest.x, z: rest.z, duration: MOVE_TIME, delay, ease: "power1.inOut" });
   gsap
     .timeline({ delay })

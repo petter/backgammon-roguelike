@@ -16,6 +16,7 @@ import { createCoach } from "./ui/coach.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
 import { createLobbyUi, type PlayerChoice } from "./ui/lobby/lobby.ts";
+import { createRevealView } from "./ui/reveal.ts";
 
 startAnalytics();
 
@@ -25,7 +26,7 @@ const board = createBoard();
 stage.world.add(board.group);
 const hud = createHud();
 const coach = createCoach();
-const deps = { stageEl, stage, board, hud, coach };
+const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView() };
 
 let stopGame: (() => void) | null = null;
 /** The search for a stranger, while one is running. */

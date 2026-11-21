@@ -157,15 +157,18 @@ export class CheckersView {
     return [...this.stacks.values()].flat();
   }
 
-  /** Animates one board event. Returns when its motion lands, in seconds from now. */
-  apply(event: BoardEvent): number {
+  /**
+   * Animates one board event, its motion held back `wait` seconds while the checkers count
+   * as moved already. Returns when its motion lands, in seconds from now.
+   */
+  apply(event: BoardEvent, wait = 0): number {
     this.lift(null);
     if (event.type === "hit") {
       // The hit checker waits for the attacker to arrive before flying to the bar.
       return this.move(
         { kind: "point", index: event.point },
         { kind: "bar", player: event.player },
-        0.3,
+        0.3 + wait,
       );
     }
     return this.move(placeOf(event.player, event.from), placeOf(event.player, event.to), 0);
