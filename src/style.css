@@ -317,7 +317,8 @@ kbd {
       #fff0 58%
     )
     var(--gloss-at, 22%) 0 / 260% 100%;
-  mask-image: linear-gradient(#000 0 52%, #0000 62%);
+  /* Gone before the type line, so the band never hazes the printed rail. */
+  mask-image: linear-gradient(#000 0 34%, #0000 44%);
   transition: background-position 0.55s ease-out;
 }
 
@@ -471,8 +472,9 @@ kbd {
 }
 
 .card-name-long {
-  font-size: 0.86em;
-  letter-spacing: 0.01em;
+  padding-inline: 0.3em;
+  font-size: 0.82em;
+  letter-spacing: 0;
 }
 
 .card-art {
@@ -527,8 +529,9 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.4em;
   margin: -0.42em 0 -0.14em;
-  padding: 0.12em 0.5em;
+  padding: 0.12em 0.4em;
   /* A rail across the frame, as wide as the picture: square-cornered and without an outline,
      so it reads as a printed band and not as a button. */
   border-radius: 0.1em;
@@ -553,22 +556,58 @@ kbd {
 }
 
 .card-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.22em;
   font-size: 0.8em;
   font-variant-caps: small-caps;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
+}
+
+/* The kind's glyph, in the same ink it has on a player's marks. */
+.card-kind-glyph {
+  display: block;
+  flex: none;
+  width: 0.98em;
+  height: 0.98em;
+  color: var(--kind-ink, #e9dcbd);
+  filter: drop-shadow(0 1px 0 #000000b3);
+}
+
+.card-kind-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.kind-curse {
+  --kind-ink: #d6b8ff;
+}
+
+.kind-ward {
+  --kind-ink: #e6edf4;
+}
+
+.kind-trap {
+  --kind-ink: #f0b48a;
+}
+
+.kind-tempo,
+.kind-wild {
+  --kind-ink: #ffd27a;
 }
 
 .card-rarity {
   display: flex;
   align-items: center;
   /* The gem is turned on its corner and may carry a bezel, so the gap allows for both. */
-  gap: 1em;
+  gap: 0.66em;
   color: var(--rarity-ink, var(--rarity));
   font:
     700 0.56em / 1.2 system-ui,
     sans-serif;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   /* A crisp printed edge, not a glow. */
   text-shadow: 0 1px 0 #000000b3;
   text-transform: uppercase;

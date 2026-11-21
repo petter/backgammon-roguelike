@@ -126,7 +126,7 @@ export const CARDS = {
     name: "Counterpunch",
     kind: "Trap",
     rarity: "rare",
-    text: "Trap: when they hit one of your checkers, the hitter goes to the bar too.",
+    text: "Trap: when they hit your checker, their hitter goes to the bar too.",
   },
   crackedDice: {
     name: "Cracked Dice",

@@ -46,8 +46,8 @@
 }
 
 .mark-hex {
-  --mark: #d6b8ff;
-  --mark-bg: #2c1840;
+  --mark: #e6d4ff;
+  --mark-bg: #3a1f56;
 }
 
 .mark-ward {
@@ -65,13 +65,29 @@
   --mark-bg: #3a2a0e;
 }
 
-/* On a phone the chips are tight: each mark keeps its glyph, and the name moves to the title. */
+.mark-count {
+  display: none;
+}
+
+/* On a phone the chips are tight: a tag keeps its glyph and count; the names move to the title. */
 @media (max-width: 640px) {
   .mark {
-    padding: 3px;
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .mark-glyph {
+    width: 14px;
+    height: 14px;
   }
 
   .mark-label {
     display: none;
+  }
+
+  .mark-count {
+    display: block;
+    font-size: 12px;
+    font-variant-caps: normal;
   }
 }

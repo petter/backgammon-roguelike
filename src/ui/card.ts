@@ -1,5 +1,6 @@
 import { CARD_IDS, CARDS, type CardId, RARITIES } from "../core/cards.ts";
 import { cardArt } from "./cardArt.ts";
+import { glyph, KIND_GLYPH } from "./glyphs.ts";
 
 /** Names longer than this many letters are set smaller to fit the name plate. */
 const LONG_NAME = 14;
@@ -40,7 +41,9 @@ export function createCard(
   const type = part("span", "card-type");
   const rarityLabel = part("span", "card-rarity");
   rarityLabel.append(part("span", "card-gem"), RARITIES[rarity].name);
-  type.append(part("span", "card-kind", kind), rarityLabel);
+  const kindLabel = part("span", `card-kind kind-${kind.toLowerCase()}`);
+  kindLabel.append(glyph(KIND_GLYPH[kind], "card-kind-glyph"), kind);
+  type.append(kindLabel, rarityLabel);
 
   const foot = part("span", "card-foot");
   const number = `${CARD_IDS.indexOf(card) + 1}/${CARD_IDS.length}`;
