@@ -172,7 +172,7 @@ export function findMatch(
       try {
         const response = known
           ? await post(`/api/match/${ticket}`)
-          : await post("/api/match", { ...player, ticket });
+          : await post("/api/match", { ...player, ticket, presence: true });
         if (mine !== run) return;
         // The ticket is gone: dropped after going quiet, or given up on the way out.
         if (response.status === 404) {

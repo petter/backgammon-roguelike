@@ -7,6 +7,8 @@ export const CODE_LENGTH = 5;
 /** No I, L or O: they are too easy to misread when a code is passed along by voice. */
 export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
 export const NAME_MAX = 20;
+/** How long an opponent must stay disconnected before the other player may claim victory. */
+export const CLAIM_GRACE_MS = 30_000;
 
 /** What both players may know about the room. Never contains seat tokens. */
 export interface LobbyView {
@@ -15,8 +17,20 @@ export interface LobbyView {
   players: Record<Player, { name: string; character: CharacterId } | null>;
 }
 
+/** Whether the opponent is currently connected, and when victory may be claimed if not. */
+export interface OpponentPresence {
+  /** `true` while the opponent has an active connection (or is still arriving at game start). */
+  online: boolean;
+  /**
+   * Milliseconds until you may claim victory, or `null` when the opponent is online or the
+   * game is not in progress. `0` means victory can be claimed right now.
+   */
+  claimInMs: number | null;
+}
+
 export type ClientMessage =
-  | { type: "hello"; token: string }
+  /** `presence: true` tells the server this client understands standalone `presence` frames. */
+  | { type: "hello"; token: string; presence?: true }
   /**
    * `id`, when given, is echoed in a `done` once the command has been dealt with, whatever
    * the outcome. It lets a client know that a socket has nothing more to tell it.
@@ -35,7 +49,11 @@ export type ServerMessage =
       view: PlayerView | null;
       /** What led to this version; empty for a plain snapshot. */
       events: GameEvent[];
+      /** Opponent connection status at the time of this snapshot, once a game has started. */
+      presence?: OpponentPresence;
     }
+  /** Live update when the opponent disconnects or reconnects, without changing room version. */
+  | ({ type: "presence" } & OpponentPresence)
   | { type: "pong" }
   /** The command sent with this `id` has been dealt with; its outcome was sent before this. */
   | { type: "done"; id: number }
@@ -91,6 +109,7 @@ function parseCommand(raw: unknown): Command | null {
   switch (c.type) {
     case "roll":
     case "endTurn":
+    case "claimVictory":
     case "rematch":
       return { type: c.type };
     case "pickCard":
@@ -119,7 +138,7 @@ export function parseClientMessage(text: string): ClientMessage | null {
   const m = raw as Record<string, unknown>;
   if (m.type === "hello") {
     return typeof m.token === "string" && m.token.length <= 100
-      ? { type: "hello", token: m.token }
+      ? { type: "hello", token: m.token, ...(m.presence === true ? { presence: true } : {}) }
       : null;
   }
   if (m.type === "ping") return { type: "ping" };

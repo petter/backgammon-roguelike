@@ -34,6 +34,7 @@ export {
   type PlayerCards,
   type Result,
   type TurnInfo,
+  type WinReason,
 } from "./state.ts";
 
 export const OFFER_SIZE = 3;
@@ -132,6 +133,7 @@ export function newGame(
       dice: [],
       phase: "roll",
       winner: null,
+      winReason: null,
       cards,
       shielded: { ...neither },
       hexes: { white: [], black: [] },
@@ -193,7 +195,10 @@ function moveChecker(state: GameState, wanted: Omit<Move, "player">): Result {
   if (moved.board.off[player] < CHECKERS_PER_PLAYER) return { state: moved, events };
   events.push({ type: "gameWon", winner: player });
   const wins = { ...moved.wins, [player]: moved.wins[player] + 1 };
-  return { state: { ...moved, dice: [], phase: "over", winner: player, wins }, events };
+  return {
+    state: { ...moved, dice: [], phase: "over", winner: player, winReason: "bearOff", wins },
+    events,
+  };
 }
 
 function endTurn(state: GameState): Result {
@@ -226,6 +231,41 @@ function rematch(state: GameState, player: Player, seeds?: GameSeeds): Result {
   };
 }
 
+function foldOffer(cards: PlayerCards): PlayerCards {
+  const copy = cloneCards(cards);
+  if (copy.offer.length > 0) {
+    copy.discard.push(...copy.offer);
+    copy.offer = [];
+  }
+  return copy;
+}
+
+/**
+ * Ends an active game in `player`'s favour after their opponent abandoned it. The caller
+ * (the room server) is responsible for checking that the opponent has actually been away
+ * past the reconnect grace period.
+ */
+function claimVictory(state: GameState, player: Player): Result {
+  if (state.phase === "over") throw new GameError("The game is over");
+  const wins = { ...state.wins, [player]: state.wins[player] + 1 };
+  const cards = {
+    white: foldOffer(state.cards.white),
+    black: foldOffer(state.cards.black),
+  };
+  return {
+    state: {
+      ...state,
+      dice: [],
+      phase: "over",
+      winner: player,
+      winReason: "abandoned",
+      cards,
+      wins,
+    },
+    events: [{ type: "gameWon", winner: player }],
+  };
+}
+
 /**
  * The single entry point for changing a game. Throws `GameError` when the rules say no.
  * `seeds` deal the new game if this command starts a rematch; a server must pass them.
@@ -237,6 +277,7 @@ export function applyCommand(
   seeds?: GameSeeds,
 ): Result {
   if (command.type === "rematch") return rematch(state, player, seeds);
+  if (command.type === "claimVictory") return claimVictory(state, player);
   if (state.phase === "over") throw new GameError("The game is over");
   if (player !== state.current) throw new GameError("It is not your turn");
   switch (command.type) {

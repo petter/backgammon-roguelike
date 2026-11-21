@@ -90,7 +90,11 @@ describe("findMatch", () => {
       "/api/match/t1",
       "/api/match/t1",
     ]);
-    expect(JSON.parse(server.calls[0]?.body ?? "")).toEqual({ ...player, ticket: "t1" });
+    expect(JSON.parse(server.calls[0]?.body ?? "")).toEqual({
+      ...player,
+      ticket: "t1",
+      presence: true,
+    });
     expect(server.page.removed).toBe(true);
   });
 

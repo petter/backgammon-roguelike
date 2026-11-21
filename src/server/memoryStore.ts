@@ -1,8 +1,13 @@
 import {
   cancelledSeeker,
+  emptyPresence,
   type GameStore,
   Listeners,
+  opponentAwaySince,
+  type PresenceUpdate,
   type Room,
+  type RoomPresence,
+  type SeatPresence,
   SEEKER_TTL_SECONDS,
   type Seeker,
 } from "./store.ts";
@@ -10,12 +15,39 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Drops expired leases from a seat. If the last live lease expired without a clean close,
+ * pins `disconnectedAt` to when that lease ran out so the countdown does not drift.
+ */
+function pruneSeat(seat: SeatPresence, now: number): { live: number; expired: boolean } {
+  let live = 0;
+  let latestExpired: number | null = null;
+  for (const [id, exp] of Object.entries(seat.connections)) {
+    if (exp > now) {
+      live++;
+    } else {
+      delete seat.connections[id];
+      if (latestExpired === null || exp > latestExpired) latestExpired = exp;
+    }
+  }
+  const expired = latestExpired !== null;
+  if (live > 0) {
+    seat.disconnectedAt = null;
+  } else if (expired && seat.disconnectedAt === null) {
+    seat.disconnectedAt = latestExpired;
+  }
+  return { live, expired };
+}
+
+/**
  * In-process store. Values are cloned on the way in and out, so callers cannot share
  * references through it, just as they could not through a real database.
  */
 export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now): GameStore {
   const rooms = new Map<string, { room: Room; expires: number }>();
+  const presences = new Map<string, { presence: RoomPresence; expires: number }>();
+  let nextPresenceSweep = Number.POSITIVE_INFINITY;
   const listeners = new Listeners();
+  const presenceListeners = new Listeners<PresenceUpdate>();
   const seekers = new Map<string, { seeker: Seeker; expires: number }>();
 
   const live = (code: string): Room | null => {
@@ -27,6 +59,31 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
   };
   const put = (room: Room) => {
     rooms.set(room.code, { room: structuredClone(room), expires: now() + ttlMs });
+  };
+
+  /** Removes expired presence records without waiting for those unique room ids to be read again. */
+  const sweepPresences = (at: number) => {
+    if (at < nextPresenceSweep) return;
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const [id, entry] of presences) {
+      if (entry.expires <= at) presences.delete(id);
+      else if (entry.expires < earliest) earliest = entry.expires;
+    }
+    nextPresenceSweep = earliest;
+  };
+  const livePresence = (roomId: string, at: number): RoomPresence | null => {
+    sweepPresences(at);
+    const entry = presences.get(roomId);
+    if (!entry) return null;
+    if (entry.expires > at) return entry.presence;
+    presences.delete(roomId);
+    return null;
+  };
+  const putPresence = (roomId: string, presence: RoomPresence, at: number) => {
+    sweepPresences(at);
+    const expires = at + ttlMs;
+    presences.set(roomId, { presence: structuredClone(presence), expires });
+    if (expires < nextPresenceSweep) nextPresenceSweep = expires;
   };
 
   const seeker = (id: string): Seeker | null => {
@@ -68,6 +125,116 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
     },
     async subscribe(code, listener) {
       return listeners.add(code, listener);
+    },
+    async publishPresence(roomId, update) {
+      presenceListeners.notify(roomId, update);
+    },
+    async subscribePresence(roomId, listener) {
+      return presenceListeners.add(roomId, listener);
+    },
+    async clock() {
+      return now();
+    },
+    async connectSeat(roomId, seat, connId, leaseMs) {
+      const at = now();
+      const current = structuredClone(livePresence(roomId, at) ?? emptyPresence());
+      const white = pruneSeat(current.white, at);
+      const black = pruneSeat(current.black, at);
+      const wasOnline = (seat === "white" ? white.live : black.live) > 0;
+      current[seat].connections[connId] = at + leaseMs;
+      current[seat].disconnectedAt = null;
+      current.revision++;
+      putPresence(roomId, current, at);
+      return { presence: structuredClone(current), changed: !wasOnline, now: at };
+    },
+    async renewSeat(roomId, seat, connId, leaseMs) {
+      const at = now();
+      const found = livePresence(roomId, at);
+      if (!found) return null;
+      const current = structuredClone(found);
+      const white = pruneSeat(current.white, at);
+      const black = pruneSeat(current.black, at);
+      const active = Object.hasOwn(current[seat].connections, connId);
+      const dirty = white.expired || black.expired;
+      if (active) {
+        current[seat].connections[connId] = at + leaseMs;
+        current[seat].disconnectedAt = null;
+      }
+      if (dirty) current.revision++;
+      if (active || dirty) putPresence(roomId, current, at);
+      return { presence: structuredClone(current), active, now: at };
+    },
+    async disconnectSeat(roomId, seat, connId) {
+      const at = now();
+      const found = livePresence(roomId, at);
+      if (!found) return null;
+      const current = structuredClone(found);
+      const wasDisconnected = current[seat].disconnectedAt !== null;
+      const white = pruneSeat(current.white, at);
+      const black = pruneSeat(current.black, at);
+      const wasLive = seat === "white" ? white.live : black.live;
+      const hadConn = Object.hasOwn(current[seat].connections, connId);
+      let remaining = wasLive;
+      if (hadConn) {
+        delete current[seat].connections[connId];
+        remaining = wasLive - 1;
+        if (remaining === 0) current[seat].disconnectedAt = at;
+      }
+      if (hadConn || white.expired || black.expired) {
+        current.revision++;
+        putPresence(roomId, current, at);
+      }
+      const isDisconnected = remaining === 0 && current[seat].disconnectedAt !== null;
+      return {
+        presence: structuredClone(current),
+        changed: !wasDisconnected && isDisconnected,
+        now: at,
+      };
+    },
+    async getPresence(roomId) {
+      const at = now();
+      const found = livePresence(roomId, at);
+      if (!found) {
+        return { presence: emptyPresence(), now: at };
+      }
+      const current = structuredClone(found);
+      const white = pruneSeat(current.white, at);
+      const black = pruneSeat(current.black, at);
+      if (white.expired || black.expired) {
+        current.revision++;
+        putPresence(roomId, current, at);
+      }
+      return { presence: structuredClone(current), now: at };
+    },
+    async claimSeat(room, expectedVersion, other, timings) {
+      const at = now();
+      const stored = live(room.code);
+      if (stored?.id !== room.id || stored.version !== expectedVersion) {
+        return { ok: false, reason: "conflict", now: at };
+      }
+      const current = structuredClone(livePresence(room.id, at) ?? emptyPresence());
+      const white = pruneSeat(current.white, at);
+      const black = pruneSeat(current.black, at);
+      if (white.expired || black.expired) {
+        current.revision++;
+        putPresence(room.id, current, at);
+      }
+      const awaySince = opponentAwaySince(stored, current, other, at, timings);
+      if (awaySince === null) {
+        return { ok: false, reason: "online", presence: structuredClone(current), now: at };
+      }
+      const remainingMs = timings.claimGraceMs - (at - awaySince);
+      if (remainingMs > 0) {
+        return {
+          ok: false,
+          reason: "too_early",
+          remainingMs,
+          presence: structuredClone(current),
+          now: at,
+        };
+      }
+      put(room);
+      return { ok: true, presence: structuredClone(current), now: at };
     },
     async addSeeker(value) {
       if (seeker(value.id)) return false;

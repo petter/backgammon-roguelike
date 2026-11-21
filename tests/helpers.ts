@@ -14,6 +14,7 @@ export function game(partial: Partial<GameState> = {}): GameState {
     dice: [],
     phase: "move",
     winner: null,
+    winReason: null,
     cards: { white: cards(), black: cards() },
     shielded: { white: false, black: false },
     hexes: { white: [], black: [] },

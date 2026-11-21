@@ -3,7 +3,7 @@ import "@fontsource/cinzel/900.css";
 import "./gameOver.css";
 import { gsap } from "gsap";
 
-import type { Player } from "../core/board.ts";
+import { opponent, type Player } from "../core/board.ts";
 import { CHARACTERS, DEFAULT_CHARACTER } from "../core/characters.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
@@ -27,6 +27,8 @@ export interface GameOverModel {
    * reconnect) the result is simply shown as it stands, without the entrance.
    */
   justWon: boolean;
+  /** Whether the opponent currently has an active connection (always true in local play). */
+  opponentOnline: boolean;
 }
 
 export interface GameOverScreen {
@@ -139,8 +141,14 @@ export function createGameOver(actions: {
       }),
     );
 
-    const yours = !model.local && winner === view.you;
-    headline.textContent = yours ? "You bore off first" : `${name(winner)} bore off first`;
+    if (view.winReason === "abandoned") {
+      const loser = opponent(winner);
+      headline.textContent =
+        !model.local && loser === view.you ? "You left the game" : `${name(loser)} left the game`;
+    } else {
+      const yours = !model.local && winner === view.you;
+      headline.textContent = yours ? "You bore off first" : `${name(winner)} bore off first`;
+    }
     const character = CHARACTERS[characterOf(winner)];
     motto.textContent = `“${character.motto}” — ${character.name}`;
 
@@ -357,11 +365,23 @@ export function createGameOver(actions: {
         play(outcome, model.justWon);
       }
       const asked = view.rematch[view.you];
+      const offered = view.rematch[other];
+      const away = !model.local && !model.opponentOnline;
       rematch.textContent = model.local ? "Play again" : "Rematch";
-      rematch.disabled = asked;
+      // Keep Rematch enabled when the opponent already offered one so the player can still accept.
+      rematch.disabled = asked || (away && !offered);
       let status = "";
-      if (asked) status = `Waiting for ${name(other)}…`;
-      else if (view.rematch[other]) status = `${name(other)} wants a rematch`;
+      if (asked) {
+        status = away
+          ? `Waiting for ${name(other)} (${name(other)} left the game)`
+          : `Waiting for ${name(other)}…`;
+      } else if (offered) {
+        status = away
+          ? `${name(other)} wants a rematch (${name(other)} left the game)`
+          : `${name(other)} wants a rematch`;
+      } else if (away) {
+        status = `${name(other)} left the game`;
+      }
       rematchStatus.textContent = status;
     },
     hide() {

@@ -45,6 +45,7 @@ describe("viewFor", () => {
         "shielded",
         "traps",
         "wards",
+        "winReason",
         "winner",
         "wins",
         "you",

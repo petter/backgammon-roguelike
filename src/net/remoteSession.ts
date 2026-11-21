@@ -1,6 +1,7 @@
 // ClientSocket mirrors the `on*` handler properties of a browser WebSocket, so tests can fake it.
 // oxlint-disable unicorn/prefer-add-event-listener
 
+import type { PlayerView } from "../core/view.ts";
 import type { ClientMessage, ServerMessage } from "./protocol.ts";
 import type { Session, SessionHandlers } from "./session.ts";
 
@@ -36,13 +37,23 @@ interface Link {
   socket: ClientSocket;
   /** Whether the server has answered hello with the state: only then can it be used. */
   ready: boolean;
+  /** Last game stage delivered on this socket, so stale standalone presence frames are ignored. */
+  stage: string;
+  /** Highest game version whose presence was delivered by this socket. */
+  presenceVersion: number;
   /** Commands sent on this socket that the server has not yet acknowledged. */
   pending: Set<number>;
 }
 
+function gameStage(view: PlayerView | null): string {
+  if (!view) return "lobby";
+  const games = view.wins.white + view.wins.black;
+  return `${games}:${view.phase === "over" ? "over" : "active"}`;
+}
+
 function roomUrl(code: string): string {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${location.host}/api/rooms/${code}/ws`;
+  return `${scheme}://${location.host}/api/rooms/${code}/ws2`;
 }
 
 /**
@@ -66,6 +77,7 @@ export function createRemoteSession(
   /** Sockets that have been replaced and are being listened to for a little longer. */
   const retiring = new Set<Link>();
   let version = -1;
+  let stage = "lobby";
   let closed = false;
   let attempt = 0;
   let everFailed = false;
@@ -191,6 +203,12 @@ export function createRemoteSession(
       if (retiring.has(link) && link.pending.size === 0) discard(link);
       return;
     }
+    if (message.type === "presence") {
+      if (link === active && link.stage === stage) {
+        handlers.onPresence?.({ online: message.online, claimInMs: message.claimInMs });
+      }
+      return;
+    }
     if (message.type === "error") {
       // A socket that is not yet in use carries no action of the player's. Whatever goes
       // wrong on it is its own failure: retried quietly, unless it is the only socket there
@@ -205,30 +223,56 @@ export function createRemoteSession(
       handlers.onError(message.message, message.fatal);
       return;
     }
-    if (link === incoming && !link.ready) {
+    link.stage = gameStage(message.view);
+    const justPromoted = link === incoming && !link.ready;
+    if (justPromoted) {
       link.ready = true;
       promote(link);
     }
-    // A snapshot and a live update can cross, and during a changeover two sockets carry the
-    // same updates; never go back in time and never apply anything twice.
-    if (message.version <= version) return;
-    const contiguous = message.version === version + 1;
-    version = message.version;
-    handlers.onUpdate({
-      lobby: message.lobby,
-      view: message.view,
-      events: contiguous ? message.events : [],
-    });
+    const newer = message.version > version;
+    if (newer) {
+      const contiguous = message.version === version + 1;
+      version = message.version;
+      stage = gameStage(message.view);
+      handlers.onUpdate({
+        lobby: message.lobby,
+        view: message.view,
+        events: contiguous ? message.events : [],
+      });
+    }
+    // Sync presence per active socket for the current game stage so a retiring socket
+    // delivering an ordinary move first does not discard the replacement's initial away
+    // snapshot, while a stale snapshot from an earlier game-over/rematch stage cannot regress
+    // the active countdown. Promoting onto an older server without presence support clears
+    // stale claim UI silently.
+    if (link === active) {
+      if (justPromoted && !message.presence && message.view !== null) {
+        handlers.onPresence?.(null);
+      } else if (
+        message.presence &&
+        gameStage(message.view) === stage &&
+        (justPromoted || message.version > link.presenceVersion)
+      ) {
+        link.presenceVersion = message.version;
+        handlers.onPresence?.(message.presence);
+      }
+    }
   };
 
   /** Opens a socket: the first one, a reconnection, or a replacement for one in use. */
   function open(): void {
     if (closed || incoming) return;
-    const link: Link = { socket: connect(), ready: false, pending: new Set() };
+    const link: Link = {
+      socket: connect(),
+      ready: false,
+      stage: "lobby",
+      presenceVersion: -1,
+      pending: new Set(),
+    };
     incoming = link;
     // Only the very first attempt is "connecting"; after any failure the player is told.
     if (!active) handlers.onStatus(everFailed ? "reconnecting" : "connecting");
-    link.socket.onopen = () => say(link, { type: "hello", token });
+    link.socket.onopen = () => say(link, { type: "hello", token, presence: true });
     link.socket.onmessage = (event) => {
       if (closed) return;
       receive(link, JSON.parse(String(event.data)) as ServerMessage);

@@ -207,8 +207,34 @@ describe("turn flow", () => {
     const result = applyCommand(state, "white", { type: "move", from: 0, to: "off", die: 4 });
     expect(result.state.phase).toBe("over");
     expect(result.state.winner).toBe("white");
+    expect(result.state.winReason).toBe("bearOff");
     expect(result.events.at(-1)).toEqual({ type: "gameWon", winner: "white" });
     expect(() => applyCommand(result.state, "black", { type: "roll" })).toThrow(GameError);
+  });
+
+  it("lets either player claim victory on abandonment, even on the opponent's turn, conserving all cards", () => {
+    const dealt = newGame(42).state;
+    const active = dealt.current;
+    const other = active === "white" ? "black" : "white";
+    expect(dealt.phase).toBe("pick");
+    expect(dealt.cards[active].offer).toHaveLength(3);
+
+    const claimed = applyCommand(dealt, other, { type: "claimVictory" });
+    expect(claimed.state.phase).toBe("over");
+    expect(claimed.state.winner).toBe(other);
+    expect(claimed.state.winReason).toBe("abandoned");
+    expect(claimed.state.wins[other]).toBe(1);
+    expect(claimed.state.dice).toEqual([]);
+    expect(claimed.state.cards[active].offer).toEqual([]);
+    // Offered cards move to discard so card conservation holds.
+    for (const who of ["white", "black"] as const) {
+      const mine = claimed.state.cards[who];
+      expect([...mine.deck, ...mine.hand, ...mine.discard, ...mine.offer].toSorted()).toEqual(
+        starterDeck().toSorted(),
+      );
+    }
+    expect(claimed.events).toEqual([{ type: "gameWon", winner: other }]);
+    expect(() => applyCommand(claimed.state, active, { type: "claimVictory" })).toThrow(GameError);
   });
 });
 

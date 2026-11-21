@@ -4,6 +4,9 @@ import type { CardId, HexId, TrapId, WardId } from "./cards.ts";
 /** `pick`: choose one offered card. `roll`: roll the dice. `move`: play checkers and cards. */
 export type Phase = "pick" | "roll" | "move" | "over";
 
+/** How a finished game ended: normal bear-off, or victory claimed after the opponent left. */
+export type WinReason = "bearOff" | "abandoned";
+
 export interface PlayerCards {
   /** Draw pile; the last element is the top. */
   deck: CardId[];
@@ -21,6 +24,8 @@ export interface GameState {
   dice: number[];
   phase: Phase;
   winner: Player | null;
+  /** How the game was won, once `phase === "over"`. */
+  winReason: WinReason | null;
   cards: Record<Player, PlayerCards>;
   /** A shielded player's lone checkers cannot be hit. Lasts until their next turn. */
   shielded: Record<Player, boolean>;
@@ -57,6 +62,8 @@ export type Command =
   | { type: "move"; from: number | "bar"; to: number | "off"; die: number }
   | { type: "playCard"; index: number }
   | { type: "endTurn" }
+  /** Claims victory once the opponent has been disconnected past the grace period. */
+  | { type: "claimVictory" }
   /** Asks to play again. Only once the game is over; the new game starts when both have. */
   | { type: "rematch" };
 

@@ -16,10 +16,22 @@ export interface HudActions {
   /** The player tried a card that cannot be played now; `reason` says why. */
   onBlocked: (reason: string) => void;
   onPick: (offerIndex: number) => void;
+  /** Claims victory once the opponent has remained disconnected past the grace period. */
+  onClaimVictory: () => void;
   /** Asks to play again once the game is over. */
   onRematch: () => void;
   /** Goes back to the start screen. */
   onLeave: () => void;
+}
+
+export interface OpponentAwayState {
+  name: string;
+  /** Whole seconds left until victory may be claimed; `0` means claimable right now. */
+  secondsLeft: number;
+  /** Remaining countdown fraction in [0, 1]. */
+  progress: number;
+  /** Whether a claim command is currently in flight. */
+  claiming: boolean;
 }
 
 export interface HudModel {
@@ -38,6 +50,8 @@ export interface HudModel {
   justWon: boolean;
   /** The coach has the screen: the card pick waits until it is done. */
   coaching: boolean;
+  /** Whether the opponent currently has an active connection (always true in local play). */
+  opponentOnline: boolean;
 }
 
 export interface Hud {
@@ -48,6 +62,10 @@ export interface Hud {
   notify: (text: string) => void;
   /** Shows or hides the banner that says the connection to the server is lost. */
   setOffline: (offline: boolean) => void;
+  /** Updates the opponent-disconnected banner without redrawing the hand or board. */
+  setOpponentAway: (away: OpponentAwayState | null) => void;
+  /** Updates only the opponent chip and result controls, preserving card keyboard focus. */
+  setOpponentOnline: (online: boolean) => void;
   /** Where each die face in the HUD is on screen, in order; laid out even while hidden. */
   diceFaces: () => DOMRect[];
   show: () => void;
@@ -80,13 +98,14 @@ interface ChipModel {
   active: boolean;
   hand: number;
   shielded: boolean;
+  away: boolean;
   marks: Mark[];
 }
 
 /** One player's colour, name and state. The player on turn is outlined. */
 function playerChip(model: ChipModel): HTMLElement {
   const chip = document.createElement("div");
-  chip.className = `player${model.active ? " active" : ""}`;
+  chip.className = `player${model.active ? " active" : ""}${model.away ? " away" : ""}`;
   const dot = document.createElement("span");
   dot.className = `dot ${model.player}`;
   const portrait = document.createElement("span");
@@ -101,8 +120,10 @@ function playerChip(model: ChipModel): HTMLElement {
   colour.textContent = model.name === colourName ? "" : colourName;
   const details = document.createElement("span");
   details.className = "quiet";
-  const cards = `${model.hand} ${model.hand === 1 ? "card" : "cards"}`;
-  details.textContent = model.shielded ? `${cards}, shielded` : cards;
+  const parts = [`${model.hand} ${model.hand === 1 ? "card" : "cards"}`];
+  if (model.shielded) parts.push("shielded");
+  if (model.away) parts.push("left");
+  details.textContent = parts.join(", ");
   chip.append(portrait, dot, label, colour, details);
   const marks = markRow(model.marks);
   if (marks) chip.append(marks);
@@ -133,6 +154,12 @@ export function createHud(): Hud {
   const message = el("message");
   const players = el("players");
   const opponentHand = el("opponent-hand");
+  const awayBanner = el("opponent-away");
+  const awayTitle = el("away-title");
+  const awayDetail = el("away-detail");
+  const claimVictory = el("claim-victory", HTMLButtonElement);
+  const awayBar = el("away-bar");
+  const awayAnnounce = el("away-announce");
   const offlineBanner = el("offline");
   const roll = el("roll", HTMLButtonElement);
   const end = el("end", HTMLButtonElement);
@@ -144,6 +171,88 @@ export function createHud(): Hud {
     onRematch: () => hud.actions?.onRematch(),
     onLeave: () => hud.actions?.onLeave(),
   });
+  let isOffline = false;
+  let currentAway: OpponentAwayState | null = null;
+  let announcedPhase: "waiting" | "claimable" | null = null;
+  let lastModel: HudModel | null = null;
+
+  const renderPlayers = (model: HudModel) => {
+    const { view, lobby } = model;
+    const name = (player: Player) => lobby.players[player]?.name ?? player;
+    const other: Player = view.you === "white" ? "black" : "white";
+    // Your own chip first; in hot-seat play the order stays fixed.
+    const order: Player[] = model.local ? ["white", "black"] : [view.you, other];
+    players.replaceChildren(
+      ...order.map((player) =>
+        playerChip({
+          player,
+          name: name(player),
+          character: lobby.players[player]?.character ?? DEFAULT_CHARACTER,
+          wins: view.wins[player],
+          scored: view.wins.white + view.wins.black > 0,
+          you: !model.local && player === view.you,
+          active: view.phase !== "over" && view.current === player,
+          hand: view.counts[player].hand,
+          shielded: view.shielded[player],
+          away: !model.local && player === other && !model.opponentOnline,
+          marks: marksFor(view, player),
+        }),
+      ),
+    );
+  };
+
+  const topRow = root.querySelector<HTMLElement>(".row");
+  const syncAwaySpace = () => {
+    if (awayBanner.hidden) {
+      document.documentElement.style.removeProperty("--away-top");
+      document.documentElement.style.removeProperty("--away-bottom");
+      return;
+    }
+    const top = topRow ? Math.ceil(topRow.getBoundingClientRect().bottom + 8) : 0;
+    if (top > 0) document.documentElement.style.setProperty("--away-top", `${top}px`);
+    const bottom = Math.ceil(awayBanner.getBoundingClientRect().bottom + 8);
+    if (bottom > 0) document.documentElement.style.setProperty("--away-bottom", `${bottom}px`);
+  };
+  if (typeof ResizeObserver !== "undefined") {
+    const watchAway = new ResizeObserver(syncAwaySpace);
+    watchAway.observe(awayBanner);
+    if (topRow) watchAway.observe(topRow);
+  }
+
+  const syncAway = () => {
+    if (!currentAway || isOffline) {
+      awayBanner.hidden = true;
+      syncAwaySpace();
+      if (!currentAway) {
+        announcedPhase = null;
+        awayAnnounce.textContent = "";
+      }
+      return;
+    }
+    const claimable = currentAway.secondsLeft <= 0;
+    awayBanner.hidden = false;
+    awayBanner.classList.toggle("claimable", claimable);
+    awayTitle.textContent = `${currentAway.name} left the game`;
+    awayDetail.textContent = claimable
+      ? "You may keep waiting or claim victory."
+      : `You can claim victory in ${currentAway.secondsLeft}s`;
+    claimVictory.hidden = !claimable;
+    claimVictory.disabled = currentAway.claiming;
+    claimVictory.textContent = currentAway.claiming ? "Claiming…" : "Claim victory";
+    awayBar.hidden = claimable;
+    awayBar.style.setProperty(
+      "--away-progress",
+      String(Math.max(0, Math.min(1, currentAway.progress))),
+    );
+    syncAwaySpace();
+    const phase = claimable ? "claimable" : "waiting";
+    if (phase !== announcedPhase) {
+      announcedPhase = phase;
+      awayAnnounce.textContent = claimable
+        ? `${currentAway.name} left the game. You can now claim victory.`
+        : `${currentAway.name} left the game. You can claim victory in ${currentAway.secondsLeft} seconds.`;
+    }
+  };
   /** The hand card a touch has raised to be read, and the hand it belongs to. */
   let raised: { index: number; hand: string } | null = null;
   /** What kind of pointer last pressed a hand card: "touch", "pen", "mouse" or nothing. */
@@ -160,6 +269,7 @@ export function createHud(): Hud {
     actions: null,
     diceFaces: () => [...dice.children].map((face) => face.getBoundingClientRect()),
     render(model) {
+      lastModel = model;
       const { view, lobby, myTurn } = model;
       const name = (player: Player) => lobby.players[player]?.name ?? player;
       const other: Player = view.you === "white" ? "black" : "white";
@@ -185,24 +295,7 @@ export function createHud(): Hud {
         );
       }
       message.textContent = model.message;
-      // Your own chip first; in hot-seat play the order stays fixed.
-      const order: Player[] = model.local ? ["white", "black"] : [view.you, other];
-      players.replaceChildren(
-        ...order.map((player) =>
-          playerChip({
-            player,
-            name: name(player),
-            character: lobby.players[player]?.character ?? DEFAULT_CHARACTER,
-            wins: view.wins[player],
-            scored: view.wins.white + view.wins.black > 0,
-            you: !model.local && player === view.you,
-            active: view.phase !== "over" && view.current === player,
-            hand: view.counts[player].hand,
-            shielded: view.shielded[player],
-            marks: marksFor(view, player),
-          }),
-        ),
-      );
+      renderPlayers(model);
 
       // The opponent's hand, face down: how many cards, never which ones or how rare.
       const held = view.counts[other].hand;
@@ -286,6 +379,7 @@ export function createHud(): Hud {
             )
           : []),
       );
+      if (!awayBanner.hidden) syncAwaySpace();
     },
     notify(text) {
       notice.textContent = text;
@@ -296,8 +390,20 @@ export function createHud(): Hud {
       }, 3500);
     },
     setOffline(offline) {
+      isOffline = offline;
       offlineBanner.hidden = !offline;
       root.classList.toggle("offline", offline);
+      syncAway();
+    },
+    setOpponentAway(away) {
+      currentAway = away;
+      syncAway();
+    },
+    setOpponentOnline(online) {
+      if (!lastModel || lastModel.local || lastModel.opponentOnline === online) return;
+      lastModel = { ...lastModel, opponentOnline: online };
+      renderPlayers(lastModel);
+      if (lastModel.view.phase === "over") gameOver.render(lastModel);
     },
     show() {
       root.hidden = false;
@@ -307,13 +413,21 @@ export function createHud(): Hud {
       offer.hidden = true;
       gameOver.hide();
       raised = null;
+      lastModel = null;
       notice.hidden = true;
+      isOffline = false;
+      currentAway = null;
+      announcedPhase = null;
+      awayBanner.hidden = true;
+      syncAwaySpace();
+      awayAnnounce.textContent = "";
       offlineBanner.hidden = true;
       root.classList.remove("offline");
     },
   };
   roll.addEventListener("click", () => hud.actions?.onRoll());
   end.addEventListener("click", () => hud.actions?.onEnd());
+  claimVictory.addEventListener("click", () => hud.actions?.onClaimVictory());
   // A tap anywhere else puts a raised card back.
   document.addEventListener("pointerdown", (event) => {
     if (raised && !(event.target instanceof Element && event.target.closest("#hand .card")))
