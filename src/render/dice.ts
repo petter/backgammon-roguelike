@@ -133,7 +133,9 @@ export class DiceView {
 
   /** Sets dice down at rest showing `values`, without a throw: for a game joined mid-turn. */
   show(values: number[], side: 1 | -1): void {
+    // What was there is replaced outright, so old and new dice are never seen together.
     this.clear();
+    this.group.clear();
     this.shown = [...values];
     this.dice = values.map((value, i) => {
       const die = this.spawn(facesFor(value));
@@ -143,11 +145,19 @@ export class DiceView {
     });
   }
 
-  /** Takes the dice off the board. */
+  /**
+   * Takes the dice off the board. Dice at rest shrink away. Dice cut off in mid-air go at
+   * once: a throw that was cancelled must not hang over the board, even for a moment.
+   */
   clear(): void {
+    const airborne = this.playback !== null;
     this.playback?.kill();
     this.playback = null;
     for (const { body } of this.dice) {
+      if (airborne) {
+        this.group.remove(body);
+        continue;
+      }
       gsap.to(body.scale, {
         x: 0,
         y: 0,
