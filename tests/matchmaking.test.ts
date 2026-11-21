@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { findMatch, type SearchEnvironment } from "../src/net/matchmaking.ts";
+import { CANCEL_TIMEOUT_MS, findMatch, type SearchEnvironment } from "../src/net/matchmaking.ts";
 import type { MatchReply, SeatGrant } from "../src/net/protocol.ts";
 
 const player = { name: "Ada", character: "seer" as const };
@@ -17,6 +17,7 @@ function fakeServer(script: Answer[], cancelReply: MatchReply = { ticket: "t1", 
   const beacons: string[] = [];
   const page = { hide: () => {}, show: () => {}, removed: false };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  let tickets = 0;
   const env: SearchEnvironment = {
     fetch: (async (path: string, init?: RequestInit) => {
       const signal = init?.signal ?? undefined;
@@ -35,6 +36,7 @@ function fakeServer(script: Answer[], cancelReply: MatchReply = { ticket: "t1", 
     delay: async () => {
       await settle();
     },
+    ticket: () => `t${++tickets}`,
     beacon: (url) => beacons.push(url),
     onPage(hide, show) {
       page.hide = hide;
@@ -43,6 +45,11 @@ function fakeServer(script: Answer[], cancelReply: MatchReply = { ticket: "t1", 
     },
   };
   return { env, calls, beacons, page, settle };
+}
+
+/** The ticket a request to start looking carried. */
+function ticketOf(body?: string): string {
+  return (JSON.parse(body ?? "{}") as { ticket?: string }).ticket ?? "";
 }
 
 function recorder() {
@@ -63,7 +70,7 @@ async function settled(server: { settle: () => Promise<unknown> }, rounds = 10) 
 }
 
 describe("findMatch", () => {
-  it("seeks with the player, waits on the ticket, and takes the seat once found", async () => {
+  it("seeks with the player and its own ticket, waits, and takes the seat once found", async () => {
     const server = fakeServer([
       { ticket: "t1", seat: null },
       { ticket: "t1", seat: null },
@@ -78,16 +85,26 @@ describe("findMatch", () => {
       "/api/match/t1",
       "/api/match/t1",
     ]);
-    expect(JSON.parse(server.calls[0]?.body ?? "")).toEqual(player);
+    expect(JSON.parse(server.calls[0]?.body ?? "")).toEqual({ ...player, ticket: "t1" });
     expect(server.page.removed).toBe(true);
   });
 
-  it("starts over when the server has forgotten the ticket", async () => {
+  it("starts over with a new ticket when the server has forgotten the old one", async () => {
     const server = fakeServer([{ ticket: "t1", seat: null }, 404, { ticket: "t2", seat }]);
     const { seats, handlers } = recorder();
     findMatch(player, handlers, server.env);
     await settled(server);
     expect(server.calls.map((c) => c.path)).toEqual(["/api/match", "/api/match/t1", "/api/match"]);
+    expect(ticketOf(server.calls[2]?.body ?? "")).toBe("t2");
+    expect(seats).toEqual([seat]);
+  });
+
+  it("asks to start looking again with the same ticket when the first answer is lost", async () => {
+    const server = fakeServer(["offline", { ticket: "t1", seat }]);
+    const { seats, handlers } = recorder();
+    findMatch(player, handlers, server.env);
+    await settled(server);
+    expect(server.calls.map((c) => ticketOf(c.body ?? ""))).toEqual(["t1", "t1"]);
     expect(seats).toEqual([seat]);
   });
 
@@ -121,56 +138,46 @@ describe("findMatch", () => {
     expect(await search.cancel()).toBeNull();
   });
 
-  it("hands back a seat that was found just before the cancel", async () => {
-    const server = fakeServer([{ ticket: "t1", seat: null }, "hang"], { ticket: "t1", seat });
+  it("cancels at once while the first answer is still on its way, naming the ticket", async () => {
+    // The request to start looking never answers.
+    const server = fakeServer(["hang"]);
     const search = findMatch(player, recorder().handlers, server.env);
-    await settled(server);
-    expect(await search.cancel()).toEqual(seat);
+    expect(await search.cancel()).toBeNull();
+    expect(server.calls.map((c) => c.path)).toEqual(["/api/match", "/api/match/t1/cancel"]);
+    expect(server.calls[0]?.aborted()).toBe(true);
   });
 
-  /** A server whose answer to the first request for a ticket is held back until released. */
-  function slowSeek(cancelReply?: MatchReply) {
-    let answer: (reply: Response) => void = () => {};
-    const server = fakeServer([], cancelReply);
-    const fetchAll = server.env.fetch;
-    server.env.fetch = ((path: string, init?: RequestInit) =>
-      path === "/api/match"
-        ? new Promise<Response>((resolve) => (answer = resolve))
-        : fetchAll(path, init)) as typeof fetch;
-    return { server, answer: (reply: MatchReply) => answer(Response.json(reply)) };
-  }
-
-  it("gives up a ticket that arrives after a cancel", async () => {
-    const { server, answer } = slowSeek();
-    const search = findMatch(player, recorder().handlers, server.env);
-    const cancelled = search.cancel();
-    answer({ ticket: "late", seat: null });
-    expect(await cancelled).toBeNull();
-    expect(server.calls.map((c) => c.path)).toEqual(["/api/match/late/cancel"]);
-  });
-
-  it("hands back a seat that arrives after a cancel, instead of leaving it empty", async () => {
-    const { server, answer } = slowSeek();
+  it("hands back a seat the server dealt before the cancel, answered or not", async () => {
+    const server = fakeServer(["hang"], { ticket: "t1", seat });
     const { seats, handlers } = recorder();
     const search = findMatch(player, handlers, server.env);
-    const cancelled = search.cancel();
-    answer({ ticket: "late", seat });
-    expect(await cancelled).toEqual(seat);
+    expect(await search.cancel()).toEqual(seat);
     await settled(server);
     expect(seats).toEqual([]);
-    expect(server.calls).toEqual([]);
   });
 
-  it("gives up a ticket that arrives after the page went away", async () => {
-    const { server, answer } = slowSeek();
-    findMatch(player, recorder().handlers, server.env);
-    server.page.hide();
-    answer({ ticket: "late", seat: null });
-    await settled(server);
-    expect(server.calls.map((c) => c.path)).toEqual(["/api/match/late/cancel"]);
+  it("settles a cancel the server never answers", async () => {
+    vi.useFakeTimers();
+    try {
+      const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
+      const fetchAll = server.env.fetch;
+      server.env.fetch = ((path: string, init?: RequestInit) =>
+        path.endsWith("/cancel")
+          ? new Promise((_resolve, reject) =>
+              init?.signal?.addEventListener("abort", () => reject(new Error("timed out"))),
+            )
+          : fetchAll(path, init)) as typeof fetch;
+      const search = findMatch(player, recorder().handlers, server.env);
+      await vi.advanceTimersByTimeAsync(10);
+      const cancelled = search.cancel();
+      await vi.advanceTimersByTimeAsync(CANCEL_TIMEOUT_MS);
+      expect(await cancelled).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("stops looking when the page goes away, and starts again if it comes back", async () => {
+  it("stops looking when the page goes away, and starts again with a new ticket", async () => {
     const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
     const { seats, handlers } = recorder();
     findMatch(player, handlers, server.env);
@@ -180,8 +187,8 @@ describe("findMatch", () => {
     expect(server.calls[1]?.aborted()).toBe(true);
     server.page.show();
     await settled(server);
-    // A fresh ticket: the old one was given up on the way out.
     expect(server.calls.at(-1)?.path).toBe("/api/match");
+    expect(ticketOf(server.calls.at(-1)?.body ?? "")).toBe("t2");
     expect(seats).toEqual([]);
   });
 });

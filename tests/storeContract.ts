@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameStore, Room, RoomUpdate, Seeker } from "../src/server/store.ts";
+import {
+  cancelledSeeker,
+  type GameStore,
+  type Room,
+  type RoomUpdate,
+  type Seeker,
+} from "../src/server/store.ts";
 
 function room(code: string, version = 0, id = "room-1"): Room {
   return { id, code, version, seats: { white: { token: "t", name: "Ada" } }, game: null };
@@ -167,18 +173,39 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect(await pair("quiet", "eager", 1000)).toBe(true);
     });
 
-    it("forgets a removed waiting seeker but keeps a matched one's seat", async () => {
+    it("marks a removed seeker cancelled but keeps a matched one's seat", async () => {
       const store = makeStore();
       await store.addSeeker(seeker("a", 1000));
       await store.addSeeker(seeker("b", 2000));
       await store.addSeeker(seeker("c", 3000));
       await store.pairSeekers({ id: "a", grant: grant("a") }, { id: "b", grant: grant("b") }, 0);
       expect(await store.removeSeeker("c")).toEqual(seeker("c", 3000));
-      expect(await store.touchSeeker("c", 4000)).toBeNull();
-      expect(await store.removeSeeker("c")).toBeNull();
+      expect(await store.touchSeeker("c", 4000)).toEqual(cancelledSeeker("c"));
+      expect(await store.removeSeeker("c")).toEqual(cancelledSeeker("c"));
       expect((await store.removeSeeker("a"))?.grant).toEqual(grant("a"));
       expect((await store.touchSeeker("a", 4000))?.grant).toEqual(grant("a"));
       expect(await store.waitingSeekers(10)).toEqual([]);
+    });
+
+    it("refuses a known id, and one cancelled before it ever arrived", async () => {
+      const store = makeStore();
+      expect(await store.addSeeker(seeker("a", 1000))).toBe(true);
+      expect(await store.addSeeker(seeker("a", 2000))).toBe(false);
+      expect((await store.waitingSeekers(10)).map((s) => s.since)).toEqual([1000]);
+      expect(await store.removeSeeker("early")).toBeNull();
+      expect(await store.addSeeker(seeker("early", 3000))).toBe(false);
+      expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["a"]);
+      // A cancelled seeker can be neither paired nor pruned.
+      await store.removeSeeker("a");
+      await store.addSeeker(seeker("b", 4000));
+      const pair = store.pairSeekers(
+        { id: "a", grant: grant("a") },
+        { id: "b", grant: grant("b") },
+        0,
+      );
+      expect(await pair).toBe(false);
+      expect(await store.pruneSeeker("a", 9000)).toBe(false);
+      expect(await store.touchSeeker("a", 9000)).toEqual(cancelledSeeker("a"));
     });
 
     it("prunes a seeker only while they are still waiting and quiet", async () => {

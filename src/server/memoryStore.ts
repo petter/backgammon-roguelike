@@ -1,4 +1,11 @@
-import { type GameStore, Listeners, type Room, SEEKER_TTL_SECONDS, type Seeker } from "./store.ts";
+import {
+  cancelledSeeker,
+  type GameStore,
+  Listeners,
+  type Room,
+  SEEKER_TTL_SECONDS,
+  type Seeker,
+} from "./store.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,7 +44,7 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
   };
   const waiting = (id: string): Seeker | null => {
     const found = seeker(id);
-    return found && !found.grant ? found : null;
+    return found && !found.grant && !found.cancelled ? found : null;
   };
 
   return {
@@ -63,12 +70,14 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       return listeners.add(code, listener);
     },
     async addSeeker(value) {
+      if (seeker(value.id)) return false;
       keep(value);
+      return true;
     },
     async touchSeeker(id, at) {
       const found = seeker(id);
       if (!found) return null;
-      if (found.grant) return structuredClone(found);
+      if (found.grant || found.cancelled) return structuredClone(found);
       const touched = { ...found, seen: at };
       keep(touched);
       return structuredClone(touched);
@@ -97,7 +106,7 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
     },
     async removeSeeker(id) {
       const found = seeker(id);
-      if (found && !found.grant) seekers.delete(id);
+      if (!found?.grant) keep(cancelledSeeker(id));
       return found && structuredClone(found);
     },
   };

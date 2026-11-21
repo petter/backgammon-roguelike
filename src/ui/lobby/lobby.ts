@@ -51,6 +51,8 @@ export interface LobbyUi {
   showSearching: (player: PlayerChoice) => void;
   /** Says the server cannot be reached while searching, or `null` once it can again. */
   searchTrouble: (problem: string | null) => void;
+  /** Says the search is being called off, while the server answers. */
+  searchCancelling: () => void;
   setBusy: (busy: boolean) => void;
   hide: () => void;
 }
@@ -336,6 +338,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       });
     },
     searchTrouble: (problem) => searching.trouble(problem),
+    searchCancelling: () => searching.cancelling(),
     setBusy(busy) {
       for (const button of buttons) button.disabled = busy;
     },

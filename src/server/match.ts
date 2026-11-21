@@ -25,6 +25,11 @@ export interface MatchOptions {
   freshMs?: number;
   /** Ends a held request early, such as when its client hangs up. */
   signal?: AbortSignal;
+  /**
+   * The ticket a seeker chose for themselves. Choosing it lets a client cancel a search
+   * whose first answer it never got. Made up here when not given.
+   */
+  ticket?: string;
 }
 
 export const HOLD_MS = 20_000;
@@ -93,13 +98,17 @@ async function pairUp(
     // Someone else got to one of us first. The room just made is never entered and expires
     // on its own. If it was me who was taken, that is my match.
     const again = await store.touchSeeker(me.id, now);
-    if (!again) throw gone();
-    if (again.grant) return again.grant;
+    if (again?.grant) return again.grant;
+    if (!again || again.cancelled) throw gone();
   }
   return null;
 }
 
-/** Starts looking for a stranger to play. Answers at once, matched or not. */
+/**
+ * Starts looking for a stranger to play. Answers at once, matched or not. Asking again with
+ * the same ticket, as a client retrying after a lost answer would, keeps the seeker's place.
+ * Throws `RoomError` `not_found` if that ticket was cancelled.
+ */
 export async function seekMatch(
   store: GameStore,
   name: unknown,
@@ -108,14 +117,18 @@ export async function seekMatch(
 ): Promise<MatchReply> {
   const { entropy = cryptoEntropy, now = Date.now, freshMs = FRESH_MS } = options;
   const at = now();
-  const me: Seeker = {
-    id: entropy.token(),
+  let me: Seeker | null = {
+    id: options.ticket ?? entropy.token(),
     name: cleanName(name, "Guest"),
     character: characterOf(character),
     since: at,
     seen: at,
   };
-  await store.addSeeker(me);
+  if (!(await store.addSeeker(me))) {
+    me = await store.touchSeeker(me.id, at);
+    if (!me || me.cancelled) throw gone();
+    if (me.grant) return { ticket: me.id, seat: me.grant };
+  }
   return { ticket: me.id, seat: await pairUp(store, me, entropy, at, freshMs) };
 }
 
@@ -141,8 +154,8 @@ export async function awaitMatch(
   for (;;) {
     const at = now();
     const me = await store.touchSeeker(ticket, at);
-    if (!me) throw gone();
-    if (me.grant) return { ticket, seat: me.grant };
+    if (me?.grant) return { ticket, seat: me.grant };
+    if (!me || me.cancelled) throw gone();
     const seat = await pairUp(store, me, entropy, at, freshMs);
     if (seat) return { ticket, seat };
     if (signal?.aborted || now() + tickMs > until) return { ticket, seat: null };
@@ -153,7 +166,8 @@ export async function awaitMatch(
 
 /**
  * Stops looking. If a stranger was found just before, the seat is returned all the same:
- * someone is waiting at that table.
+ * someone is waiting at that table. Works for a ticket the server has not seen yet, too: a
+ * request to start looking with it that arrives later is refused.
  */
 export async function cancelMatch(store: GameStore, ticket: string): Promise<MatchReply> {
   const record = await store.removeSeeker(ticket);

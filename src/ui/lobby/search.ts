@@ -17,6 +17,8 @@ export function searchRoom(onCancel: () => void): {
   element: HTMLElement;
   show: (player: PlayerChoice) => void;
   trouble: (problem: string | null) => void;
+  /** Says the search is being called off, until the next view; Cancel has been pressed. */
+  cancelling: () => void;
   /** Stops the clock. */
   stop: () => void;
 } {
@@ -32,7 +34,7 @@ export function searchRoom(onCancel: () => void): {
         <span class="versus">vs</span>
         <figure class="seat-open"><span class="medallion"><span class="ring"></span>?</span><figcaption>Anyone</figcaption></figure>
       </div>
-      <p class="waiting-status" role="status"><span class="pulse-dot"></span><span>Searching</span><time class="clock">0:00</time></p>
+      <p class="waiting-status" role="status"><span class="pulse-dot"></span><span class="search-state">Searching</span><time class="clock">0:00</time></p>
       <p class="search-trouble" role="alert" hidden></p>
       <button type="button" class="link cancel">Cancel</button>
     `),
@@ -41,7 +43,9 @@ export function searchRoom(onCancel: () => void): {
   const name = part(element, ".seat-you figcaption");
   const clock = part(element, ".clock");
   const troubleLine = part(element, ".search-trouble");
-  part(element, ".cancel").addEventListener("click", onCancel);
+  const state = part(element, ".search-state");
+  const cancel = part(element, ".cancel", HTMLButtonElement);
+  cancel.addEventListener("click", onCancel);
   let timer = 0;
   const stop = () => clearInterval(timer);
   return {
@@ -51,6 +55,9 @@ export function searchRoom(onCancel: () => void): {
       name.textContent = player.name || "Guest";
       name.title = CHARACTERS[player.character].name;
       troubleLine.hidden = true;
+      state.textContent = "Searching";
+      clock.hidden = false;
+      cancel.disabled = false;
       const started = Date.now();
       const tick = () => {
         const text = elapsed(Date.now() - started);
@@ -59,6 +66,13 @@ export function searchRoom(onCancel: () => void): {
       tick();
       stop();
       timer = window.setInterval(tick, 1000);
+    },
+    cancelling() {
+      stop();
+      state.textContent = "Cancelling…";
+      clock.hidden = true;
+      troubleLine.hidden = true;
+      cancel.disabled = true;
     },
     trouble(problem) {
       troubleLine.textContent = problem ?? "";

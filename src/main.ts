@@ -144,6 +144,7 @@ function cancelSeek(then: () => void): boolean {
   const running = search;
   search = null;
   cancelling = true;
+  lobby.searchCancelling();
   void settle(running);
   return true;
 }

@@ -45,6 +45,16 @@ export interface Seeker {
   seen: number;
   /** Their seat, once they have been matched. A matched seeker is no longer waiting. */
   grant?: SeatGrant;
+  /**
+   * They stopped looking. The record stays as a marker, so a request to start looking with
+   * this ticket that arrives after the cancel cannot bring them back.
+   */
+  cancelled?: true;
+}
+
+/** What is kept of a seeker who cancelled. */
+export function cancelledSeeker(id: string): Seeker {
+  return { id, name: "", character: "gambler", since: 0, seen: 0, cancelled: true };
 }
 
 /**
@@ -64,8 +74,8 @@ export interface GameStore {
   /** Resolves to an unsubscribe function once the listener is live. */
   subscribe: (code: string, listener: (update: RoomUpdate) => void) => Promise<() => void>;
 
-  /** Starts a seeker waiting. */
-  addSeeker: (seeker: Seeker) => Promise<void>;
+  /** Starts a seeker waiting. Resolves `false`, changing nothing, if the id is already known. */
+  addSeeker: (seeker: Seeker) => Promise<boolean>;
   /** A seeker's record, with `seen` moved to `now` if they are still waiting. */
   touchSeeker: (id: string, now: number) => Promise<Seeker | null>;
   /** Up to `limit` seekers still waiting, longest first, whether or not they were seen lately. */
@@ -85,8 +95,9 @@ export interface GameStore {
    */
   pruneSeeker: (id: string, seenBefore: number) => Promise<boolean>;
   /**
-   * Stops a seeker waiting and forgets them, unless they were already matched: then their
-   * record stays, so their seat can still be collected. Returns the record as it was.
+   * Stops a seeker waiting and leaves a cancelled marker in their place, even for an id not
+   * seen yet, unless they were already matched: then their record stays, so their seat can
+   * still be collected. Returns the record as it was.
    */
   removeSeeker: (id: string) => Promise<Seeker | null>;
 }

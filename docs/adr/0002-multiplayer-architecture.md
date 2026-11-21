@@ -117,10 +117,14 @@ Test levels:
 
 Players without a friend can be paired with a stranger.
 
-- **Tickets, not open rooms.** A seeker gets a secret ticket (`POST /api/match`). Nobody is
-  seated in a room until a pair is made; the room is then created with both seats taken and
-  the game dealt. A half-open public room would have to be kept honest about whether its
-  host is still there, and two waiting hosts would never find each other.
+- **Tickets, not open rooms.** A seeker holds a secret ticket, chosen by the client and
+  sent with `POST /api/match`. Nobody is seated in a room until a pair is made; the room is
+  then created with both seats taken and the game dealt. A half-open public room would have
+  to be kept honest about whether its host is still there, and two waiting hosts would
+  never find each other.
+- **The client chooses the ticket**, so it can always cancel without waiting for any
+  answer, even one that never comes. Asking to start looking again with the same ticket
+  keeps the seeker's place, so a lost answer is simply asked again.
 - **Presence is an open request.** The client keeps one long poll open
   (`POST /api/match/:ticket`, held for up to 20 s). While it is held, the server marks the
   seeker as seen every second and tries to pair them. A seeker not seen for 5 s is never
@@ -132,8 +136,11 @@ Players without a friend can be paired with a stranger.
   of a pair sets it up, so two seekers waiting for each other build one room, not two. When
   a third seeker races for the same partner, the loser's room is never entered and expires.
 - **Cancel** (`POST /api/match/:ticket/cancel`, also sent as a beacon when the page is
-  hidden) forgets the seeker. If they were matched a moment before, it returns the seat
-  instead: someone is already at that table, so the client takes it.
+  hidden) leaves a cancelled marker for the ticket, even one the server has not seen yet, so
+  a request to start looking with it that arrives late is refused. If the seeker was matched
+  a moment before, it returns the seat instead: someone is already at that table, so the
+  client takes it. Until the cancel is answered (at most 5 s), the client shows
+  "Cancelling…" and nothing else, so the player cannot start a second search meanwhile.
 - Seekers live in Redis as one JSON value each, expiring ten minutes after they were last
   heard from, plus a sorted set of waiting tickets by when they started looking.
 - Not built: skill rating, regions, or anything for an opponent who leaves mid-game. Those

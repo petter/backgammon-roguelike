@@ -546,6 +546,22 @@ describe("handleApi matchmaking", () => {
     expect((await handleApi(store, "POST", `/api/match/${ticket}/steal`, "")).status).toBe(404);
   });
 
+  it("takes the client's own ticket and refuses one of the wrong shape", async () => {
+    const store = createMemoryStore();
+    const body = (ticket: unknown) => JSON.stringify({ name: "Ada", ticket });
+    const chosen = await handleApi(store, "POST", "/api/match", body("my-ticket-1"));
+    expect(chosen).toEqual({ status: 200, body: { ticket: "my-ticket-1", seat: null } });
+    for (const odd of ["bad ticket!", 42, "", "x".repeat(101)]) {
+      expect((await handleApi(store, "POST", "/api/match", body(odd))).status, String(odd)).toBe(
+        400,
+      );
+    }
+    await handleApi(store, "POST", "/api/match/cancelled-early/cancel", "");
+    expect((await handleApi(store, "POST", "/api/match", body("cancelled-early"))).status).toBe(
+      404,
+    );
+  });
+
   it("refuses other methods, malformed and oversized bodies", async () => {
     const store = createMemoryStore();
     expect((await handleApi(store, "GET", "/api/match", "")).status).toBe(405);

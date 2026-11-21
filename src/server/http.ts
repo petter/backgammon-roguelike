@@ -18,8 +18,11 @@ const STATUS: Record<RoomErrorKind, number> = {
 /** Longest request body the lobby accepts, in UTF-16 code units. */
 export const BODY_LIMIT = 1024;
 
-/** The fields a player may send about themselves. Still untrusted: the room cleans them. */
-function playerOf(body: unknown): { name?: unknown; character?: unknown } {
+/**
+ * The fields a player may send about themselves, and the ticket a seeker chose. Still
+ * untrusted: the room cleans them.
+ */
+function playerOf(body: unknown): { name?: unknown; character?: unknown; ticket?: unknown } {
   return typeof body === "object" && body !== null ? body : {};
 }
 
@@ -56,8 +59,10 @@ async function match(
   options: MatchOptions,
 ): Promise<ApiResponse> {
   if (parts.length === 2) {
-    const { name, character } = playerOf(body);
-    return { status: 200, body: await seekMatch(store, name, character, options) };
+    const { name, character, ticket } = playerOf(body);
+    if (ticket !== undefined && (typeof ticket !== "string" || !isTicket(ticket)))
+      return { status: 400, body: { error: "That is not a ticket" } };
+    return { status: 200, body: await seekMatch(store, name, character, { ...options, ticket }) };
   }
   const ticket = parts[2] ?? "";
   if (!isTicket(ticket)) throw new RoomError("not_found", "No longer looking for a game");

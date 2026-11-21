@@ -221,3 +221,31 @@ describe("matchmaking under races", () => {
     expect(matched).not.toBeNull();
   });
 });
+
+describe("matchmaking with tickets the client chose", () => {
+  it("keeps a seeker's place when they ask to start looking again with the same ticket", async () => {
+    const { time, store, options } = setup();
+    const first = await seekMatch(store, "Ada", undefined, { ...options, ticket: "ada-ticket" });
+    expect(first.ticket).toBe("ada-ticket");
+    time.advance(10);
+    // A retry after a lost answer.
+    const again = await seekMatch(store, "Ada", undefined, { ...options, ticket: "ada-ticket" });
+    expect(again).toEqual({ ticket: "ada-ticket", seat: null });
+    expect((await store.waitingSeekers(10)).map((s) => s.since)).toEqual([time.now() - 10]);
+    time.advance(10);
+    const grace = await seekMatch(store, "Grace", undefined, options);
+    // Matched meanwhile: the retry hands over the seat.
+    const retried = await seekMatch(store, "Ada", undefined, { ...options, ticket: "ada-ticket" });
+    expect(retried.seat?.code).toBe(grace.seat?.code);
+  });
+
+  it("refuses a search that arrives after its cancel, so it can never be matched", async () => {
+    const { time, store, options } = setup();
+    expect((await cancelMatch(store, "slow-ticket")).seat).toBeNull();
+    await expect(
+      seekMatch(store, "Slow", undefined, { ...options, ticket: "slow-ticket" }),
+    ).rejects.toThrow("No longer looking");
+    time.advance(1);
+    expect((await seekMatch(store, "Next", undefined, options)).seat).toBeNull();
+  });
+});

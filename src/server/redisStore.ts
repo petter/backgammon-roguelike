@@ -1,6 +1,7 @@
 import { Redis } from "ioredis";
 
 import {
+  cancelledSeeker,
   type GameStore,
   Listeners,
   type Room,
@@ -29,7 +30,7 @@ const TOUCH_SEEKER = `
 local text = redis.call('GET', KEYS[1])
 if not text then return false end
 local seeker = cjson.decode(text)
-if seeker.grant == nil then
+if seeker.grant == nil and seeker.cancelled == nil then
   seeker.seen = tonumber(ARGV[1])
   text = cjson.encode(seeker)
   redis.call('SET', KEYS[1], text, 'EX', ARGV[2])
@@ -46,7 +47,8 @@ if not text then
   return 1
 end
 local seeker = cjson.decode(text)
-if seeker.grant ~= nil or seeker.seen >= tonumber(ARGV[2]) then return 0 end
+if seeker.grant ~= nil or seeker.cancelled ~= nil then return 0 end
+if seeker.seen >= tonumber(ARGV[2]) then return 0 end
 redis.call('DEL', KEYS[1])
 redis.call('ZREM', KEYS[2], ARGV[1])
 return 1
@@ -62,6 +64,7 @@ first = cjson.decode(first)
 second = cjson.decode(second)
 local fresh = tonumber(ARGV[3])
 if first.grant ~= nil or second.grant ~= nil then return 0 end
+if first.cancelled ~= nil or second.cancelled ~= nil then return 0 end
 if first.seen < fresh or second.seen < fresh then return 0 end
 first.grant = cjson.decode(ARGV[1])
 second.grant = cjson.decode(ARGV[2])
@@ -71,13 +74,20 @@ redis.call('ZREM', KEYS[3], first.id, second.id)
 return 1
 `;
 
-/** Takes a seeker out of the queue, and forgets them unless they were matched. */
+/** Takes a seeker out of the queue and leaves a cancelled marker, unless they were matched. */
 const REMOVE_SEEKER = `
 redis.call('ZREM', KEYS[2], ARGV[1])
 local text = redis.call('GET', KEYS[1])
-if not text then return false end
-if cjson.decode(text).grant == nil then redis.call('DEL', KEYS[1]) end
-return text
+if text and cjson.decode(text).grant ~= nil then return text end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+return text or false
+`;
+
+/** Starts a seeker waiting, unless the id is already known. */
+const ADD_SEEKER = `
+if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) == false then return 0 end
+redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4])
+return 1
 `;
 
 const key = (code: string) => `room:${code}`;
@@ -197,11 +207,17 @@ export function createRedisStore(
       return stop;
     },
     async addSeeker(seeker) {
-      await redis
-        .multi()
-        .set(seekerKey(seeker.id), JSON.stringify(seeker), "EX", SEEKER_TTL_SECONDS)
-        .zadd(QUEUE, seeker.since, seeker.id)
-        .exec();
+      const added = await redis.eval(
+        ADD_SEEKER,
+        2,
+        seekerKey(seeker.id),
+        QUEUE,
+        JSON.stringify(seeker),
+        SEEKER_TTL_SECONDS,
+        seeker.since,
+        seeker.id,
+      );
+      return added === 1;
     },
     async touchSeeker(id, now) {
       const text = await redis.eval(TOUCH_SEEKER, 2, seekerKey(id), QUEUE, now, SEEKER_TTL_SECONDS);
@@ -216,7 +232,7 @@ export function createRedisStore(
       if (expired.length > 0) await redis.zrem(QUEUE, ...expired);
       return texts
         .flatMap((text) => (text ? [JSON.parse(text) as Seeker] : []))
-        .filter((seeker) => !seeker.grant);
+        .filter((seeker) => !seeker.grant && !seeker.cancelled);
     },
     async pairSeekers(a, b, freshAfter) {
       const paired = await redis.eval(
@@ -236,7 +252,15 @@ export function createRedisStore(
       return (await redis.eval(PRUNE_SEEKER, 2, seekerKey(id), QUEUE, id, seenBefore)) === 1;
     },
     async removeSeeker(id) {
-      const text = await redis.eval(REMOVE_SEEKER, 2, seekerKey(id), QUEUE, id);
+      const text = await redis.eval(
+        REMOVE_SEEKER,
+        2,
+        seekerKey(id),
+        QUEUE,
+        id,
+        JSON.stringify(cancelledSeeker(id)),
+        SEEKER_TTL_SECONDS,
+      );
       return typeof text === "string" ? (JSON.parse(text) as Seeker) : null;
     },
     async close() {
