@@ -399,10 +399,6 @@ kbd {
 }
 
 .card-name {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.4em;
   padding: 0.12em 0.42em 0.1em;
   border-radius: 0.26em;
   font-size: 0.98em;
@@ -411,17 +407,6 @@ kbd {
   letter-spacing: 0.03em;
   line-height: 1.32;
   white-space: nowrap;
-}
-
-/* How many copies a deck holds, printed where a cost would sit. */
-/* Set a step smaller and in a lighter ink, like a stamp beside the name. */
-.card-copies {
-  flex: none;
-  color: #7d6c56;
-  font-size: 0.72em;
-  font-variant-caps: normal;
-  font-variant-numeric: lining-nums;
-  letter-spacing: 0;
 }
 
 .card-art {
@@ -609,12 +594,6 @@ kbd {
 .rarity-epic .card-frame::before,
 .rarity-legendary .card-frame::before {
   padding: 1.5px;
-}
-
-/* Over foil and gold leaf the copy count needs a darker ink to stay as crisp as elsewhere. */
-.rarity-epic .card-copies,
-.rarity-legendary .card-copies {
-  color: #4a3a28;
 }
 
 .rarity-epic .card-gem {

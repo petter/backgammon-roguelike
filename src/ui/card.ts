@@ -1,4 +1,4 @@
-import { CARD_IDS, CARDS, type CardId, copiesOf, RARITIES } from "../core/cards.ts";
+import { CARD_IDS, CARDS, type CardId, RARITIES } from "../core/cards.ts";
 import { cardArt } from "./cardArt.ts";
 
 function part(tag: string, className: string, content = ""): HTMLElement {
@@ -10,7 +10,7 @@ function part(tag: string, className: string, content = ""): HTMLElement {
 
 /**
  * A card as a button, laid out like a printed trading card: a paper border around a frame
- * in the rarity's colour, holding a name plate with the copy count, an illustration, a type
+ * in the rarity's colour, holding a name plate, an illustration, a type
  * line with the rarity gem, the rules text and a collector line, under a sheet of gloss.
  */
 export function createCard(
@@ -20,11 +20,9 @@ export function createCard(
   large = false,
 ): HTMLButtonElement {
   const { name, kind, rarity, text } = CARDS[card];
-  const copies = copiesOf(card);
   const button = document.createElement("button");
   button.type = "button";
   button.className = `card rarity-${rarity}${large ? " card-large" : ""}`;
-  button.title = `${RARITIES[rarity].name}: ${copies} in each deck`;
 
   const art = part("span", "card-art");
   // Fixed markup from our own source, not user input.
@@ -32,8 +30,7 @@ export function createCard(
   // A sheet of foil over the picture; only the rarest cards print anything on it.
   art.append(part("span", "card-foil"));
 
-  const plate = part("span", "card-name");
-  plate.append(part("span", "", name), part("span", "card-copies", `×${copies}`));
+  const plate = part("span", "card-name", name);
 
   const type = part("span", "card-type");
   const rarityLabel = part("span", "card-rarity");
