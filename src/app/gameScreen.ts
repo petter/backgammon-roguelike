@@ -15,8 +15,10 @@ import type { Stage } from "../render/stage.ts";
 import type { Coach } from "../ui/coach.ts";
 import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
+import type { RevealView } from "../ui/reveal.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
+import { revealFor } from "./reveals.ts";
 
 const byValue = (x: number, y: number) => x - y;
 
@@ -33,6 +35,7 @@ export interface GameScreenDeps {
   board: BoardView;
   hud: Hud;
   coach: Coach;
+  reveal: RevealView;
 }
 
 export interface GameScreenOptions {
@@ -66,6 +69,11 @@ function slotsFor(faces: DOMRect[], count: number): DieSlot[] {
   );
 }
 
+/** When a revealed card turns up: after the move or throw that set it off has landed. */
+const REVEAL_AT = 0.4;
+/** Between cards revealed by one update, which line up side by side. */
+const REVEAL_STAGGER = 0.25;
+
 const sideOf = (player: Player) => (player === "white" ? 1 : -1);
 
 /** Doubles are four moves but two dice on the table. */
@@ -77,7 +85,7 @@ const physical = (values: number[]) =>
  * input into commands. Returns a function that tears it all down.
  */
 export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () => void {
-  const { stageEl, stage, board, hud, coach } = deps;
+  const { stageEl, stage, board, hud, coach, reveal } = deps;
   const listeners = new AbortController();
   let view: PlayerView | null = null;
   let lobby: LobbyView | null = null;
@@ -114,6 +122,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
    * however the animation was delayed.
    */
   let rolling = false;
+  /**
+   * Until when, by `performance.now()`, a checker a revealed card sent off is still on its
+   * way. Moving it sooner would cut its trip short, so the board waits.
+   */
+  let heldUntil = 0;
   /** The board's shake when the game is won, waiting for the result screen to land. */
   let finale: gsap.core.Tween | null = null;
 
@@ -196,13 +209,25 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     const you = next.you;
     let text = "";
     let quaked = false;
+    /** Board events after a revealed card wait until it has turned face up. */
+    let after = 0;
+    let revealed = 0;
+    const whose = (player: Player) =>
+      !options.local && player === you ? "Your" : `${name(player)}'s`;
+    const turnUp = (event: GameEvent) => {
+      const shown = revealFor(event, whose);
+      if (!shown) return 0;
+      return reveal.show(shown, REVEAL_AT + REVEAL_STAGGER * revealed++);
+    };
     for (const event of events) {
       if (event.type === "pieceMoved") {
         pieces.apply(event);
       } else if (event.type === "hit") {
-        pieces.apply(event);
-        // A quake already shook the board; a second shake would cut it short.
-        if (!quaked) shake(stage.world, 0.6, 0.4);
+        const lands = pieces.apply(event, after);
+        if (after > 0) heldUntil = Math.max(heldUntil, performance.now() + lands * 1000);
+        // A quake already shook the board; a second shake would cut it short. A hit a
+        // revealed card made shook the board as the card turned up.
+        if (!quaked && after === 0) shake(stage.world, 0.6, 0.4);
       } else if (event.type === "cardPlayed") {
         text = `${name(event.player)} played ${CARDS[event.card].name}`;
         if (event.card === "quake") {
@@ -217,6 +242,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         const hex = CARDS[event.card].name;
         text = event.ward === "mirror" ? `${ward} throws ${hex} back` : `${ward} blocks ${hex}`;
       } else if (event.type === "hexStruck") {
+        turnUp(event);
         text =
           event.card === "backstep"
             ? `Backstep: ${name(event.player)}'s next move goes backwards`
@@ -230,7 +256,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
           : `${name(event.player)} set a trap`;
       } else if (event.type === "trapSprung") {
         text = `${name(event.player)}'s ${CARDS[event.card].name} springs!`;
-        shake(stage.world, 0.5, 0.3);
+        after = turnUp(event);
+        shake(stage.world, 0.5, after);
       } else if (event.type === "coinFlipped") {
         text += event.heads ? ": heads!" : ": tails";
       } else if (event.type === "diceRolled") {
@@ -255,6 +282,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       } else if (event.type === "gameStarted") {
         // A rematch: everything goes back to the starting position.
         finale?.kill();
+        reveal.clear();
         pieces.reset(next.board);
         settleDice(null);
         text = `New game: ${name(event.first)} starts`;
@@ -356,7 +384,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     "pointerdown",
     (event) => {
       if (!view || !myTurn() || view.phase !== "move") return;
-      if (rolling) return;
+      if (rolling || performance.now() < heldUntil) return;
       const target = stage.pick(event.clientX, event.clientY);
       const moves = legalMoves(view);
 
@@ -419,6 +447,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     away.stop();
     coaching.stop();
     finale?.kill();
+    reveal.clear();
     session.close();
     listeners.abort();
     hud.actions = null;
