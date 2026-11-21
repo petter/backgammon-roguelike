@@ -1,6 +1,14 @@
 import { Redis } from "ioredis";
 
-import { type GameStore, Listeners, type Room, type RoomUpdate } from "./store.ts";
+import {
+  cancelledSeeker,
+  type GameStore,
+  Listeners,
+  type Room,
+  type RoomUpdate,
+  SEEKER_TTL_SECONDS,
+  type Seeker,
+} from "./store.ts";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -14,7 +22,86 @@ redis.call('SET', KEYS[1], ARGV[3], 'EX', ARGV[4])
 return 1
 `;
 
+/**
+ * Moves a waiting seeker's `seen` forward, and makes sure they are still in the queue.
+ * Returns the record, or nothing if it is gone.
+ */
+const TOUCH_SEEKER = `
+local text = redis.call('GET', KEYS[1])
+if not text then return false end
+local seeker = cjson.decode(text)
+if seeker.grant == nil and seeker.cancelled == nil then
+  seeker.seen = tonumber(ARGV[1])
+  text = cjson.encode(seeker)
+  redis.call('SET', KEYS[1], text, 'EX', ARGV[2])
+  redis.call('ZADD', KEYS[2], 'NX', seeker.since, seeker.id)
+end
+return text
+`;
+
+/** Forgets a seeker only if they are still waiting and were last seen before ARGV[2]. */
+const PRUNE_SEEKER = `
+local text = redis.call('GET', KEYS[1])
+if not text then
+  redis.call('ZREM', KEYS[2], ARGV[1])
+  return 1
+end
+local seeker = cjson.decode(text)
+if seeker.grant ~= nil or seeker.cancelled ~= nil then return 0 end
+if seeker.seen >= tonumber(ARGV[2]) then return 0 end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[2], ARGV[1])
+return 1
+`;
+
+/** Matches two seekers if both are still waiting and were seen lately; all or nothing. */
+const PAIR_SEEKERS = `
+if KEYS[1] == KEYS[2] then return 0 end
+local first = redis.call('GET', KEYS[1])
+local second = redis.call('GET', KEYS[2])
+if not first or not second then return 0 end
+first = cjson.decode(first)
+second = cjson.decode(second)
+local fresh = tonumber(ARGV[3])
+if first.grant ~= nil or second.grant ~= nil then return 0 end
+if first.cancelled ~= nil or second.cancelled ~= nil then return 0 end
+if first.seen < fresh or second.seen < fresh then return 0 end
+first.grant = cjson.decode(ARGV[1])
+second.grant = cjson.decode(ARGV[2])
+redis.call('SET', KEYS[1], cjson.encode(first), 'EX', ARGV[4])
+redis.call('SET', KEYS[2], cjson.encode(second), 'EX', ARGV[4])
+redis.call('ZREM', KEYS[3], first.id, second.id)
+return 1
+`;
+
+/** Takes a seeker out of the queue and leaves a cancelled marker, unless they were matched. */
+const REMOVE_SEEKER = `
+redis.call('ZREM', KEYS[2], ARGV[1])
+local text = redis.call('GET', KEYS[1])
+if text and cjson.decode(text).grant ~= nil then return text end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+return text or false
+`;
+
+/** Starts a seeker waiting, unless the id is already known. */
+const ADD_SEEKER = `
+if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) == false then return 0 end
+redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4])
+return 1
+`;
+
 const key = (code: string) => `room:${code}`;
+const seekerKey = (id: string) => `seeker:${id}`;
+/**
+ * Waiting seekers' ids, scored by when they started looking. It never expires: an id whose
+ * record has run out is dropped when the queue is next read.
+ */
+const QUEUE = "seekers";
+
+export interface RedisStoreOptions {
+  /** Put before every key, so tests sharing one Redis cannot see each other's data. */
+  keyPrefix?: string;
+}
 
 export interface RedisStore extends GameStore {
   /** Closes both connections. For tests and scripts; a server keeps them for its lifetime. */
@@ -25,8 +112,13 @@ export interface RedisStore extends GameStore {
  * Rooms in Redis, shared by every server instance. Each room is one JSON value that expires
  * a day after its last write; changes are announced on a pub/sub channel per room.
  */
-export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisStore {
-  const redis = new Redis(url, { maxRetriesPerRequest: 3 });
+export function createRedisStore(
+  url: string,
+  ttlSeconds = DAY_SECONDS,
+  options: RedisStoreOptions = {},
+): RedisStore {
+  // Prefixes keys only: pub/sub channels are not keys, so rooms are kept apart by code.
+  const redis = new Redis(url, { maxRetriesPerRequest: 3, keyPrefix: options.keyPrefix });
   redis.on("error", (error) => console.error("Redis error", error.message));
 
   const listeners = new Listeners();
@@ -113,6 +205,63 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
         throw error;
       }
       return stop;
+    },
+    async addSeeker(seeker) {
+      const added = await redis.eval(
+        ADD_SEEKER,
+        2,
+        seekerKey(seeker.id),
+        QUEUE,
+        JSON.stringify(seeker),
+        SEEKER_TTL_SECONDS,
+        seeker.since,
+        seeker.id,
+      );
+      return added === 1;
+    },
+    async touchSeeker(id, now) {
+      const text = await redis.eval(TOUCH_SEEKER, 2, seekerKey(id), QUEUE, now, SEEKER_TTL_SECONDS);
+      return typeof text === "string" ? (JSON.parse(text) as Seeker) : null;
+    },
+    async waitingSeekers(limit) {
+      const ids = await redis.zrange(QUEUE, "0", String(limit - 1));
+      if (ids.length === 0) return [];
+      const texts = await redis.mget(ids.map(seekerKey));
+      // Seekers whose records ran out without being removed are dropped from the queue.
+      const expired = ids.filter((_, index) => !texts[index]);
+      if (expired.length > 0) await redis.zrem(QUEUE, ...expired);
+      return texts
+        .flatMap((text) => (text ? [JSON.parse(text) as Seeker] : []))
+        .filter((seeker) => !seeker.grant && !seeker.cancelled);
+    },
+    async pairSeekers(a, b, freshAfter) {
+      const paired = await redis.eval(
+        PAIR_SEEKERS,
+        3,
+        seekerKey(a.id),
+        seekerKey(b.id),
+        QUEUE,
+        JSON.stringify(a.grant),
+        JSON.stringify(b.grant),
+        freshAfter,
+        SEEKER_TTL_SECONDS,
+      );
+      return paired === 1;
+    },
+    async pruneSeeker(id, seenBefore) {
+      return (await redis.eval(PRUNE_SEEKER, 2, seekerKey(id), QUEUE, id, seenBefore)) === 1;
+    },
+    async removeSeeker(id) {
+      const text = await redis.eval(
+        REMOVE_SEEKER,
+        2,
+        seekerKey(id),
+        QUEUE,
+        id,
+        JSON.stringify(cancelledSeeker(id)),
+        SEEKER_TTL_SECONDS,
+      );
+      return typeof text === "string" ? (JSON.parse(text) as Seeker) : null;
     },
     async close() {
       const quits = subscriber ? [redis.quit(), subscriber.quit()] : [redis.quit()];

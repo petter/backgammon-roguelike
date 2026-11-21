@@ -38,8 +38,14 @@ export function replyJson(res: ServerResponse, status: number, body: unknown): v
 
 /** Answers one lobby API request on a Node HTTP server. */
 export function serveApi(store: GameStore, req: IncomingMessage, res: ServerResponse): void {
+  // A client that hangs up ends a held matchmaking request, so the server stops counting
+  // its seeker as present.
+  const hangUp = new AbortController();
+  res.on("close", () => hangUp.abort());
   readText(req)
-    .then((body) => handleApi(store, req.method ?? "GET", pathOf(req), body))
+    .then((body) =>
+      handleApi(store, req.method ?? "GET", pathOf(req), body, { signal: hangUp.signal }),
+    )
     .then((result) => replyJson(res, result.status, result.body))
     .catch((error) => {
       console.error("API request failed", error);

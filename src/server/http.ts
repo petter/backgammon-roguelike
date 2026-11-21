@@ -1,4 +1,5 @@
-import { isRoomCode, normalizeCode } from "../net/protocol.ts";
+import { isRoomCode, isTicket, normalizeCode } from "../net/protocol.ts";
+import { awaitMatch, cancelMatch, type MatchOptions, seekMatch } from "./match.ts";
 import { createRoom, joinRoom, RoomError, type RoomErrorKind, roomStatus } from "./room.ts";
 import type { GameStore } from "./store.ts";
 
@@ -17,8 +18,11 @@ const STATUS: Record<RoomErrorKind, number> = {
 /** Longest request body the lobby accepts, in UTF-16 code units. */
 export const BODY_LIMIT = 1024;
 
-/** The fields a player may send about themselves. Still untrusted: the room cleans them. */
-function playerOf(body: unknown): { name?: unknown; character?: unknown } {
+/**
+ * The fields a player may send about themselves, and the ticket a seeker chose. Still
+ * untrusted: the room cleans them.
+ */
+function playerOf(body: unknown): { name?: unknown; character?: unknown; ticket?: unknown } {
   return typeof body === "object" && body !== null ? body : {};
 }
 
@@ -45,9 +49,35 @@ function parseBody(text: string): { ok: true; value: unknown } | { ok: false } {
 }
 
 /**
+ * Matchmaking. `POST /api/match` starts looking for a stranger; `POST /api/match/:ticket`
+ * waits for one, held open for a while; `POST /api/match/:ticket/cancel` stops looking.
+ */
+async function match(
+  store: GameStore,
+  parts: string[],
+  body: unknown,
+  options: MatchOptions,
+): Promise<ApiResponse> {
+  if (parts.length === 2) {
+    const { name, character, ticket } = playerOf(body);
+    if (ticket !== undefined && (typeof ticket !== "string" || !isTicket(ticket)))
+      return { status: 400, body: { error: "That is not a ticket" } };
+    return { status: 200, body: await seekMatch(store, name, character, { ...options, ticket }) };
+  }
+  const ticket = parts[2] ?? "";
+  if (!isTicket(ticket)) throw new RoomError("not_found", "No longer looking for a game");
+  if (parts.length === 3) return { status: 200, body: await awaitMatch(store, ticket, options) };
+  if (parts.length === 4 && parts[3] === "cancel") {
+    return { status: 200, body: await cancelMatch(store, ticket) };
+  }
+  return { status: 404, body: { error: "Not found" } };
+}
+
+/**
  * The lobby's HTTP API, independent of any server framework.
  * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat;
- * `GET /api/rooms/:code` says whether that seat is still free.
+ * `GET /api/rooms/:code` says whether that seat is still free. Matchmaking is under
+ * `/api/match` (see `match`).
  * Takes the raw body text, so a malformed or oversized request is refused before it can
  * take a seat.
  */
@@ -56,11 +86,13 @@ export async function handleApi(
   method: string,
   path: string,
   bodyText: string,
+  matchOptions: MatchOptions = {},
 ): Promise<ApiResponse> {
   const parts = path.split("/").filter(Boolean);
-  if (parts[0] !== "api" || parts[1] !== "rooms")
-    return { status: 404, body: { error: "Not found" } };
-  if (method === "GET" && parts.length === 3) return status(store, parts[2] ?? "");
+  const area = parts[0] === "api" ? parts[1] : undefined;
+  if (area !== "rooms" && area !== "match") return { status: 404, body: { error: "Not found" } };
+  if (area === "rooms" && method === "GET" && parts.length === 3)
+    return status(store, parts[2] ?? "");
   if (method !== "POST") return { status: 405, body: { error: "Method not allowed" } };
   if (bodyText.length > BODY_LIMIT) return { status: 413, body: { error: "Request too large" } };
   const parsed = parseBody(bodyText);
@@ -68,6 +100,7 @@ export async function handleApi(
   const body = parsed.value;
 
   try {
+    if (area === "match") return await match(store, parts, body, matchOptions);
     const { name, character } = playerOf(body);
     if (parts.length === 2) {
       return { status: 201, body: await createRoom(store, name, undefined, character) };

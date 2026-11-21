@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { codeFromPath, parseClientMessage, type ServerMessage } from "../src/net/protocol.ts";
+import {
+  codeFromPath,
+  type MatchReply,
+  parseClientMessage,
+  type ServerMessage,
+} from "../src/net/protocol.ts";
 import { BODY_LIMIT, handleApi } from "../src/server/http.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createRoom, joinRoom } from "../src/server/room.ts";
@@ -505,5 +510,64 @@ describe("handleApi", () => {
     expect((await handleApi(store, "GET", "/api/rooms", "{}")).status).toBe(405);
     expect((await handleApi(store, "POST", "/api/other", "{}")).status).toBe(404);
     expect((await handleApi(store, "POST", "/api/rooms/AAAAA/steal", "{}")).status).toBe(404);
+  });
+});
+
+describe("handleApi matchmaking", () => {
+  const quick = { holdMs: 0 };
+
+  it("seeks, waits and pairs two strangers", async () => {
+    const store = createMemoryStore();
+    const first = await handleApi(store, "POST", "/api/match", '{"name":"Ada","character":"seer"}');
+    expect(first.status).toBe(200);
+    const { ticket, seat } = first.body as MatchReply;
+    expect(seat).toBeNull();
+    const waited = await handleApi(store, "POST", `/api/match/${ticket}`, "", quick);
+    expect(waited).toEqual({ status: 200, body: { ticket, seat: null } });
+
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const second = (await handleApi(store, "POST", "/api/match", "")).body as MatchReply;
+    const matched = (await handleApi(store, "POST", `/api/match/${ticket}`, "", quick))
+      .body as MatchReply;
+    expect(matched.seat?.code).toBe(second.seat?.code);
+    const room = await store.load(matched.seat?.code ?? "");
+    expect(room?.seats.white).toMatchObject({ name: "Ada", character: "seer" });
+    expect(room?.seats.black).toMatchObject({ name: "Guest", character: "gambler" });
+  });
+
+  it("cancels, and says a cancelled or unknown ticket is gone", async () => {
+    const store = createMemoryStore();
+    const { ticket } = (await handleApi(store, "POST", "/api/match", "")).body as MatchReply;
+    const cancelled = await handleApi(store, "POST", `/api/match/${ticket}/cancel`, "");
+    expect(cancelled).toEqual({ status: 200, body: { ticket, seat: null } });
+    expect((await handleApi(store, "POST", `/api/match/${ticket}`, "", quick)).status).toBe(404);
+    expect((await handleApi(store, "POST", "/api/match/not-a-ticket", "", quick)).status).toBe(404);
+    expect((await handleApi(store, "POST", "/api/match/bad!ticket", "", quick)).status).toBe(404);
+    expect((await handleApi(store, "POST", `/api/match/${ticket}/steal`, "")).status).toBe(404);
+  });
+
+  it("takes the client's own ticket and refuses one of the wrong shape", async () => {
+    const store = createMemoryStore();
+    const body = (ticket: unknown) => JSON.stringify({ name: "Ada", ticket });
+    const chosen = await handleApi(store, "POST", "/api/match", body("my-ticket-1"));
+    expect(chosen).toEqual({ status: 200, body: { ticket: "my-ticket-1", seat: null } });
+    for (const odd of ["bad ticket!", 42, "", "x".repeat(101)]) {
+      expect((await handleApi(store, "POST", "/api/match", body(odd))).status, String(odd)).toBe(
+        400,
+      );
+    }
+    await handleApi(store, "POST", "/api/match/cancelled-early/cancel", "");
+    expect((await handleApi(store, "POST", "/api/match", body("cancelled-early"))).status).toBe(
+      404,
+    );
+  });
+
+  it("refuses other methods, malformed and oversized bodies", async () => {
+    const store = createMemoryStore();
+    expect((await handleApi(store, "GET", "/api/match", "")).status).toBe(405);
+    expect((await handleApi(store, "POST", "/api/match", "{")).status).toBe(400);
+    const big = JSON.stringify({ name: "a".repeat(BODY_LIMIT) });
+    expect((await handleApi(store, "POST", "/api/match", big)).status).toBe(413);
+    expect(await store.waitingSeekers(10)).toEqual([]);
   });
 });
