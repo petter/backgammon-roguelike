@@ -1154,8 +1154,10 @@ kbd {
     text-align: center;
   }
 
-  /* The hand already spans the screen, so there is no room for cards to slide aside. */
-  #hand .card:has(~ .card:is(:hover, .card-raised, :focus-visible)) {
+  /* The hand already spans the screen, so there is no room for cards to slide aside. As
+     specific as the rule it overrides, or the cards before a raised one slide off screen. */
+  #hand
+    .card:has(~ .card:is(:hover, .card-raised, :focus-visible)):not(.card-raised, :focus-visible) {
     translate: none;
   }
 
