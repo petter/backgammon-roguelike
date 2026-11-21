@@ -710,7 +710,7 @@ kbd {
 }
 
 /* A lifted card throws a longer shadow. */
-.card.card-raised {
+.card:is(.card-raised, :focus-visible) {
   background: var(--grain), var(--paper);
   box-shadow:
     inset 1px 1px 0 #fbf5e6,
@@ -968,6 +968,10 @@ kbd {
 /* The pick is the moment to look at a card properly, so it is shown larger. */
 .card-large {
   font-size: 17px;
+}
+
+#offer-cards .card:focus-visible {
+  transform: translateY(-0.5em) rotate(-1deg);
 }
 
 @media (hover: hover) {
