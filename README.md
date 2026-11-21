@@ -73,29 +73,61 @@ lands on shows the server's value. Cards that change the dice throw them again.
 
 ## Cards
 
-Each player has their own deck of 11 cards. Rarity sets how many copies it holds, so the
-strongest cards turn up least often.
+Each player has their own deck of 54 cards. Rarity sets how many copies it holds (common 4,
+uncommon 3, rare 2, epic and legendary 1), so the strongest cards turn up least often.
 
-| Card        | Rarity    | Copies | Effect                                                      |
-| ----------- | --------- | ------ | ----------------------------------------------------------- |
-| Second Wind | Common    | 4      | Reroll your remaining dice                                  |
-| Bulwark     | Uncommon  | 3      | Your lone checkers cannot be hit until your next turn       |
-| Lucky Charm | Rare      | 2      | Roll one extra die                                          |
-| Quake       | Epic      | 1      | Send every lone enemy checker in your home board to the bar |
-| Loaded Die  | Legendary | 1      | Your lowest remaining die becomes a 6                       |
+| Card              | Kind   | Rarity    | Effect                                                                      |
+| ----------------- | ------ | --------- | --------------------------------------------------------------------------- |
+| Second Wind       | Dice   | Common    | Reroll your remaining dice                                                  |
+| Chisel            | Dice   | Common    | Split your highest die into two that add up to it; never doubles            |
+| Lead Weight       | Curse  | Common    | Their next roll: the highest die drops by 1                                 |
+| Iron Horseshoe    | Ward   | Common    | Blocks the next hex cast on you                                             |
+| Sage Smoke        | Ward   | Common    | Before or after rolling: lift one hex; if none, reroll your lowest die      |
+| Quiet Step        | Tactic | Common    | Your rearmost checker steps 1 point forward, using no die and never hitting |
+| Loose Board       | Trap   | Common    | When they get doubles, one of the four dice is lost                         |
+| Keen Eye          | Tempo  | Common    | Your next pick offers four cards                                            |
+| Coin Toss         | Wild   | Common    | Heads: an extra die. Tails: lose your lowest die                            |
+| Bulwark           | Tactic | Uncommon  | Your lone checkers cannot be hit until your next turn                       |
+| Lucky Charm       | Dice   | Rare      | Roll one extra die                                                          |
+| Backstep          | Curse  | Rare      | Next turn, their first checker move goes backwards if it can                |
+| Flip the Bones    | Dice   | Rare      | Turn each die over (1 for 6, 2 for 5, 3 for 4); never doubles               |
+| Glass Mirror      | Ward   | Rare      | The next hex cast on you rebounds onto the caster                           |
+| Counterpunch      | Trap   | Rare      | When they hit your checker, their hitter goes to the bar too                |
+| Quake             | Tactic | Epic      | Send every lone enemy checker in your home board to the bar                 |
+| Cracked Dice      | Curse  | Epic      | Their next roll is three dice with the highest dropped; never doubles       |
+| Curse Eater       | Ward   | Epic      | Before or after rolling: lift every hex on you and roll a die for each      |
+| Loaded Die        | Dice   | Legendary | Your lowest remaining die becomes a 6                                       |
+| Shackles of Greed | Curse  | Legendary | Their highest die drops by 1 every roll, until they hit you or roll doubles |
+
+The fifteen added with curses were picked by a council of models from a pool of 54
+candidates, judged on how fun they are to play with and against.
+
+**Curses** (hexes) land on the opponent and bite when they next roll. All but Shackles are
+spent then. **Wards** answer them: Iron Horseshoe and Glass Mirror stand on the table in
+plain sight and wait for the next hex. A mirrored hex lands on its caster, where only a
+horseshoe can stop it, because mirrors do not volley. Sage Smoke and Curse Eater lift hexes
+and may be played before rolling, while a hex still waits. **Traps** are set face down: the
+opponent sees that one is set, never which, until it springs. A player may have two set, of
+different kinds. Counterpunch holds rather than spring when it would leave both players
+shut out on the bar for good.
+
+Each player's chip shows what lies in front of them: hexes (violet), wards (silver), traps
+(rust) and boons (gold). Each card prints the same glyph on its type line.
 
 You see your opponent's hand face down: how many cards they hold, never which.
 
 A card that would change nothing cannot be played: a second Bulwark while one is up, Quake
 with no lone enemy checker in your home board or against a Bulwark, a dice card with no dice
-to act on. Trying one keeps it in your hand and tells you why.
+to act on, a hex the opponent is already under. Trying one keeps it in your hand and tells
+you why.
 
 Cards are drawn in HTML, CSS and inline SVG as printed card stock (`src/ui/card.ts`,
-`src/ui/cardArt.ts`, the card section of `src/style.css`). Each rarity adds to the one below:
-a pinstripe, silver edging, violet foil, then gold leaf. Each card is a `Dice` or a `Tactic`
-card. How many copies a deck holds is not printed on the card.
+`src/ui/cardArt.ts`, `src/ui/cardArtTavern.ts`, the card section of `src/style.css`). Each
+rarity adds to the one below: a pinstripe, silver edging, violet foil, then gold leaf. How
+many copies a deck holds is not printed on the card.
 
-Doubles play four times. That also holds when a card leaves you with exactly two matching dice.
+Doubles play four times. That also holds when a card leaves you with exactly two matching
+dice, except where the card says "never doubles".
 
 ## Layout
 
