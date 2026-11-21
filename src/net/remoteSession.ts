@@ -106,6 +106,18 @@ export function createRemoteSession(
   };
 
   /**
+   * Lets go of a replaced socket for good. If the server still owed it an answer, that
+   * answer will never come now, however this happened, so the player is told once.
+   */
+  const unanswered = (link: Link) => {
+    const owed = retiring.has(link) && link.pending.size > 0;
+    discard(link);
+    if (owed) {
+      handlers.onError("The server did not answer your last action. Check the board.", false);
+    }
+  };
+
+  /**
    * Deals with a socket that is gone, however that was found out: the browser reported it
    * closed, it stopped answering, or it never came up. Acts at once; a socket can linger
    * half-closed for a long time.
@@ -130,7 +142,7 @@ export function createRemoteSession(
       handlers.onStatus("reconnecting");
       if (!incoming) retry();
     } else {
-      discard(link);
+      unanswered(link);
     }
   };
 
@@ -143,9 +155,7 @@ export function createRemoteSession(
     retiring.add(link);
     const timer = setTimeout(() => {
       retireTimers.delete(timer);
-      if (!retiring.has(link)) return;
-      discard(link);
-      handlers.onError("The server did not answer your last action. Check the board.", false);
+      unanswered(link);
     }, RETIRE_MAX_MS);
     retireTimers.add(timer);
   };

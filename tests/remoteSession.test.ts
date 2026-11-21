@@ -267,6 +267,50 @@ describe("remote session", () => {
     expect(errors).toHaveLength(1);
   });
 
+  it("tells the player, once, if a replaced socket is lost while it still owes an answer", () => {
+    const { api, sockets, errors, statuses } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    sockets[1].come(4);
+    // The old socket goes away before answering. The new one is fine, so no banner.
+    sockets[0].end();
+    expect(errors).toEqual([
+      ["The server did not answer your last action. Check the board.", false],
+    ]);
+    expect(statuses.at(-1)).toBe("connected");
+    vi.advanceTimersByTime(RETIRE_MAX_MS * 2);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("says nothing when a replaced socket is lost with nothing outstanding", () => {
+    const { api, sockets, errors } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    api.send({ type: "endTurn" });
+    sockets[1].come(4);
+    const [first, second] = sockets[0].ids();
+    sockets[0].deliver({ type: "done", id: first });
+    sockets[0].deliver({ type: "done", id: second });
+    // Already let go, with everything answered.
+    expect(sockets[0].open).toBe(false);
+    vi.advanceTimersByTime(RETIRE_MAX_MS * 2);
+    expect(errors).toEqual([]);
+  });
+
+  it("says nothing about unanswered actions when the session itself is closed", () => {
+    const { api, sockets, errors } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    sockets[1].come(4);
+    api.close();
+    vi.advanceTimersByTime(RETIRE_MAX_MS * 2);
+    expect(errors).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("does not hold a socket open for an acknowledgement of someone else's id", () => {
     const { api, sockets } = session();
     sockets[0].come(4);
