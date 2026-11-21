@@ -14,6 +14,8 @@ Backgammon with cards, played against a friend. Three.js + TypeScript + Vite.
 
 A pre-commit hook (installed by `pnpm install`) runs `oxlint --fix` and `oxfmt` on staged
 files. Lint rules live in `.oxlintrc.json`; type-aware rules run via `oxlint-tsgolint`.
+CI (`.github/workflows/ci.yml`) runs the same checks on every PR and push to `main`, with
+a Redis service so the Redis store tests run too.
 
 ## Playing locally
 
