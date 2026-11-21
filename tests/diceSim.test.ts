@@ -105,7 +105,6 @@ describe("simulateThrow", () => {
 
 describe("simulateThrow contacts", () => {
   const board = obstaclesOf(initialBoard());
-  const HALF_DIAGONAL = DIE_HALF * Math.SQRT2;
 
   /** Every frame of every die, as position and orientation. */
   function* poses(frames: Float32Array) {
@@ -164,20 +163,59 @@ describe("simulateThrow contacts", () => {
     }
   });
 
-  it("leaves no two resting dice close enough to overlap, however they are turned", () => {
+  /** How far a cube reaches from its centre along a unit direction. */
+  function reach(q: Quaternion, direction: Vector3): number {
+    return [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
+      .map((axis) => Math.abs(axis.applyQuaternion(q).dot(direction)))
+      .reduce((sum, part) => sum + part * DIE_HALF, 0);
+  }
+
+  it("leaves a gap between any two dice resting on the same level", () => {
     for (const [name, values, side, random] of cases) {
       for (const obstacles of [[], board]) {
         const { dice } = simulateThrow(values, side, obstacles, random());
         const ends = dice.map((die) => lastFrame(die.frames));
         for (let i = 0; i < ends.length; i++) {
           for (let j = i + 1; j < ends.length; j++) {
-            const gap = Math.hypot(ends[i].x - ends[j].x, ends[i].z - ends[j].z);
-            const stacked = Math.abs(ends[i].y - ends[j].y) > DIE_HALF;
-            if (!stacked) expect(gap, name).toBeGreaterThanOrEqual(2 * HALF_DIAGONAL - 1e-3);
+            if (Math.abs(ends[i].y - ends[j].y) > DIE_HALF) continue;
+            const line = new Vector3(ends[j].x - ends[i].x, 0, ends[j].z - ends[i].z);
+            const distance = line.length();
+            line.normalize();
+            // Projected onto the line between them, the two footprints do not overlap.
+            const air = distance - reach(ends[i].q, line) - reach(ends[j].q, line);
+            expect(air, name).toBeGreaterThanOrEqual(-1e-3);
           }
         }
       }
     }
+  });
+
+  it("never lets two dice act on each other before they touch", () => {
+    // Free flight, clear of the felt and the rims: the dice must not change course while
+    // there is still air between them.
+    const { dice } = simulateThrow([1, 2], 1, [], createRng(1821).next);
+    const a = [...poses(dice[0].frames)];
+    const b = [...poses(dice[1].frames)];
+    const air = (f: number) => {
+      const line = new Vector3(b[f].x - a[f].x, b[f].y - a[f].y, b[f].z - a[f].z);
+      const distance = line.length();
+      line.normalize();
+      return distance - reach(a[f].q, line) - reach(b[f].q, line);
+    };
+    let checked = 0;
+    for (let f = 1; f < 14; f++) {
+      // Only steps that begin and end with air between the dice, well above the felt.
+      const airborne = [a, b].every((die) => die[f + 1].y > 0.7);
+      if (!airborne || air(f) < 0.02 || air(f + 1) < 0.02) continue;
+      checked++;
+      // Then each die moves sideways as if the other were not there.
+      for (const die of [a, b]) {
+        const stepBefore = die[f].x - die[f - 1].x;
+        const stepAfter = die[f + 1].x - die[f].x;
+        expect(Math.abs(stepAfter - stepBefore), `frame ${f}`).toBeLessThan(1e-3);
+      }
+    }
+    expect(checked).toBeGreaterThan(3);
   });
 
   it("still lands on the requested values in all of those cases", () => {

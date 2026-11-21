@@ -190,7 +190,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     const { phase, dice: remaining, current } = update.view;
     const snapshot = update.events.length === 0;
     if (phase !== "move") settleDice(null, current);
-    else if (snapshot && !sameDice(dice.values, physical(remaining))) {
+    else if (snapshot && (rolling || !sameDice(dice.values, physical(remaining)))) {
+      // Also when a throw is still in the air: a snapshot carries no throw to wait for.
       settleDice(remaining, current);
     }
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;

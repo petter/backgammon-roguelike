@@ -8,11 +8,8 @@ export const SIM_DT = 1 / 120;
 const GRAVITY = -30;
 const FLOOR_BOUNCE = 0.42;
 const WALL_BOUNCE = 0.55;
-/**
- * Closest two dice centres may come: a cube's footprint never reaches further than half its
- * diagonal, so at this distance two dice cannot overlap however they are turned.
- */
-const PAIR_REACH = DIE_HALF * 2 * Math.SQRT2 + 0.01;
+/** The sliver of air left between two dice that touch. */
+const PAIR_GAP = 0.004;
 /** Closest a die's centre may come to a checker's axis while beside it. */
 const CHECKER_REACH = CHECKER_R + DIE_HALF * Math.SQRT2;
 /** Times per step the contact constraints are re-solved, so one fix cannot undo another. */
@@ -81,6 +78,23 @@ function extents(q: Quaternion): { x: number; y: number; z: number } {
   reach.y = DIE_HALF * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9]));
   reach.z = DIE_HALF * (Math.abs(e[2]) + Math.abs(e[6]) + Math.abs(e[10]));
   return reach;
+}
+
+const along = new Matrix4();
+/**
+ * How far a cube turned by `q` reaches from its centre in the direction `n` (a unit vector).
+ * Two dice touch along the line between their centres exactly when the distance between
+ * the centres equals the sum of their reaches along it, so they neither pass through each
+ * other nor bounce off thin air.
+ */
+function reachAlong(q: Quaternion, n: Vector3): number {
+  const e = along.makeRotationFromQuaternion(q).elements;
+  return (
+    DIE_HALF *
+    (Math.abs(n.x * e[0] + n.y * e[1] + n.z * e[2]) +
+      Math.abs(n.x * e[4] + n.y * e[5] + n.z * e[6]) +
+      Math.abs(n.x * e[8] + n.y * e[9] + n.z * e[10]))
+  );
 }
 
 /** The orientation nearest to `q` that lies flat, and the local axis it puts on top. */
@@ -226,12 +240,15 @@ export function simulateThrow(
     if (!aFree && !bFree) return;
     normal.subVectors(b.p, a.p);
     let distance = normal.length();
-    if (distance >= PAIR_REACH) return;
+    // Nothing closer than a die's own diagonal can be decided without looking at the tilt.
+    if (distance >= DIE_HALF * 2 * Math.sqrt(3)) return;
     if (distance < 1e-6) {
       normal.set(1, 0, 0);
       distance = 0;
     } else normal.divideScalar(distance);
-    const overlap = PAIR_REACH - distance;
+    const touching = reachAlong(a.q, normal) + reachAlong(b.q, normal) + PAIR_GAP;
+    if (distance >= touching) return;
+    const overlap = touching - distance;
     const share = aFree && bFree ? 0.5 : 1;
     if (aFree) a.p.addScaledVector(normal, -overlap * share);
     if (bFree) b.p.addScaledVector(normal, overlap * share);
