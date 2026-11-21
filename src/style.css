@@ -21,7 +21,7 @@ body {
 /* Leaves the top and bottom strips to the HUD, so cards never cover the board. */
 #stage {
   position: fixed;
-  inset: 52px 0 148px;
+  inset: 84px 0 148px;
 }
 
 #stage canvas {
@@ -149,34 +149,199 @@ kbd {
 #hand,
 #offer-cards {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 #offer-cards {
+  gap: 16px;
+  flex-wrap: wrap;
   justify-content: center;
 }
 
+/* Rarity colours follow the familiar loot scale: white, green, blue, purple, orange. */
+.rarity-common {
+  --rarity: #ffffff;
+}
+
+.rarity-uncommon {
+  --rarity: #1eff00;
+}
+
+.rarity-rare {
+  --rarity: #0070dd;
+}
+
+.rarity-epic {
+  --rarity: #a335ee;
+}
+
+.rarity-legendary {
+  --rarity: #ff8000;
+}
+
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
+  flex: none;
   gap: 6px;
-  width: 132px;
-  min-height: 112px;
-  padding: 10px;
-  border-color: #c9a56b;
-  background: #2a1d12;
+  width: 150px;
+  height: 212px;
+  padding: 8px;
+  border: 3px solid var(--rarity);
+  border-radius: 12px;
+  background: linear-gradient(160deg, #2b2119, #120e0b 70%);
+  box-shadow:
+    inset 0 0 0 2px #0c0a09,
+    inset 0 0 14px color-mix(in srgb, var(--rarity) 35%, transparent),
+    0 4px 14px #000a;
+  color: #efe6d2;
+  text-align: center;
+  transition:
+    transform 0.14s ease-out,
+    opacity 0.14s;
+}
+
+.card-name {
+  padding: 3px 4px;
+  border-radius: 6px;
+  background: #0c0a09cc;
+  color: var(--rarity);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.card-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 70px;
+  border: 1px solid color-mix(in srgb, var(--rarity) 55%, #000);
+  border-radius: 6px;
+  background: radial-gradient(
+    circle at 50% 40%,
+    color-mix(in srgb, var(--rarity) 30%, #1c1612),
+    #0c0a09 85%
+  );
+  color: var(--rarity);
+}
+
+.card-art svg {
+  width: 52px;
+  height: 52px;
+  filter: drop-shadow(0 0 5px var(--rarity));
+}
+
+.card-rarity {
+  color: var(--rarity);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.card-text {
+  flex: 1;
+  padding: 6px;
+  border-radius: 6px;
+  background: #efe6d214;
+  font-size: 12px;
+  line-height: 1.3;
   text-align: left;
 }
 
-.card span {
-  font-size: 13px;
-  opacity: 0.85;
+.card:hover:not(:disabled) {
+  background: linear-gradient(160deg, #3a2c20, #1a1410 70%);
 }
 
-.card:hover:not(:disabled) {
-  transform: translateY(-4px);
+/* The two rarest cards catch the light. */
+.rarity-epic::after,
+.rarity-legendary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: linear-gradient(115deg, transparent 40%, #ffffff30 50%, transparent 60%);
+  background-size: 250% 100%;
+  animation: card-sheen 3.2s linear infinite;
+  pointer-events: none;
+}
+
+.rarity-legendary {
+  box-shadow:
+    inset 0 0 0 2px #0c0a09,
+    inset 0 0 18px color-mix(in srgb, var(--rarity) 50%, transparent),
+    0 0 16px color-mix(in srgb, var(--rarity) 60%, transparent);
+}
+
+@keyframes card-sheen {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rarity-epic::after,
+  .rarity-legendary::after {
+    animation: none;
+  }
+}
+
+/* The opponent's hand, face down along the top edge. Every back is identical. */
+#opponent-hand {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  display: flex;
+  transform: translateX(-50%);
+}
+
+.card-back {
+  width: 46px;
+  height: 65px;
+  margin-left: -12px;
+  border: 2px solid #c9a56b;
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 50% 50%, #c9a56b 0 5px, transparent 6px),
+    repeating-linear-gradient(45deg, #5a1f1f 0 6px, #3d1414 6px 12px);
+  box-shadow:
+    inset 0 0 0 2px #1c1612,
+    0 3px 8px #000a;
+}
+
+.card-back:first-child {
+  margin-left: 0;
+}
+
+/* In hand, cards sit small along the bottom edge and grow when pointed at or focused. */
+#hand .card {
+  margin-left: -44px;
+  transform: scale(0.66);
+  transform-origin: bottom right;
+}
+
+#hand .card:hover,
+#hand .card:focus-visible {
+  z-index: 2;
+  transform: scale(1) translateY(-8px);
+}
+
+#hand .card:disabled {
+  opacity: 0.6;
+  filter: saturate(0.4);
+}
+
+#hand .card:disabled:hover {
+  opacity: 1;
+}
+
+#offer-cards .card:hover {
+  transform: translateY(-8px) scale(1.04);
 }
 
 .overlay {

@@ -30,6 +30,21 @@ reconnecting. Rooms live in memory and are lost when the dev server restarts.
 3. Move checkers and play cards from your hand, in any order.
 4. End the turn once no checker move is left.
 
+## Cards
+
+Each player has their own deck of 11 cards. Rarity sets how many copies it holds, so the
+strongest cards turn up least often.
+
+| Card        | Rarity    | Copies | Effect                                                      |
+| ----------- | --------- | ------ | ----------------------------------------------------------- |
+| Second Wind | Common    | 4      | Reroll your remaining dice                                  |
+| Bulwark     | Uncommon  | 3      | Your lone checkers cannot be hit until your next turn       |
+| Lucky Charm | Rare      | 2      | Roll one extra die                                          |
+| Quake       | Epic      | 1      | Send every lone enemy checker in your home board to the bar |
+| Loaded Die  | Legendary | 1      | Your lowest remaining die becomes a 6                       |
+
+You see your opponent's hand face down: how many cards they hold, never which.
+
 Doubles play four times. That also holds when a card leaves you with exactly two matching dice.
 
 ## Layout

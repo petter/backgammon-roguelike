@@ -1,8 +1,9 @@
 import type { Player } from "../core/board.ts";
-import { CARDS, type CardId } from "../core/cards.ts";
+import { CARDS, type CardId, copiesOf, RARITIES } from "../core/cards.ts";
 import { canPlayCard } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
+import { cardArt } from "./cardArt.ts";
 import { el } from "./dom.ts";
 
 export interface HudActions {
@@ -33,15 +34,26 @@ export interface Hud {
   hide(): void;
 }
 
+/** A card as a button: name, art, rarity line and rules text, framed in its rarity colour. */
 function cardButton(card: CardId, onClick: () => void): HTMLButtonElement {
+  const { name, rarity, text } = CARDS[card];
+  const part = (className: string, content: string) => {
+    const element = document.createElement("span");
+    element.className = className;
+    element.textContent = content;
+    return element;
+  };
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "card";
-  const title = document.createElement("strong");
-  title.textContent = CARDS[card].name;
-  const text = document.createElement("span");
-  text.textContent = CARDS[card].text;
-  button.append(title, text);
+  button.className = `card rarity-${rarity}`;
+  const art = document.createElement("span");
+  art.className = "card-art";
+  // Fixed markup from our own source, not user input.
+  art.innerHTML = cardArt(card);
+  const copies = copiesOf(card);
+  const line = `${RARITIES[rarity].name} · ×${copies}`;
+  button.title = `${RARITIES[rarity].name}: ${copies} in each deck`;
+  button.append(part("card-name", name), art, part("card-rarity", line), part("card-text", text));
   button.addEventListener("click", onClick);
   return button;
 }
@@ -64,7 +76,9 @@ function playerChip(model: ChipModel): HTMLElement {
   const label = document.createElement("strong");
   label.textContent = model.you ? `${model.name} (you)` : model.name;
   const colour = document.createElement("span");
-  colour.textContent = model.player === "white" ? "White" : "Black";
+  const colourName = model.player === "white" ? "White" : "Black";
+  // In hot-seat play the players are simply called White and Black; do not say it twice.
+  colour.textContent = model.name === colourName ? "" : colourName;
   const details = document.createElement("span");
   details.className = "quiet";
   const cards = `${model.hand} ${model.hand === 1 ? "card" : "cards"}`;
@@ -89,6 +103,7 @@ export function createHud(): Hud {
   const dice = el("dice");
   const message = el("message");
   const players = el("players");
+  const opponentHand = el("opponent-hand");
   const status = el("status");
   const roll = el<HTMLButtonElement>("roll");
   const end = el<HTMLButtonElement>("end");
@@ -121,6 +136,20 @@ export function createHud(): Hud {
             shielded: view.shielded[player],
           }),
         ),
+      );
+
+      // The opponent's hand, face down: how many cards, never which ones or how rare.
+      const held = view.counts[other].hand;
+      opponentHand.replaceChildren(
+        ...Array.from({ length: held }, () => {
+          const back = document.createElement("span");
+          back.className = "card-back";
+          return back;
+        }),
+      );
+      opponentHand.setAttribute(
+        "aria-label",
+        `${name(other)} holds ${held} ${held === 1 ? "card" : "cards"}`,
       );
 
       roll.disabled = !(myTurn && view.phase === "roll");
