@@ -626,6 +626,18 @@ describe("playing", () => {
       game: null,
     });
 
+    it("refuses a room stored before rooms had ids", async () => {
+      const inner = createMemoryStore();
+      const host = await createRoom(inner, "Ada");
+      const legacy = { ...(await inner.load(host.code)), id: undefined } as unknown as Room;
+      const store: GameStore = { ...inner, load: async () => structuredClone(legacy) };
+      const got: ServerMessage[] = [];
+      await expect(
+        openConnection(store, host.code, host.token, (m) => got.push(m)),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      expect(got).toEqual([]);
+    });
+
     it("evicts once, then stops polling, when the room is missing", async () => {
       vi.useFakeTimers();
       try {

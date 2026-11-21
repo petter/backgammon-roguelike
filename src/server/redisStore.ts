@@ -50,6 +50,8 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
   // Channels Redis may still have us subscribed to although nobody listens any more,
   // because an UNSUBSCRIBE failed. Retried whenever subscriptions next change.
   const leftover = new Set<string>();
+  /** Channels with an UNSUBSCRIBE on its way, so a retry is never stacked on another. */
+  const releasing = new Set<string>();
   const release = (channel: string) => {
     leftover.add(channel);
     for (const stale of [...leftover]) {
@@ -57,11 +59,14 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
         leftover.delete(stale);
         continue;
       }
+      if (releasing.has(stale) || !subscriber) continue;
+      releasing.add(stale);
       subscriber
-        ?.unsubscribe(stale)
+        .unsubscribe(stale)
         // Someone may have subscribed again while this was in flight; then it stays.
         .then(() => !listeners.has(stale) && leftover.delete(stale))
-        .catch((error) => console.error("Could not unsubscribe from a room", error.message));
+        .catch((error) => console.error("Could not unsubscribe from a room", error.message))
+        .finally(() => releasing.delete(stale));
     }
   };
 

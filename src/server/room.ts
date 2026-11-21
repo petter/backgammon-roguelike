@@ -182,7 +182,8 @@ export async function openConnection(
 ): Promise<Connection> {
   const { entropy = cryptoEntropy, resyncMs = 10_000 } = options;
   const found = await store.load(code);
-  if (!found) throw new RoomError("not_found", "That game no longer exists");
+  // A room stored before rooms had ids cannot be told apart from a successor, or saved.
+  if (!found?.id) throw new RoomError("not_found", "That game no longer exists");
   const seat = seatOf(found, token);
   if (!seat) throw new RoomError("bad_token", "You do not have a seat in that game");
   const roomId = found.id;
@@ -226,7 +227,7 @@ export async function openConnection(
    */
   const deliver = (room: Room | null, events: GameEvent[]) => {
     if (closed) return;
-    if (room?.id !== roomId) return evict();
+    if (!room || room.id !== roomId) return evict();
     if (room.version <= sent) return;
     send(stateMessage(room, seat, events));
     sent = room.version;
@@ -258,7 +259,7 @@ export async function openConnection(
       for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
         const room = await store.load(code);
         if (closed) return;
-        if (room?.id !== roomId) return evict();
+        if (!room || room.id !== roomId) return evict();
         if (!room.game) return complain("The game has not started yet", false);
         let result: ReturnType<typeof applyCommand>;
         try {
