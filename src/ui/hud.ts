@@ -8,16 +8,16 @@ import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
 
 export interface HudActions {
-  onRoll(): void;
-  onEnd(): void;
-  onPlay(handIndex: number): void;
+  onRoll: () => void;
+  onEnd: () => void;
+  onPlay: (handIndex: number) => void;
   /** The player tried a card that cannot be played now; `reason` says why. */
-  onBlocked(reason: string): void;
-  onPick(offerIndex: number): void;
+  onBlocked: (reason: string) => void;
+  onPick: (offerIndex: number) => void;
   /** Asks to play again once the game is over. */
-  onRematch(): void;
+  onRematch: () => void;
   /** Goes back to the start screen. */
-  onLeave(): void;
+  onLeave: () => void;
 }
 
 export interface HudModel {
@@ -37,13 +37,13 @@ export interface HudModel {
 export interface Hud {
   /** Swapped out when a new game starts. */
   actions: HudActions | null;
-  render(model: HudModel): void;
+  render: (model: HudModel) => void;
   /** Tells the player something briefly, without redrawing anything. */
-  notify(text: string): void;
+  notify: (text: string) => void;
   /** Shows or hides the banner that says the connection to the server is lost. */
-  setOffline(offline: boolean): void;
-  show(): void;
-  hide(): void;
+  setOffline: (offline: boolean) => void;
+  show: () => void;
+  hide: () => void;
 }
 
 /**
@@ -123,8 +123,8 @@ export function createHud(): Hud {
   const players = el("players");
   const opponentHand = el("opponent-hand");
   const offlineBanner = el("offline");
-  const roll = el<HTMLButtonElement>("roll");
-  const end = el<HTMLButtonElement>("end");
+  const roll = el("roll", HTMLButtonElement);
+  const end = el("end", HTMLButtonElement);
   const hand = el("hand");
   const offer = el("offer");
   const offerCards = el("offer-cards");
@@ -132,7 +132,7 @@ export function createHud(): Hud {
   const gameOver = el("gameover");
   const result = el("result");
   const score = el("score");
-  const rematch = el<HTMLButtonElement>("rematch");
+  const rematch = el("rematch", HTMLButtonElement);
   const rematchStatus = el("rematch-status");
   /** The hand card a touch has raised to be read, and the hand it belongs to. */
   let raised: { index: number; hand: string } | null = null;
@@ -193,20 +193,16 @@ export function createHud(): Hud {
       end.disabled = !model.canEnd;
 
       // A raised card stays raised through a redraw, as long as it is still the same hand.
-      const handKey = view.hand.join();
+      const handKey = view.hand.join(",");
       if (raised && raised.hand !== handKey) raised = null;
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
           // Why this card cannot be played now, if it cannot. Such a card still takes
           // clicks and key presses, so that trying it says why instead of doing nothing.
           const turnName = name(view.current);
-          const blocked = !myTurn
-            ? view.phase === "over"
-              ? "The game is over"
-              : `It is ${turnName}'s turn`
-            : model.rolling
-              ? "Wait for the dice to land"
-              : cardBlock(view, card);
+          let blocked: string | null = `It is ${turnName}'s turn`;
+          if (myTurn) blocked = model.rolling ? "Wait for the dice to land" : cardBlock(view, card);
+          else if (view.phase === "over") blocked = "The game is over";
           const button = createCard(card, () => {
             // A finger cannot point at a card without pressing it, so the first tap only
             // raises the card to be read; the second one plays it.
@@ -254,11 +250,10 @@ export function createHud(): Hud {
         const asked = view.rematch[view.you];
         rematch.textContent = model.local ? "Play again" : "Rematch";
         rematch.disabled = asked;
-        rematchStatus.textContent = asked
-          ? `Waiting for ${name(other)}\u2026`
-          : view.rematch[other]
-            ? `${name(other)} wants a rematch`
-            : "";
+        let status = "";
+        if (asked) status = `Waiting for ${name(other)}\u2026`;
+        else if (view.rematch[other]) status = `${name(other)} wants a rematch`;
+        rematchStatus.textContent = status;
       }
 
       const picking = myTurn && view.phase === "pick" && view.offer.length > 0;

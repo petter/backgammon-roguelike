@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import type { GameEvent } from "../src/core/game.ts";
 import type { ServerMessage } from "../src/net/protocol.ts";
 import {
@@ -17,7 +18,7 @@ class FakeSocket implements ClientSocket {
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: (() => void) | null = null;
-  sent: Record<string, unknown>[] = [];
+  sent: Array<Record<string, unknown>> = [];
   open = true;
   /** A healthy server answers every ping; switch off to play a dead connection. */
   answersPings = true;
@@ -26,7 +27,7 @@ class FakeSocket implements ClientSocket {
 
   send(text: string): void {
     if (!this.open) throw new Error("send on a closed socket");
-    const message = JSON.parse(text);
+    const message = JSON.parse(text) as Record<string, unknown>;
     this.sent.push(message);
     if (message.type === "ping" && this.answersPings) this.deliver({ type: "pong" });
   }
@@ -84,7 +85,7 @@ function session() {
   const sockets: FakeSocket[] = [];
   const statuses: SessionStatus[] = [];
   const updates: SessionUpdate[] = [];
-  const errors: [string, boolean][] = [];
+  const errors: Array<[string, boolean]> = [];
   const api = createRemoteSession(
     "AAAAA",
     "token",

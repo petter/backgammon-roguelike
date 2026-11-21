@@ -10,18 +10,18 @@ export interface PlayerChoice {
 }
 
 export interface LobbyActions {
-  onCreate(player: PlayerChoice): void;
-  onJoin(code: string, player: PlayerChoice): void;
-  onLocal(): void;
+  onCreate: (player: PlayerChoice) => void;
+  onJoin: (code: string, player: PlayerChoice) => void;
+  onLocal: () => void;
 }
 
 export interface LobbyUi {
   /** The start screen, optionally with a code filled in or an error to show. */
-  showMenu(options?: { code?: string; error?: string }): void;
+  showMenu: (options?: { code?: string; error?: string }) => void;
   /** The host's screen while the friend has not joined yet. */
-  showWaiting(code: string, link: string): void;
-  setBusy(busy: boolean): void;
-  hide(): void;
+  showWaiting: (code: string, link: string) => void;
+  setBusy: (busy: boolean) => void;
+  hide: () => void;
 }
 
 const NAME_KEY = "name";
@@ -85,12 +85,12 @@ function characterPicker(
 
 export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const root = el("lobby");
-  const menu = el<HTMLFormElement>("menu");
+  const menu = el("menu", HTMLFormElement);
   const waiting = el("waiting");
-  const name = el<HTMLInputElement>("name");
-  const code = el<HTMLInputElement>("code");
+  const name = el("name", HTMLInputElement);
+  const code = el("code", HTMLInputElement);
   const error = el("lobby-error");
-  const copy = el<HTMLButtonElement>("copy-link");
+  const copy = el("copy-link", HTMLButtonElement);
   const buttons = [...menu.querySelectorAll("button")];
   let link = "";
 
@@ -117,14 +117,15 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     }
     actions.onJoin(wanted, player());
   });
-  copy.addEventListener("click", async () => {
+  const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(link);
       copy.textContent = "Link copied";
     } catch {
       copy.textContent = link;
     }
-  });
+  };
+  copy.addEventListener("click", () => void copyLink());
 
   return {
     showMenu(options = {}) {
@@ -133,7 +134,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       waiting.hidden = true;
       error.textContent = options.error ?? "";
       if (options.code) code.value = options.code;
-      (options.code ? name : code.value ? code : name).focus();
+      (options.code || !code.value ? name : code).focus();
     },
     showWaiting(roomCode, inviteLink) {
       link = inviteLink;

@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+
 import { type GameStore, Listeners, type Room, type RoomUpdate } from "./store.ts";
 
 const DAY_SECONDS = 24 * 60 * 60;
@@ -17,7 +18,7 @@ const key = (code: string) => `room:${code}`;
 
 export interface RedisStore extends GameStore {
   /** Closes both connections. For tests and scripts; a server keeps them for its lifetime. */
-  close(): Promise<void>;
+  close: () => Promise<void>;
 }
 
 /**
@@ -54,7 +55,7 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
   const releasing = new Set<string>();
   const release = (channel: string) => {
     leftover.add(channel);
-    for (const stale of [...leftover]) {
+    for (const stale of Array.from(leftover)) {
       if (listeners.has(stale)) {
         leftover.delete(stale);
         continue;
@@ -65,7 +66,9 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
         .unsubscribe(stale)
         // Someone may have subscribed again while this was in flight; then it stays.
         .then(() => !listeners.has(stale) && leftover.delete(stale))
-        .catch((error) => console.error("Could not unsubscribe from a room", error.message))
+        .catch((error: unknown) =>
+          console.error("Could not unsubscribe from a room", (error as Error).message),
+        )
         .finally(() => releasing.delete(stale));
     }
   };
@@ -112,7 +115,8 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
       return stop;
     },
     async close() {
-      await Promise.all([redis.quit(), subscriber?.quit()].map((p) => p?.catch(() => {})));
+      const quits = subscriber ? [redis.quit(), subscriber.quit()] : [redis.quit()];
+      await Promise.all(quits.map((p) => p.catch(() => {})));
     },
   };
 }

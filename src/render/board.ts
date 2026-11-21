@@ -1,5 +1,6 @@
-import gsap from "gsap";
+import { gsap } from "gsap";
 import * as THREE from "three";
+
 import { POINT_COUNT } from "../core/board.ts";
 import {
   BAR_W,
@@ -104,7 +105,7 @@ export interface BoardHints {
   sources: Vec3[];
   /** Points the selected checker can reach, each with the spot it would land on. */
   /** `occupied`: an opposing checker sits on the spot and would be hit. */
-  targets: { point: number; at: Vec3; occupied: boolean }[];
+  targets: Array<{ point: number; at: Vec3; occupied: boolean }>;
   /** Whether the selected checker can be borne off. */
   off: boolean;
 }
@@ -112,7 +113,7 @@ export interface BoardHints {
 export interface BoardView {
   group: THREE.Group;
   /** Shows what the player can do right now. Pass nothing to clear every hint. */
-  setHints(hints?: BoardHints): void;
+  setHints: (hints?: BoardHints) => void;
 }
 
 export function createBoard(): BoardView {

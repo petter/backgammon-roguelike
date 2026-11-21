@@ -12,9 +12,11 @@ import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
 import type { Hud } from "../ui/hud.ts";
 
+const byValue = (x: number, y: number) => x - y;
+
 /** Whether two sets of dice hold the same values, in any order. */
 function sameDice(a: number[], b: number[]): boolean {
-  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  return a.length === b.length && a.toSorted(byValue).join(",") === b.toSorted(byValue).join(",");
 }
 
 const COLOR_NAMES = { white: "White", black: "Black" } as const;
@@ -29,15 +31,20 @@ export interface GameScreenDeps {
 export interface GameScreenOptions {
   /** Hot-seat: both players use this screen, so the camera stays put. */
   local: boolean;
-  connect(handlers: SessionHandlers): Session;
+  connect: (handlers: SessionHandlers) => Session;
   /** The room exists but the second player has not joined. */
-  onWaiting(lobby: LobbyView): void;
-  onStarted(): void;
+  onWaiting: (lobby: LobbyView) => void;
+  onStarted: () => void;
   /** The session ended for good, for example because the room is gone. */
-  onFatal(message: string): void;
+  onFatal: (message: string) => void;
   /** The player wants to go back to the start screen. */
-  onLeave(): void;
+  onLeave: () => void;
 }
+
+const sideOf = (player: Player) => (player === "white" ? 1 : -1);
+/** Doubles are four moves but two dice on the table. */
+const physical = (values: number[]) =>
+  values.length === 4 && values.every((value) => value === values[0]) ? values.slice(0, 2) : values;
 
 /**
  * Drives one game: turns session updates into animation and HUD state, and pointer and key
@@ -62,12 +69,6 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
    */
   let rolling = false;
 
-  const sideOf = (player: Player) => (player === "white" ? 1 : -1);
-  /** Doubles are four moves but two dice on the table. */
-  const physical = (values: number[]) =>
-    values.length === 4 && values.every((value) => value === values[0])
-      ? values.slice(0, 2)
-      : values;
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
     rolling = true;
@@ -184,11 +185,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (!options.local) stage.setSeat(update.view.you);
     }
     message = "";
-    if (!checkers) {
+    if (checkers) {
+      message = play(update.events, checkers, update.view);
+    } else {
       checkers = new CheckersView(update.view.board);
       stage.world.add(checkers.group);
-    } else {
-      message = play(update.events, checkers, update.view);
     }
     // Dice belong to the move phase. An update without events is a snapshot: a reload, a
     // reconnect or a resync after something was missed. The dice on the board may then be
@@ -258,7 +259,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         // With several dice reaching the same spot, spend the smallest.
         const [move] = moves
           .filter((m) => m.from === selected && m.to === to)
-          .sort((a, b) => a.die - b.die);
+          .toSorted((a, b) => a.die - b.die);
         if (move) {
           session.send({ type: "move", from: move.from, to: move.to, die: move.die });
           selected = null;

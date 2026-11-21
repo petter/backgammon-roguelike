@@ -60,7 +60,7 @@ export function codeFromPath(pathname: string): string | null {
 }
 
 export function isRoomCode(value: string): boolean {
-  return value.length === CODE_LENGTH && [...value].every((c) => CODE_ALPHABET.includes(c));
+  return value.length === CODE_LENGTH && Array.from(value).every((c) => CODE_ALPHABET.includes(c));
 }
 
 function isIndex(value: unknown): value is number {

@@ -13,10 +13,10 @@ export interface SessionUpdate {
 export type SessionStatus = "connecting" | "connected" | "reconnecting";
 
 export interface SessionHandlers {
-  onUpdate(update: SessionUpdate): void;
+  onUpdate: (update: SessionUpdate) => void;
   /** `fatal` means the session is over and will send nothing more. */
-  onError(message: string, fatal: boolean): void;
-  onStatus(status: SessionStatus): void;
+  onError: (message: string, fatal: boolean) => void;
+  onStatus: (status: SessionStatus) => void;
 }
 
 /**
@@ -24,8 +24,8 @@ export interface SessionHandlers {
  * whether the rules run in this tab or on a server.
  */
 export interface Session {
-  send(command: Command): void;
+  send: (command: Command) => void;
   /** Cuts the connection as a network failure would, to exercise reconnecting. */
-  drop(): void;
-  close(): void;
+  drop: () => void;
+  close: () => void;
 }

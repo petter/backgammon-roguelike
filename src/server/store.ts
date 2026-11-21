@@ -36,16 +36,16 @@ export interface RoomUpdate {
  */
 export interface GameStore {
   /** Stores a new room. Resolves `false` if the code is already taken. */
-  create(room: Room): Promise<boolean>;
-  load(code: string): Promise<Room | null>;
+  create: (room: Room) => Promise<boolean>;
+  load: (code: string) => Promise<Room | null>;
   /**
    * Compare-and-set: writes only if the stored room has this room's `id` and is still at
    * `expectedVersion`. So a writer that read an expired room cannot overwrite its successor.
    */
-  save(room: Room, expectedVersion: number): Promise<boolean>;
-  publish(code: string, update: RoomUpdate): Promise<void>;
+  save: (room: Room, expectedVersion: number) => Promise<boolean>;
+  publish: (code: string, update: RoomUpdate) => Promise<void>;
   /** Resolves to an unsubscribe function once the listener is live. */
-  subscribe(code: string, listener: (update: RoomUpdate) => void): Promise<() => void>;
+  subscribe: (code: string, listener: (update: RoomUpdate) => void) => Promise<() => void>;
 }
 
 /**
@@ -82,7 +82,7 @@ export class Listeners {
 
   /** Calls every listener with its own copy. One that throws is logged; the rest still run. */
   notify(key: string, update: RoomUpdate): void {
-    for (const { listener } of [...(this.byKey.get(key) ?? [])]) {
+    for (const { listener } of Array.from(this.byKey.get(key) ?? [])) {
       try {
         listener(structuredClone(update));
       } catch (error) {

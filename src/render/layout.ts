@@ -72,8 +72,8 @@ export function pickAt(x: number, z: number): PickTarget | null {
 }
 
 /** Every checker standing on the board or the bar, as something dice can run into. */
-export function obstaclesOf(board: BoardState): { x: number; z: number; top: number }[] {
-  const out: { x: number; z: number; top: number }[] = [];
+export function obstaclesOf(board: BoardState): Array<{ x: number; z: number; top: number }> {
+  const out: Array<{ x: number; z: number; top: number }> = [];
   const add = (place: Place, count: number) => {
     for (let i = 0; i < count; i++) {
       const at = slotPosition(place, i);

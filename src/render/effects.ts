@@ -1,5 +1,6 @@
-import gsap from "gsap";
+import { gsap } from "gsap";
 import type * as THREE from "three";
+
 import type { Vec3 } from "./layout.ts";
 
 const MOVE_TIME = 0.4;

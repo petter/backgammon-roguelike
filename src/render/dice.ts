@@ -1,6 +1,7 @@
-import gsap from "gsap";
+import { gsap } from "gsap";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+
 import {
   DIE_HALF,
   type DiceThrow,
@@ -11,7 +12,7 @@ import {
 } from "./diceSim.ts";
 
 /** Pip positions on a 3 by 3 grid, per face value. */
-const PIPS: Record<number, [number, number][]> = {
+const PIPS: Record<number, Array<[number, number]>> = {
   1: [[1, 1]],
   2: [
     [0, 0],

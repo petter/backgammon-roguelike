@@ -1,4 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
+
 import { CHECKER_R, FIELD_HALF_D, FIELD_HALF_W } from "./layout.ts";
 
 /** Half the edge of a die. */
@@ -132,6 +133,17 @@ export function facesFor(value: number, top: Vector3 = UP): Quaternion {
 }
 
 /** The checker the point is standing over, if any: the highest one. */
+/** A die meeting the ground on its way down: a hard landing bounces and loses speed, a soft one stops. */
+function land(v: Vector3): void {
+  if (v.y >= 0) return;
+  const hard = v.y < -1.2;
+  v.y = hard ? -v.y * FLOOR_BOUNCE : 0;
+  if (hard) {
+    v.x *= 0.82;
+    v.z *= 0.82;
+  }
+}
+
 function under(obstacles: Obstacle[], x: number, z: number): Obstacle | null {
   let found: Obstacle | null = null;
   for (const o of obstacles) {
@@ -259,6 +271,26 @@ export function simulateThrow(
     if (bFree) b.v.addScaledVector(normal, impulse);
   };
 
+  /** A die on the felt or a checker: friction, a spin that follows the roll, and no resting on a checker. */
+  const rollOn = (b: Body, ground: Obstacle | null) => {
+    const drag = Math.max(0, 1 - 2.6 * SIM_DT);
+    b.v.x *= drag;
+    b.v.z *= drag;
+    // On the ground the spin follows the roll.
+    const grip = Math.min(1, 14 * SIM_DT);
+    b.w.x += (b.v.z / DIE_HALF - b.w.x) * grip;
+    b.w.z += (-b.v.x / DIE_HALF - b.w.z) * grip;
+    b.w.y *= 1 - 3 * SIM_DT;
+    if (ground) {
+      // Never come to rest on a checker: slide off it.
+      normal.set(b.p.x - ground.x, 0, b.p.z - ground.z);
+      if (normal.lengthSq() < 1e-6) normal.set(1, 0, 0);
+      b.v.addScaledVector(normal.normalize(), 9 * SIM_DT);
+    } else if (Math.hypot(b.v.x, b.v.z) < 0.7 && Math.abs(b.v.y) < 0.2) {
+      settle(b);
+    }
+  };
+
   for (; steps < maxSteps; steps++) {
     const time = steps * SIM_DT;
 
@@ -310,30 +342,8 @@ export function simulateThrow(
       }
       if (b.p.y <= rest) {
         b.p.y = rest;
-        if (b.v.y < 0) {
-          const hard = b.v.y < -1.2;
-          b.v.y = hard ? -b.v.y * FLOOR_BOUNCE : 0;
-          if (hard) {
-            b.v.x *= 0.82;
-            b.v.z *= 0.82;
-          }
-        }
-        const drag = Math.max(0, 1 - 2.6 * SIM_DT);
-        b.v.x *= drag;
-        b.v.z *= drag;
-        // On the ground the spin follows the roll.
-        const grip = Math.min(1, 14 * SIM_DT);
-        b.w.x += (b.v.z / DIE_HALF - b.w.x) * grip;
-        b.w.z += (-b.v.x / DIE_HALF - b.w.z) * grip;
-        b.w.y *= 1 - 3 * SIM_DT;
-        if (ground) {
-          // Never come to rest on a checker: slide off it.
-          normal.set(b.p.x - ground.x, 0, b.p.z - ground.z);
-          if (normal.lengthSq() < 1e-6) normal.set(1, 0, 0);
-          b.v.addScaledVector(normal.normalize(), 9 * SIM_DT);
-        } else if (Math.hypot(b.v.x, b.v.z) < 0.7 && Math.abs(b.v.y) < 0.2) {
-          settle(b);
-        }
+        land(b.v);
+        rollOn(b, ground);
       }
       if (time > MAX_TIME && b.state === "moving") settle(b);
     }

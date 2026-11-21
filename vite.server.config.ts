@@ -13,7 +13,7 @@ export default defineConfig({
     outDir: "dist-server",
     emptyOutDir: true,
     target: "node22",
-    rollupOptions: {
+    rolldownOptions: {
       // Optional native speed-ups for `ws`; it falls back to JavaScript without them.
       external: ["bufferutil", "utf-8-validate"],
     },

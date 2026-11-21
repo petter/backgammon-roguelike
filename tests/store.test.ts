@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { storeContract } from "./storeContract.ts";
 

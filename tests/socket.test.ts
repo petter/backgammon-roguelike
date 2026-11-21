@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { codeFromPath, parseClientMessage, type ServerMessage } from "../src/net/protocol.ts";
 import { BODY_LIMIT, handleApi } from "../src/server/http.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
@@ -12,7 +13,7 @@ function fakeSocket(store: GameStore, code: string) {
   let onClose: () => void = () => {};
   let open = true;
   serveSocket(store, code, {
-    send: (text) => sent.push(JSON.parse(text)),
+    send: (text) => sent.push(JSON.parse(text) as ServerMessage),
     close: () => {
       if (!open) return;
       open = false;
@@ -60,7 +61,7 @@ describe("serveSocket", () => {
 
     const first = white.sent[0].type === "state" && white.sent[0].view?.current === "white";
     const mover = first ? white : black;
-    mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
+    void mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
     await mover.say({ type: "command", command: { type: "roll" } });
     await mover.say({ type: "command", command: { type: "roll" } });
     const kinds = mover.sent.map((m) =>
@@ -158,12 +159,12 @@ describe("a socket that closes with work outstanding", () => {
     return {
       inner,
       store,
-      hold() {
+      hold: () => {
         gate = new Promise<void>((resolve) => {
           open = resolve;
         });
       },
-      release() {
+      release: () => {
         gate = null;
         open();
       },
@@ -194,7 +195,7 @@ describe("a socket that closes with work outstanding", () => {
     expect(game?.phase).toBe("roll");
     expect(watcher.sent.at(-1)).toMatchObject({ type: "state", version: 2 });
     // Nothing more is sent to the socket that closed.
-    expect(mover.sent.length).toBe(sentToMover);
+    expect(mover.sent).toHaveLength(sentToMover);
   });
 
   it("carries out commands that were queued behind it too, in order", async () => {
@@ -205,7 +206,7 @@ describe("a socket that closes with work outstanding", () => {
     const mover = fakeSocket(store, host.code);
     await mover.say({ type: "hello", token: first === "white" ? host.token : guest.token });
     hold();
-    mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
+    void mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
     const last = mover.say({ type: "command", command: { type: "roll" } });
     mover.hangUp();
     release();
@@ -229,7 +230,7 @@ describe("a socket that closes with work outstanding", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     const sent = socket.sent.length;
     await joinRoom(inner, host.code, "Grace");
-    expect(socket.sent.length).toBe(sent);
+    expect(socket.sent).toHaveLength(sent);
   });
 });
 
@@ -281,7 +282,7 @@ describe("a close while hello is still in flight", () => {
       },
     };
     const socket = fakeSocket(store, host.code);
-    socket.say({ type: "hello", token: first === "white" ? host.token : guest.token });
+    void socket.say({ type: "hello", token: first === "white" ? host.token : guest.token });
     const queued = socket.say({ type: "command", command: { type: "pickCard", index: 0 }, id: 1 });
     socket.hangUp();
     gate = null;

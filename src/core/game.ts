@@ -114,34 +114,39 @@ const SEARCH_LIMIT = 50_000;
 
 class SearchTooLarge extends Error {}
 
+/** Shared by every step of one search: positions already solved, and how many more may be. */
+interface Search {
+  seen: Map<string, Play>;
+  left: number;
+}
+
 /** The most that can be played from a position with the given dice. */
 function bestPlay(
   board: BoardState,
   player: Player,
   dice: number[],
   shielded: boolean,
-  seen: Map<string, Play>,
-  budget: { left: number },
+  search: Search,
 ): Play {
   if (dice.length === 0) return { count: 0, high: 0 };
-  const key = `${JSON.stringify(board)}|${[...dice].sort().join("")}`;
-  const known = seen.get(key);
+  const key = `${JSON.stringify(board)}|${dice.toSorted((a, b) => a - b).join("")}`;
+  const known = search.seen.get(key);
   if (known) return known;
-  if (--budget.left < 0) throw new SearchTooLarge();
+  if (--search.left < 0) throw new SearchTooLarge();
 
   let best: Play = { count: 0, high: 0 };
   // Highest die first, so the first play found of any length begins with the highest die.
-  search: for (const die of [...new Set(dice)].sort((a, b) => b - a)) {
+  byDie: for (const die of [...new Set(dice)].toSorted((a, b) => b - a)) {
     const rest = [...dice];
     rest.splice(rest.indexOf(die), 1);
     for (const move of legalMovesForDie(board, player, die, shielded)) {
-      const after = bestPlay(applyMove(board, move).board, player, rest, shielded, seen, budget);
+      const after = bestPlay(applyMove(board, move).board, player, rest, shielded, search);
       if (1 + after.count > best.count) best = { count: 1 + after.count, high: die };
       // Nothing can beat using every die.
-      if (best.count === dice.length) break search;
+      if (best.count === dice.length) break byDie;
     }
   }
-  seen.set(key, best);
+  search.seen.set(key, best);
   return best;
 }
 
@@ -156,21 +161,13 @@ export function legalMoves(turn: TurnInfo): Move[] {
   if (moves.length === 0) return moves;
   const player = turn.current;
   const shielded = turn.shielded[opponent(player)];
-  const seen = new Map<string, Play>();
-  const budget = { left: SEARCH_LIMIT };
+  const search: Search = { seen: new Map(), left: SEARCH_LIMIT };
   try {
-    const most = bestPlay(turn.board, player, turn.dice, shielded, seen, budget);
+    const most = bestPlay(turn.board, player, turn.dice, shielded, search);
     return moves.filter((move) => {
       const rest = [...turn.dice];
       rest.splice(rest.indexOf(move.die), 1);
-      const after = bestPlay(
-        applyMove(turn.board, move).board,
-        player,
-        rest,
-        shielded,
-        seen,
-        budget,
-      );
+      const after = bestPlay(applyMove(turn.board, move).board, player, rest, shielded, search);
       // One die only: it must be the highest that can be played at all.
       return 1 + after.count === most.count && (most.count > 1 || move.die === most.high);
     });
@@ -359,7 +356,7 @@ function roll(state: GameState): Result {
   };
 }
 
-function move(state: GameState, wanted: Omit<Move, "player">): Result {
+function moveChecker(state: GameState, wanted: Omit<Move, "player">): Result {
   const player = state.current;
   const legal = legalMoves(state).find(
     (m) => m.from === wanted.from && m.to === wanted.to && m.die === wanted.die,
@@ -466,7 +463,7 @@ export function applyCommand(
     case "roll":
       return roll(state);
     case "move":
-      return move(state, command);
+      return moveChecker(state, command);
     case "playCard":
       return playCard(state, command.index);
     case "endTurn":

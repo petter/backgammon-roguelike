@@ -80,8 +80,7 @@ const GOLD: DieLook = {
  * own plane, so they foreshorten with it.
  */
 function die(
-  cx: number,
-  cy: number,
+  [cx, cy]: Point,
   size: number,
   faces: [number, number, number],
   look: DieLook,
@@ -110,18 +109,30 @@ ${pips(topLeft, sub(topBack, topLeft), sub(topFront, topLeft), faces[0])}${pips(
 <path d="M${n(topLeft[0] + 1.2)} ${n(topLeft[1] + 0.2)}L${n(topFront[0] - 0.6)} ${n(topFront[1] - 0.9)}" stroke="#fff" stroke-width="1" stroke-linecap="round" opacity="0.85" fill="none"/></g>`;
 }
 
-/** A checker lying flat or tipped: a short cylinder with a lit top. */
-function checker(
-  cx: number,
-  cy: number,
-  r: number,
-  turn: number,
-  top: string,
-  side: string,
-  rim: string,
+interface CheckerLook {
+  top: string;
+  side: string;
+  rim: string;
   /** The streak of light on the top face: white on ivory, a muted grey on a dark checker. */
-  shine = "#fff",
-) {
+  shine: string;
+}
+
+const IVORY_CHECKER: CheckerLook = {
+  top: "#efe2c4",
+  side: "#c2af84",
+  rim: "#6f5d36",
+  shine: "#fff",
+};
+const EBONY_CHECKER: CheckerLook = {
+  top: "#3a322c",
+  side: "#17110d",
+  rim: "#050404",
+  shine: "#8a857d",
+};
+
+/** A checker lying flat or tipped: a short cylinder with a lit top. */
+function checker([cx, cy]: Point, r: number, turn: number, look: CheckerLook) {
+  const { top, side, rim, shine } = look;
   const ry = r * 0.42;
   const thick = r * 0.38;
   return `<g transform="rotate(${turn} ${cx} ${cy})">
@@ -150,11 +161,13 @@ const star = (cx: number, cy: number, r = 0.9) =>
 const leaf = (turn: number) =>
   `<g transform="rotate(${turn} 60 38)"><path d="M60 38C49 32 45 19 53 15c4-2 7 2 7 5 0-3 3-7 7-5 8 4 4 17-7 23z" fill="url(#art-charm-leaf)" ${edge("#1d5a2a")}/><path d="M60 37V21" stroke="#1d5a2a" stroke-width="0.8" fill="none"/><path d="M53 20q-3 4-1 9" stroke="#e4ffd0" stroke-width="1" stroke-linecap="round" opacity="0.75" fill="none"/></g>`;
 
+const rayPoint = (angle: number) =>
+  `${n(60 + 130 * Math.cos(angle))},${n(40 + 130 * Math.sin(angle))}`;
+
 const rays = Array.from({ length: 12 }, (_, i) => {
   const a = (i * Math.PI) / 6 - 0.2;
   const b = a + Math.PI / 12;
-  const at = (angle: number) => `${n(60 + 130 * Math.cos(angle))},${n(40 + 130 * Math.sin(angle))}`;
-  return `<polygon points="60,40 ${at(a)} ${at(b)}" fill="#fff6d0" opacity="0.4"/>`;
+  return `<polygon points="60,40 ${rayPoint(a)} ${rayPoint(b)}" fill="#fff6d0" opacity="0.4"/>`;
 }).join("");
 
 const ART: Record<CardId, string> = {
@@ -164,13 +177,13 @@ ${ribbon("M4 26C26 14 48 30 70 20S100 9 116 17C100 13 88 22 71 23 50 34 27 20 4 
 ${ribbon("M2 43C20 35 38 46 56 41c9-3 12-11 5-14 10 2 9 13-3 17C40 50 21 39 2 43z", 0.6)}
 ${ribbon("M50 10C66 4 86 8 102 3 88 9 68 7 50 10z", 0.5)}
 ${shadow(50, 71, 17, 3.2)}${shadow(95, 68, 13, 2.6, 0.24)}
-${die(38, 44, 15, [5, 4, 6], IVORY, -14)}${die(84, 34, 12.5, [3, 1, 2], IVORY, 18)}`,
+${die([38, 44], 15, [5, 4, 6], IVORY, -14)}${die([84, 34], 12.5, [3, 1, 2], IVORY, 18)}`,
 
   // A shield planted in front of a lone checker.
   shield: `${land("shield", ["#ebe8c6", "#b4c690"], "#7fa066", "#557a45")}
 <defs><linearGradient id="art-shield-light" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f4f5"/><stop offset="0.5" stop-color="#c2cad0"/><stop offset="0.5" stop-color="#99a3ab"/><stop offset="1" stop-color="#6b7680"/></linearGradient></defs>
 ${shadow(66, 74, 31, 4.2, 0.34)}
-${shadow(94, 66.5, 13, 2.4, 0.3)}${checker(90, 60, 13, 0, "#f6ecd4", "#c9b78f", "#8a7850")}
+${shadow(94, 66.5, 13, 2.4, 0.3)}${checker([90, 60], 13, 0, { top: "#f6ecd4", side: "#c9b78f", rim: "#8a7850", shine: "#fff" })}
 <path d="M54 10L82 19V44c0 15-11 24-28 31C37 68 26 59 26 44V19z" fill="#5a3a22" ${edge("#33200f")}/>
 <path d="M54 15L78 23V44c0 12-9 20-24 26C39 64 30 56 30 44V23z" fill="url(#art-shield-light)" ${edge("#4b555e")}/>
 <path d="M50 16h8v52l-4 2-4-2z" fill="#8a5a2c" ${edge("#4f3216")}/><path d="M30 34h48v8H30z" fill="#8a5a2c" ${edge("#4f3216")}/>
@@ -200,14 +213,14 @@ ${shadow(24, 66, 14, 2.6, 0.36)}${shadow(101, 63, 14, 2.6, 0.36)}${shadow(66, 53
 <path d="M62 55l-4 6 3 4-8 5 3 5-9 9" stroke="#060d0a" stroke-width="1" stroke-linejoin="round" fill="none"/>
 <g stroke="#0b1711" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M58 61l-6-2-4 1"/><path d="M53 70l-9-2-5 1"/><path d="M75 71l8-2 5 1"/><path d="M69 61l4-3"/><path d="M62 55l1-3"/></g>
 <g fill="#a9bcae" stroke="#5f7568" stroke-width="0.8" stroke-linejoin="round"><path d="M22 77c-2-4 3-7 6-4 1-4 8-3 8 1 3 0 3 4 0 4z"/><path d="M88 78c-1-4 3-6 6-4 1-3 7-2 6 2 3 0 3 3 0 3z"/></g>
-${checker(26, 31, 15, -17, "#efe2c4", "#c2af84", "#6f5d36")}${checker(98, 23, 15, 21, "#3a322c", "#17110d", "#050404", "#8a857d")}${checker(60, 16, 11.5, -5, "#efe2c4", "#c2af84", "#6f5d36")}`,
+${checker([26, 31], 15, -17, IVORY_CHECKER)}${checker([98, 23], 15, 21, EBONY_CHECKER)}${checker([60, 16], 11.5, -5, IVORY_CHECKER)}`,
 
   // A golden die with a six on every face.
   loaded: `<defs><radialGradient id="art-loaded-sun" cx="0.5" cy="0.48" r="0.8"><stop offset="0" stop-color="#fff0b8"/><stop offset="1" stop-color="#e08a22"/></radialGradient></defs>
 <rect width="120" height="84" fill="url(#art-loaded-sun)"/>${rays}
 <path d="M0 62Q40 56 80 61T120 59V84H0z" fill="#b8641a"/><path d="M0 62Q40 56 80 61T120 59" stroke="${INK}" stroke-width="1" fill="none" opacity="0.5"/>
 ${shadow(73, 67, 27, 4.4, 0.4)}
-${die(60, 40, 26, [6, 6, 6], GOLD)}`,
+${die([60, 40], 26, [6, 6, 6], GOLD)}`,
 };
 
 export function cardArt(card: CardId): string {

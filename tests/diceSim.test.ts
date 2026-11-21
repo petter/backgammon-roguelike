@@ -1,5 +1,6 @@
 import { Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
+
 import { initialBoard } from "../src/core/board.ts";
 import { createRng } from "../src/core/rng.ts";
 import {
@@ -13,7 +14,7 @@ import {
 import { FIELD_HALF_D, FIELD_HALF_W, obstaclesOf } from "../src/render/layout.ts";
 
 function lastFrame(frames: Float32Array) {
-  const f = frames.subarray(frames.length - 7);
+  const f = frames.subarray(-7);
   return { x: f[0], y: f[1], z: f[2], q: new Quaternion(f[3], f[4], f[5], f[6]) };
 }
 
@@ -118,7 +119,7 @@ describe("simulateThrow contacts", () => {
     }
   }
 
-  const cases: [string, number[], 1 | -1, () => () => number][] = [
+  const cases: Array<[string, number[], 1 | -1, () => () => number]> = [
     ["five dice, constant 0", [5, 6, 1, 2, 3], -1, () => () => 0],
     ["six dice, constant just under 1", [6, 1, 2, 3, 4, 5], 1, () => () => 0.999999],
     ["six dice, constant one half", [1, 2, 3, 4, 5, 6], 1, () => () => 0.5],

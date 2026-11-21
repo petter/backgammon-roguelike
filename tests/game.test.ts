@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { applyMove, emptyBoard, initialBoard, type Move, place } from "../src/core/board.ts";
 import {
   CARD_IDS,
@@ -56,7 +57,7 @@ describe("createRng", () => {
 
   it("shuffles without losing or inventing items", () => {
     const deck = starterDeck();
-    expect(shuffle(deck, createRng(3)).sort()).toEqual([...deck].sort());
+    expect(shuffle(deck, createRng(3)).toSorted()).toEqual(deck.toSorted());
   });
 });
 
@@ -67,7 +68,7 @@ describe("starterDeck", () => {
     const order = Object.keys(RARITIES) as Rarity[];
     for (const id of CARD_IDS) expect(count(id)).toBe(RARITIES[CARDS[id].rarity].copies);
     const copies = order.map((rarity) => RARITIES[rarity].copies);
-    expect(copies).toEqual([...copies].sort((a, b) => b - a));
+    expect(copies).toEqual(copies.toSorted((a, b) => b - a));
     expect(copies[0]).toBeGreaterThan(copies.at(-1) ?? 0);
     expect(RARITIES.legendary.copies).toBe(1);
     // The two cards that swing a game hardest are the two rarest.
@@ -91,10 +92,10 @@ describe("newGame", () => {
       ...s.cards[who].offer,
     ];
     expect(a.current).toBe(b.current);
-    expect(all(a, "white").sort()).toEqual(all(b, "white").sort());
+    expect(all(a, "white").toSorted()).toEqual(all(b, "white").toSorted());
     const whiteOrder = (s: typeof a) =>
       s.current === "white"
-        ? [...s.cards.white.deck, ...[...s.cards.white.offer].reverse()]
+        ? [...s.cards.white.deck, ...s.cards.white.offer.toReversed()]
         : s.cards.white.deck;
     expect(whiteOrder(a)).toEqual(whiteOrder(b));
     expect(a.cards.black).not.toEqual(b.cards.black);
@@ -274,8 +275,8 @@ describe("rematch", () => {
 });
 
 describe("using as many dice as possible", () => {
-  const pairs = (moves: { from: number | "bar"; to: number | "off"; die: number }[]) =>
-    moves.map((m) => `${m.from}>${m.to} (${m.die})`).sort();
+  const pairs = (moves: Array<{ from: number | "bar"; to: number | "off"; die: number }>) =>
+    moves.map((m) => `${m.from}>${m.to} (${m.die})`).toSorted();
 
   it("leaves a roll unrestricted when every die can be played whatever comes first", () => {
     const state = game({ board: initialBoard(), dice: [3, 1] });
@@ -341,7 +342,7 @@ describe("using as many dice as possible", () => {
     expect(
       legalMoves(state)
         .map((m) => m.die)
-        .sort(),
+        .toSorted((a, b) => a - b),
     ).toEqual([1, 2, 3]);
     expect(diceToPlay(state)).toBe(2);
   });
@@ -512,7 +513,11 @@ describe("dealing", () => {
     const next = endWhiteTurn(state).state.cards.black;
     expect(next.offer).toHaveLength(3);
     expect(next.offer[0]).toBe("charm");
-    expect([...next.offer.slice(1), ...next.deck].sort()).toEqual(["quake", "reroll", "shield"]);
+    expect([...next.offer.slice(1), ...next.deck].toSorted()).toEqual([
+      "quake",
+      "reroll",
+      "shield",
+    ]);
     expect(next.discard).toEqual([]);
   });
 
@@ -534,9 +539,9 @@ describe("dealing", () => {
       }
       state = applyCommand(state, player, { type: "roll" }).state;
       while (state.cards[player].hand.length > 2) {
-        const turn = state;
-        const index = turn.cards[player].hand.findIndex((c) => canPlayCard(turn, c));
-        if (index < 0) break;
+        const now = state;
+        const index = now.cards[player].hand.findIndex((c) => canPlayCard(now, c));
+        if (index === -1) break;
         state = applyCommand(state, player, { type: "playCard", index }).state;
       }
       for (let moves = legalMoves(state); moves.length > 0; moves = legalMoves(state)) {
@@ -547,7 +552,7 @@ describe("dealing", () => {
       for (const who of ["white", "black"] as const) {
         const mine = state.cards[who];
         const all = [...mine.deck, ...mine.hand, ...mine.discard, ...mine.offer];
-        expect(all.sort()).toEqual(starterDeck().sort());
+        expect(all.toSorted()).toEqual(starterDeck().toSorted());
         expect(checkersOf(state.board, who)).toBe(15);
       }
     }
@@ -740,7 +745,7 @@ describe("cards", () => {
       const card = state.cards[state.current].hand[index];
       expect(cardBlock(state, card)).toBe(reason);
       expect(canPlayCard(state, card)).toBe(false);
-      expect(() => applyCommand(state, state.current, { type: "playCard", index })).toThrowError(
+      expect(() => applyCommand(state, state.current, { type: "playCard", index })).toThrow(
         new GameError(reason),
       );
       // The card stays in hand and nothing else moved.

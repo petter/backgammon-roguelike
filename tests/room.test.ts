@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+
 import { applyCommand, type Command, canPlayCard, legalMoves, newGame } from "../src/core/game.ts";
 import { isRoomCode, type ServerMessage } from "../src/net/protocol.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
@@ -14,7 +15,7 @@ async function client(store: GameStore, code: string, token: string) {
     inbox,
     connection,
     send: (command: Command) => connection.command(command),
-    last: () => inbox.filter((m): m is State => m.type === "state").at(-1) as State,
+    last: () => inbox.findLast((m): m is State => m.type === "state") as State,
     errors: () => inbox.flatMap((m) => (m.type === "error" ? [m.message] : [])),
   };
 }
@@ -61,7 +62,9 @@ describe("lobby", () => {
     });
     for (const junk of ["wizard", "toString", "__proto__", "", 3, null, { id: "seer" }, ["seer"]]) {
       const made = await createRoom(store, "Eve", undefined, junk);
-      expect((await store.load(made.code))?.seats.white?.character, String(junk)).toBe("gambler");
+      expect((await store.load(made.code))?.seats.white?.character, JSON.stringify(junk)).toBe(
+        "gambler",
+      );
     }
   });
 
@@ -196,7 +199,7 @@ describe("playing", () => {
     expect(first.errors()).toHaveLength(2);
 
     expect((await store.load(code))?.version).toBe(before);
-    expect(second.inbox.length).toBe(sent + 1);
+    expect(second.inbox).toHaveLength(sent + 1);
   });
 
   it("draws fresh randomness for every command instead of running a stored sequence", async () => {
@@ -290,7 +293,7 @@ describe("playing", () => {
 
     await first.send({ type: "pickCard", index: 0 });
     await first.send({ type: "roll" });
-    expect(dropped.inbox.length).toBe(seen);
+    expect(dropped.inbox).toHaveLength(seen);
 
     const back = await client(store, code, token);
     expect(back.inbox).toHaveLength(1);
@@ -339,7 +342,7 @@ describe("playing", () => {
       const quiet = second.inbox.length;
       await vi.advanceTimersByTimeAsync(30_000);
       // Nothing changed, so the resync sends nothing.
-      expect(second.inbox.length).toBe(quiet);
+      expect(second.inbox).toHaveLength(quiet);
 
       broken = true;
       await first.send({ type: "pickCard", index: 0 });
@@ -356,7 +359,7 @@ describe("playing", () => {
       const closedAt = second.inbox.length;
       await first.send({ type: "playCard", index: 0 }).catch(() => {});
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(second.inbox.length).toBe(closedAt);
+      expect(second.inbox).toHaveLength(closedAt);
     } finally {
       vi.useRealTimers();
     }
@@ -373,7 +376,7 @@ describe("playing", () => {
       for (const { inbox } of [white, black]) {
         const versions = inbox.flatMap((m) => (m.type === "state" ? [m.version] : []));
         expect(versions).toEqual([...new Set(versions)]);
-        expect(versions).toEqual([...versions].sort((a, b) => a - b));
+        expect(versions).toEqual(versions.toSorted((a, b) => a - b));
       }
     } finally {
       vi.useRealTimers();
@@ -501,7 +504,7 @@ describe("playing", () => {
         room: { id: "other", code: host.code, version: 50, seats: {}, game: null },
         events: [],
       });
-      expect(got.length, failure).toBe(before);
+      expect(got, failure).toHaveLength(before);
     }
   });
 
@@ -591,7 +594,7 @@ describe("playing", () => {
       const count = stale.inbox.length;
       await stale.send({ type: "roll" });
       await vi.advanceTimersByTimeAsync(30_000);
-      expect(stale.inbox.length).toBe(count);
+      expect(stale.inbox).toHaveLength(count);
       expect((await store.load(fresh.code))?.version).toBe(1);
     } finally {
       vi.useRealTimers();

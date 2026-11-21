@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { applyCommand, type GameEvent, newGame } from "../src/core/game.ts";
 import { redactEvent, viewFor } from "../src/core/view.ts";
 import { cards, game } from "./helpers.ts";
@@ -27,7 +28,7 @@ describe("viewFor", () => {
   });
 
   it("exposes exactly the documented fields, so new state stays secret by default", () => {
-    expect(Object.keys(viewFor(state, "black")).sort()).toEqual(
+    expect(Object.keys(viewFor(state, "black")).toSorted()).toEqual(
       [
         "board",
         "counts",
@@ -41,7 +42,7 @@ describe("viewFor", () => {
         "winner",
         "wins",
         "you",
-      ].sort(),
+      ].toSorted(),
     );
   });
 

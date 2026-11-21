@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
+
 import { WebSocketServer } from "ws";
+
 import { normalizeCode } from "../net/protocol.ts";
 import { BODY_LIMIT, handleApi } from "./http.ts";
 import { serveSocket } from "./socket.ts";
@@ -64,7 +66,8 @@ export function createUpgradeHandler(
       serveSocket(store, normalizeCode(match[1]), {
         send: (text) => ws.send(text),
         close: () => ws.close(),
-        onMessage: (listener) => ws.on("message", (data) => listener(data.toString())),
+        // With the default binaryType, `ws` hands over each message as one Buffer.
+        onMessage: (listener) => ws.on("message", (data) => listener((data as Buffer).toString())),
         onClose: (listener) => ws.on("close", listener),
       });
     });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { seedFromQuery } from "../src/app/seed.ts";
 
 describe("seedFromQuery", () => {

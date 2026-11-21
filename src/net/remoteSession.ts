@@ -1,3 +1,6 @@
+// ClientSocket mirrors the `on*` handler properties of a browser WebSocket, so tests can fake it.
+// oxlint-disable unicorn/prefer-add-event-listener
+
 import type { ClientMessage, ServerMessage } from "./protocol.ts";
 import type { Session, SessionHandlers } from "./session.ts";
 
@@ -22,8 +25,8 @@ const RETRY_MAX_MS = 5000;
 
 /** The part of a browser WebSocket this needs. Lets tests supply their own. */
 export interface ClientSocket {
-  send(text: string): void;
-  close(): void;
+  send: (text: string) => void;
+  close: () => void;
   onopen: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
   onclose: (() => void) | null;

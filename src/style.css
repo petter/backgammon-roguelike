@@ -279,8 +279,14 @@ kbd {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background:
-    linear-gradient(108deg, #fff0 38%, #eaf4ff24 44%, #eaf4ff5c 47.5%, #eaf4ff1a 51%, #fff0 58%)
+  background: linear-gradient(
+      108deg,
+      #fff0 38%,
+      #eaf4ff24 44%,
+      #eaf4ff5c 47.5%,
+      #eaf4ff1a 51%,
+      #fff0 58%
+    )
     var(--gloss-at, 22%) 0 / 260% 100%;
   mask-image: linear-gradient(#000 0 52%, #0000 62%);
   transition: background-position 0.55s ease-out;
@@ -609,7 +615,7 @@ kbd {
    */
   background:
     linear-gradient(115deg, #fff0 45.6%, #fafcff 47%, #fafcffd9 48.2%, #fff0 49.6%)
-    var(--streak, 30%) 0 / 250% 100% padding-box,
+      var(--streak, 30%) 0 / 250% 100% padding-box,
     repeating-linear-gradient(115deg, #7d6aa873 0 1px, #fff0 1px 4px) padding-box,
     linear-gradient(115deg, #c9b9e0, #bdb2e2 35%, #cdb8df 68%, #c0b4e4) padding-box,
     var(--edge) border-box;
@@ -667,16 +673,16 @@ kbd {
     repeating-linear-gradient(90deg, #ffffff2e 0 1px, #fff0 1px 2px) padding-box,
     var(--grain) padding-box,
     repeating-linear-gradient(
-      100deg,
-      #c08a2c 0,
-      #d4a040 4%,
-      #fff8e6 7%,
-      #ecd08a 10%,
-      #d4a040 15%,
-      #b98427 21%,
-      #c08a2c 26%
-    )
-    padding-box,
+        100deg,
+        #c08a2c 0,
+        #d4a040 4%,
+        #fff8e6 7%,
+        #ecd08a 10%,
+        #d4a040 15%,
+        #b98427 21%,
+        #c08a2c 26%
+      )
+      padding-box,
     var(--edge) border-box;
 }
 

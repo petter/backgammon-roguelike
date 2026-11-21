@@ -24,7 +24,7 @@ export function game(partial: Partial<GameState> = {}): GameState {
 }
 
 export function hand(player: Player, ...ids: CardId[]): GameState["cards"] {
-  return { white: cards(), black: cards(), [player]: cards({ hand: ids }) } as GameState["cards"];
+  return { white: cards(), black: cards(), [player]: cards({ hand: ids }) };
 }
 
 export function checkersOf(board: BoardState, player: Player): number {

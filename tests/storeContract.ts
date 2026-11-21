@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { GameStore, Room, RoomUpdate } from "../src/server/store.ts";
 
 function room(code: string, version = 0, id = "room-1"): Room {

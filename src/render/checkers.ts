@@ -1,5 +1,6 @@
-import gsap from "gsap";
+import { gsap } from "gsap";
 import * as THREE from "three";
+
 import type { BoardEvent, BoardState, Player } from "../core/board.ts";
 import { hopToRest, setLifted, setRest } from "./effects.ts";
 import { CHECKER_H, CHECKER_R, type Place, slotPosition } from "./layout.ts";

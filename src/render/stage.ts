@@ -1,4 +1,5 @@
 import * as THREE from "three";
+
 import type { Player } from "../core/board.ts";
 import { type PickTarget, pickAt, TRAY_W, TRAY_X } from "./layout.ts";
 
@@ -10,16 +11,16 @@ export interface Stage {
   /** Everything that shakes together: board and checkers. */
   world: THREE.Group;
   /** Puts the camera on that player's side of the board, so their home is nearest. */
-  setSeat(player: Player): void;
+  setSeat: (player: Player) => void;
   /** What sits on the playfield under a pointer position, if anything. */
-  pick(clientX: number, clientY: number): PickTarget | null;
+  pick: (clientX: number, clientY: number) => PickTarget | null;
 }
 
 export function createStage(container: HTMLElement): Stage {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
-  container.appendChild(renderer.domElement);
+  container.append(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x14110f);

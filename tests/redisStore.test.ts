@@ -1,5 +1,6 @@
 import { Redis } from "ioredis";
 import { afterAll, describe, expect, it } from "vitest";
+
 import { createRedisStore, type RedisStore } from "../src/server/redisStore.ts";
 import { createRoom, joinRoom, openConnection } from "../src/server/room.ts";
 import { storeContract } from "./storeContract.ts";
@@ -90,7 +91,7 @@ describe.skipIf(!url)("redis", () => {
     const code = `u${Date.now()}`;
     const subscribers = async () => {
       const reply = (await admin.call("PUBSUB", "NUMSUB", `room:${code}`)) as [string, number];
-      return Number(reply[1]);
+      return reply[1];
     };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 150));
     const stop = await store.subscribe(code, () => {});

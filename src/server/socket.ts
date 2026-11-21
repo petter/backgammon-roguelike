@@ -4,10 +4,10 @@ import type { GameStore } from "./store.ts";
 
 /** The few things a WebSocket must do for us. Keeps the room logic free of any transport. */
 export interface SocketLike {
-  send(text: string): void;
-  close(): void;
-  onMessage(listener: (text: string) => void): void;
-  onClose(listener: () => void): void;
+  send: (text: string) => void;
+  close: () => void;
+  onMessage: (listener: (text: string) => void) => void;
+  onClose: (listener: () => void) => void;
 }
 
 /**

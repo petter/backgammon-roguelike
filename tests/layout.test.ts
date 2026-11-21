@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { POINT_COUNT } from "../src/core/board.ts";
 import { pickAt, slotPosition, TRAY_X } from "../src/render/layout.ts";
 

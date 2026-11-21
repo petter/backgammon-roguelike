@@ -1,8 +1,8 @@
 export interface Rng {
   /** Float in [0, 1). */
-  next(): number;
+  next: () => number;
   /** Integer in [0, n). */
-  int(n: number): number;
+  int: (n: number) => number;
   /** Feed this back into `createRng` to continue the same sequence. */
   readonly state: number;
 }

@@ -1,7 +1,9 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createUpgradeHandler, serveApi } from "../src/server/node.ts";
 
@@ -49,7 +51,11 @@ function opened(ws: WebSocket): Promise<void> {
 }
 
 function nextMessage(ws: WebSocket): Promise<Record<string, unknown>> {
-  return new Promise((resolve) => ws.once("message", (data) => resolve(JSON.parse(String(data)))));
+  return new Promise((resolve) =>
+    ws.once("message", (data) =>
+      resolve(JSON.parse((data as Buffer).toString()) as Record<string, unknown>),
+    ),
+  );
 }
 
 function closed(ws: WebSocket): Promise<number> {

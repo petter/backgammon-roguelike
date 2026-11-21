@@ -21,6 +21,7 @@ import {
 import type { GameStore, Room, RoomUpdate } from "./store.ts";
 
 const SAVE_ATTEMPTS = 5;
+const noop = () => {};
 const SEED_RANGE = 0x1_0000_0000;
 
 export type RoomErrorKind = "not_found" | "full" | "bad_token" | "busy";
@@ -37,9 +38,9 @@ export class RoomError extends Error {
 
 /** Source of secrets: seat tokens, room codes and game seeds. Injectable for tests. */
 export interface Entropy {
-  token(): string;
+  token: () => string;
   /** Integer in [0, n). */
-  int(n: number): number;
+  int: (n: number) => number;
 }
 
 export const cryptoEntropy: Entropy = {
@@ -55,7 +56,7 @@ export const cryptoEntropy: Entropy = {
 };
 
 function cleanName(raw: unknown, fallback: string): string {
-  const name = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, NAME_MAX) : "";
+  const name = typeof raw === "string" ? raw.replaceAll(/\s+/g, " ").trim().slice(0, NAME_MAX) : "";
   return name || fallback;
 }
 
@@ -180,8 +181,8 @@ async function announce(store: GameStore, code: string, update: RoomUpdate): Pro
 
 export interface Connection {
   /** Applies a command from this seat. Rule violations come back as error messages. */
-  command(command: Command): Promise<void>;
-  close(): void;
+  command: (command: Command) => Promise<void>;
+  close: () => void;
 }
 
 export interface ConnectionOptions {
@@ -219,8 +220,9 @@ export async function openConnection(
   let sent = -1;
   let closed = false;
   let ready = false;
+  // oxlint-disable-next-line prefer-const -- stop() reads it before it is assigned.
   let resync: ReturnType<typeof setInterval> | undefined;
-  let unsubscribe = () => {};
+  let unsubscribe = noop;
 
   /** The whole teardown. Safe to call at any point and more than once. */
   const stop = () => {
@@ -229,7 +231,7 @@ export async function openConnection(
     // Taken out before it is called, so the store sees each unsubscribe exactly once, and
     // one that only becomes available later (during setup) is still called.
     const release = unsubscribe;
-    unsubscribe = () => {};
+    unsubscribe = noop;
     release();
   };
   /** Sends an error, unless the connection is closed. */
