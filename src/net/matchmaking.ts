@@ -6,6 +6,11 @@ export interface SearchHandlers {
   onSeat: (seat: SeatGrant) => void;
   /** The server cannot be reached, though the search goes on; `null` once it can again. */
   onTrouble: (problem: string | null) => void;
+  /**
+   * The page is going away mid-search, and this ticket is being given up without waiting
+   * for an answer. Keep it to settle before the next search, in case it was just matched.
+   */
+  onLeave?: (ticket: string) => void;
 }
 
 /** How a cancel turned out. */
@@ -24,6 +29,8 @@ export interface Cancelled {
 }
 
 export interface Search {
+  /** The ticket in use: what a cancel will give up. */
+  ticket: () => string;
   /** Stops looking. Always resolves, within `CANCEL_TIMEOUT_MS` if the server is silent. */
   cancel: () => Promise<Cancelled>;
 }
@@ -189,6 +196,7 @@ export function findMatch(
     () => {
       if (stopped) return;
       halt();
+      handlers.onLeave?.(ticket);
       env.beacon(`/api/match/${ticket}/cancel`);
       renew();
     },
@@ -204,6 +212,7 @@ export function findMatch(
 
   start();
   return {
+    ticket: () => ticket,
     async cancel() {
       if (stopped) return { ticket, seat: null, settled: true };
       finish();

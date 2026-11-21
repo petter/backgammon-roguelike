@@ -112,8 +112,9 @@ function enterRoom(code: string, token: string): void {
 }
 
 /**
- * A ticket whose cancel went unanswered. The server may have matched it all the same, with
- * a stranger now waiting at that table, so it is settled before any new search.
+ * A ticket given up without an answer yet: its cancel is on its way, went unanswered, or
+ * was a beacon as the page went away. The server may have matched it all the same, with a
+ * stranger now waiting at that table, so it is settled before any new search.
  */
 const unsettledTickets = ticketMemory();
 /** The same, for when storage is unavailable: then it lasts until the page is reloaded. */
@@ -149,6 +150,7 @@ function seek(player: PlayerChoice): void {
     onTrouble: (problem) => {
       if (search === mine) lobby.searchTrouble(problem);
     },
+    onLeave: (ticket) => unsettled.set(ticket),
   });
   search = mine;
 }
@@ -171,6 +173,8 @@ function cancelSeek(then: () => void): boolean {
   const running = search;
   search = null;
   cancelling = true;
+  // Kept until the server answers, so a reload meanwhile still settles it first.
+  if (running) unsettled.set(running.ticket());
   lobby.searchCancelling();
   void settle(running);
   return true;
@@ -179,7 +183,7 @@ function cancelSeek(then: () => void): boolean {
 async function settle(running: Search | null): Promise<void> {
   const outcome = running ? await running.cancel() : null;
   cancelling = false;
-  if (outcome && !outcome.settled) unsettled.set(outcome.ticket);
+  if (outcome?.settled) unsettled.clear();
   if (outcome?.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else afterCancel();
 }

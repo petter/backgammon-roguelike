@@ -186,12 +186,22 @@ describe("findMatch", () => {
     }
   });
 
+  it("names its ticket from the start, before the server has answered", () => {
+    const server = fakeServer(["hang"]);
+    const search = findMatch(player, recorder().handlers, server.env);
+    expect(search.ticket()).toBe("t1");
+  });
+
   it("stops looking when the page goes away, and starts again with a new ticket", async () => {
     const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
     const { seats, handlers } = recorder();
-    findMatch(player, handlers, server.env);
+    const left: string[] = [];
+    const search = findMatch(player, { ...handlers, onLeave: (t) => left.push(t) }, server.env);
     await settled(server);
     server.page.hide();
+    // Given up unanswered, so the caller keeps it to settle later.
+    expect(left).toEqual(["t1"]);
+    expect(search.ticket()).toBe("t2");
     expect(server.beacons).toEqual(["/api/match/t1/cancel"]);
     expect(server.calls[1]?.aborted()).toBe(true);
     server.page.show();
