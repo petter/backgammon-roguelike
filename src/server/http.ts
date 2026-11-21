@@ -1,4 +1,5 @@
-import { isRoomCode, normalizeCode } from "../net/protocol.ts";
+import { isRoomCode, isTicket, normalizeCode } from "../net/protocol.ts";
+import { awaitMatch, cancelMatch, type MatchOptions, seekMatch } from "./match.ts";
 import { createRoom, joinRoom, RoomError, type RoomErrorKind, roomStatus } from "./room.ts";
 import type { GameStore } from "./store.ts";
 
@@ -45,9 +46,33 @@ function parseBody(text: string): { ok: true; value: unknown } | { ok: false } {
 }
 
 /**
+ * Matchmaking. `POST /api/match` starts looking for a stranger; `POST /api/match/:ticket`
+ * waits for one, held open for a while; `POST /api/match/:ticket/cancel` stops looking.
+ */
+async function match(
+  store: GameStore,
+  parts: string[],
+  body: unknown,
+  options: MatchOptions,
+): Promise<ApiResponse> {
+  if (parts.length === 2) {
+    const { name, character } = playerOf(body);
+    return { status: 200, body: await seekMatch(store, name, character, options) };
+  }
+  const ticket = parts[2] ?? "";
+  if (!isTicket(ticket)) throw new RoomError("not_found", "No longer looking for a game");
+  if (parts.length === 3) return { status: 200, body: await awaitMatch(store, ticket, options) };
+  if (parts.length === 4 && parts[3] === "cancel") {
+    return { status: 200, body: await cancelMatch(store, ticket) };
+  }
+  return { status: 404, body: { error: "Not found" } };
+}
+
+/**
  * The lobby's HTTP API, independent of any server framework.
  * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat;
- * `GET /api/rooms/:code` says whether that seat is still free.
+ * `GET /api/rooms/:code` says whether that seat is still free. Matchmaking is under
+ * `/api/match` (see `match`).
  * Takes the raw body text, so a malformed or oversized request is refused before it can
  * take a seat.
  */
@@ -56,11 +81,13 @@ export async function handleApi(
   method: string,
   path: string,
   bodyText: string,
+  matchOptions: MatchOptions = {},
 ): Promise<ApiResponse> {
   const parts = path.split("/").filter(Boolean);
-  if (parts[0] !== "api" || parts[1] !== "rooms")
-    return { status: 404, body: { error: "Not found" } };
-  if (method === "GET" && parts.length === 3) return status(store, parts[2] ?? "");
+  const area = parts[0] === "api" ? parts[1] : undefined;
+  if (area !== "rooms" && area !== "match") return { status: 404, body: { error: "Not found" } };
+  if (area === "rooms" && method === "GET" && parts.length === 3)
+    return status(store, parts[2] ?? "");
   if (method !== "POST") return { status: 405, body: { error: "Method not allowed" } };
   if (bodyText.length > BODY_LIMIT) return { status: 413, body: { error: "Request too large" } };
   const parsed = parseBody(bodyText);
@@ -68,6 +95,7 @@ export async function handleApi(
   const body = parsed.value;
 
   try {
+    if (area === "match") return await match(store, parts, body, matchOptions);
     const { name, character } = playerOf(body);
     if (parts.length === 2) {
       return { status: 201, body: await createRoom(store, name, undefined, character) };

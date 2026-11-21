@@ -8,8 +8,8 @@ import { storeContract } from "./storeContract.ts";
 // Needs a real Redis: `REDIS_URL=redis://localhost:6379 pnpm test`. Skipped otherwise.
 const url = process.env.REDIS_URL;
 const stores: RedisStore[] = [];
-const open = (ttl?: number) => {
-  const store = createRedisStore(url ?? "", ttl);
+const open = (ttl?: number, keyPrefix?: string) => {
+  const store = createRedisStore(url ?? "", ttl, { keyPrefix });
   stores.push(store);
   return store;
 };
@@ -37,6 +37,12 @@ function isolated(store: RedisStore, prefix: string): RedisStore {
       store.subscribe(tag(code), (update) =>
         listener({ ...update, room: { ...update.room, code: strip(update.room.code) } }),
       ),
+    // Seekers are kept apart by the store's own key prefix.
+    addSeeker: (seeker) => store.addSeeker(seeker),
+    touchSeeker: (id, now) => store.touchSeeker(id, now),
+    waitingSeekers: (limit) => store.waitingSeekers(limit),
+    pairSeekers: (a, b, freshAfter) => store.pairSeekers(a, b, freshAfter),
+    removeSeeker: (id) => store.removeSeeker(id),
     close: () => store.close(),
   };
 }
@@ -51,7 +57,10 @@ describe.skipIf(!url)("redis", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     },
   });
-  storeContract("redis", () => settled(isolated(open(), `t${Date.now()}-${run++}-`)));
+  storeContract("redis", () => {
+    const prefix = `t${Date.now()}-${run++}-`;
+    return settled(isolated(open(undefined, `${prefix}:`), prefix));
+  });
 
   it("expires a room after its time to live", async () => {
     const store = open(1);

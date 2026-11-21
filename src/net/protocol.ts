@@ -51,6 +51,20 @@ export interface SeatGrant {
   token: string;
 }
 
+/**
+ * Responses of the matchmaking API. `ticket` is the seeker's secret for asking again;
+ * `seat` is `null` until a stranger has been found.
+ */
+export interface MatchReply {
+  ticket: string;
+  seat: SeatGrant | null;
+}
+
+/** Whether a value could be a matchmaking ticket: the shape the server hands out. */
+export function isTicket(value: string): boolean {
+  return /^[A-Za-z0-9-]{1,100}$/.test(value);
+}
+
 export function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase();
 }

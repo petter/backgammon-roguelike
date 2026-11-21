@@ -6,6 +6,7 @@ import { WebSocket } from "ws";
 
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { createUpgradeHandler, serveApi } from "../src/server/node.ts";
+import type { GameStore } from "../src/server/store.ts";
 
 const servers: http.Server[] = [];
 const clients: WebSocket[] = [];
@@ -21,8 +22,7 @@ afterEach(async () => {
 });
 
 /** The real HTTP and WebSocket stack, as production wires it, on a free local port. */
-async function listen() {
-  const store = createMemoryStore();
+async function listen(store: GameStore = createMemoryStore()) {
   const server = http.createServer((req, res) => serveApi(store, req, res));
   const upgrade = createUpgradeHandler(store);
   server.on("upgrade", (req, socket, head) => {
@@ -31,8 +31,12 @@ async function listen() {
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
-  const post = async (path: string, body: string) => {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", body });
+  const post = async (path: string, body: string, signal?: AbortSignal) => {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: "POST",
+      body,
+      signal,
+    });
     return {
       status: response.status,
       body: (await response.json()) as { code: string; token: string },
@@ -100,6 +104,29 @@ describe("node server", () => {
     expect((await post(`/api/rooms/${code}/join`, "")).status).toBe(200);
     expect(await announced).toMatchObject({ type: "state", version: 1 });
     polite.close();
+  });
+
+  it("stops holding a matchmaking wait once its client hangs up", async () => {
+    const store = createMemoryStore();
+    let touches = 0;
+    const { post } = await listen({
+      ...store,
+      touchSeeker: (id, now) => {
+        touches++;
+        return store.touchSeeker(id, now);
+      },
+    });
+    const { ticket } = (await post("/api/match", "")).body as unknown as { ticket: string };
+    const hangUp = new AbortController();
+    const waiting = post(`/api/match/${ticket}`, "", hangUp.signal).catch(() => "aborted");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    hangUp.abort();
+    expect(await waiting).toBe("aborted");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const after = touches;
+    // The server would touch the seeker every second while it still held the request.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(touches).toBe(after);
   });
 
   it("refuses upgrades that are not room sockets", async () => {

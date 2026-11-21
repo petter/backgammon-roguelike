@@ -1,5 +1,5 @@
 import type { Player } from "../core/board.ts";
-import { characterOf } from "../core/characters.ts";
+import { type CharacterId, characterOf } from "../core/characters.ts";
 import {
   applyCommand,
   type Command,
@@ -56,7 +56,7 @@ export const cryptoEntropy: Entropy = {
   },
 };
 
-function cleanName(raw: unknown, fallback: string): string {
+export function cleanName(raw: unknown, fallback: string): string {
   const name = typeof raw === "string" ? raw.replaceAll(/\s+/g, " ").trim().slice(0, NAME_MAX) : "";
   return name || fallback;
 }
@@ -129,6 +129,30 @@ export async function createRoom(
     const seats = { white: host };
     const room: Room = { id: entropy.token(), code, version: 0, seats, game: null };
     if (await store.create(room)) return { code, token };
+  }
+  throw new RoomError("busy", "Could not find a free room code, try again");
+}
+
+/**
+ * Opens a room with both seats already taken and the game dealt, for two strangers the
+ * matchmaker has paired. Returns each seat's token.
+ */
+export async function createMatchedRoom(
+  store: GameStore,
+  white: { name: string; character: CharacterId },
+  black: { name: string; character: CharacterId },
+  entropy: Entropy = cryptoEntropy,
+): Promise<{ code: string; tokens: Record<Player, string> }> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const code = randomCode(entropy);
+    const tokens = { white: entropy.token(), black: entropy.token() };
+    const seats = {
+      white: { token: tokens.white, name: white.name, character: white.character },
+      black: { token: tokens.black, name: black.name, character: black.character },
+    };
+    const game = newGame(freshSeeds(entropy)).state;
+    const room: Room = { id: entropy.token(), code, version: 0, seats, game };
+    if (await store.create(room)) return { code, tokens };
   }
   throw new RoomError("busy", "Could not find a free room code, try again");
 }

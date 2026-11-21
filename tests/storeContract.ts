@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameStore, Room, RoomUpdate } from "../src/server/store.ts";
+import type { GameStore, Room, RoomUpdate, Seeker } from "../src/server/store.ts";
 
 function room(code: string, version = 0, id = "room-1"): Room {
   return { id, code, version, seats: { white: { token: "t", name: "Ada" } }, game: null };
 }
+
+function seeker(id: string, since: number, seen = since): Seeker {
+  return { id, name: id, character: "gambler", since, seen };
+}
+
+const grant = (token: string) => ({ code: "AAAAA", token });
 
 /** Behaviour every `GameStore` must share. Run it against each implementation. */
 export function storeContract(name: string, makeStore: () => GameStore): void {
@@ -115,6 +121,74 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       stopA();
       await store.publish("AAAAA", { room: room("AAAAA", 4), events: [] });
       expect(a).toHaveLength(1);
+    });
+
+    it("lists waiting seekers longest first and moves seen forward on a touch", async () => {
+      const store = makeStore();
+      await store.addSeeker(seeker("late", 2000));
+      await store.addSeeker(seeker("early", 1000));
+      expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["early", "late"]);
+      expect((await store.waitingSeekers(1)).map((s) => s.id)).toEqual(["early"]);
+      expect(await store.touchSeeker("early", 5000)).toEqual(seeker("early", 1000, 5000));
+      expect((await store.waitingSeekers(1))[0]?.seen).toBe(5000);
+      expect(await store.touchSeeker("nobody", 5000)).toBeNull();
+    });
+
+    it("pairs two fresh waiting seekers once, handing each their seat", async () => {
+      const store = makeStore();
+      await store.addSeeker(seeker("a", 1000));
+      await store.addSeeker(seeker("b", 2000));
+      await store.addSeeker(seeker("c", 3000));
+      const pair = (x: string, y: string) =>
+        store.pairSeekers({ id: x, grant: grant(x) }, { id: y, grant: grant(y) }, 0);
+      expect(await pair("a", "a")).toBe(false);
+      expect(await pair("a", "b")).toBe(true);
+      // Neither can be taken a second time.
+      expect(await pair("c", "a")).toBe(false);
+      expect(await pair("b", "c")).toBe(false);
+      expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["c"]);
+      // A matched seeker keeps their seat, and a touch no longer moves seen.
+      expect(await store.touchSeeker("a", 9000)).toEqual({
+        ...seeker("a", 1000),
+        grant: grant("a"),
+      });
+      expect((await store.touchSeeker("b", 9000))?.grant).toEqual(grant("b"));
+    });
+
+    it("refuses to pair a seeker who has not been seen lately, or who is gone", async () => {
+      const store = makeStore();
+      await store.addSeeker(seeker("quiet", 1000));
+      await store.addSeeker(seeker("eager", 2000, 6000));
+      const pair = (x: string, y: string, freshAfter: number) =>
+        store.pairSeekers({ id: x, grant: grant(x) }, { id: y, grant: grant(y) }, freshAfter);
+      expect(await pair("quiet", "eager", 5000)).toBe(false);
+      expect(await pair("eager", "missing", 0)).toBe(false);
+      expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["quiet", "eager"]);
+      expect(await pair("quiet", "eager", 1000)).toBe(true);
+    });
+
+    it("forgets a removed waiting seeker but keeps a matched one's seat", async () => {
+      const store = makeStore();
+      await store.addSeeker(seeker("a", 1000));
+      await store.addSeeker(seeker("b", 2000));
+      await store.addSeeker(seeker("c", 3000));
+      await store.pairSeekers({ id: "a", grant: grant("a") }, { id: "b", grant: grant("b") }, 0);
+      expect(await store.removeSeeker("c")).toEqual(seeker("c", 3000));
+      expect(await store.touchSeeker("c", 4000)).toBeNull();
+      expect(await store.removeSeeker("c")).toBeNull();
+      expect((await store.removeSeeker("a"))?.grant).toEqual(grant("a"));
+      expect((await store.touchSeeker("a", 4000))?.grant).toEqual(grant("a"));
+      expect(await store.waitingSeekers(10)).toEqual([]);
+    });
+
+    it("hands out copies of seekers, never shared references", async () => {
+      const store = makeStore();
+      const original = seeker("a", 1000);
+      await store.addSeeker(original);
+      original.name = "changed";
+      const listed = await store.waitingSeekers(1);
+      if (listed[0]) listed[0].name = "changed again";
+      expect((await store.touchSeeker("a", 1000))?.name).toBe("a");
     });
   });
 }

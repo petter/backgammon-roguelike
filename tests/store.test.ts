@@ -21,3 +21,18 @@ describe("memory store expiry", () => {
     expect(await store.create(room)).toBe(true);
   });
 });
+
+describe("memory store seekers", () => {
+  it("forgets a seeker ten minutes after they were last heard from", async () => {
+    let now = 0;
+    const store = createMemoryStore(1000, () => now);
+    await store.addSeeker({ id: "a", name: "Ada", character: "gambler", since: 0, seen: 0 });
+    now = 9 * 60_000;
+    expect(await store.touchSeeker("a", now)).not.toBeNull();
+    now = 18 * 60_000;
+    expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["a"]);
+    now = 20 * 60_000;
+    expect(await store.waitingSeekers(10)).toEqual([]);
+    expect(await store.touchSeeker("a", now)).toBeNull();
+  });
+});
