@@ -146,6 +146,7 @@ ${shadow(46, 70, 14, 3, 0.36)}${shadow(78, 70, 14, 3, 0.36)}
 
   // A lone checker hops from stone to stone towards a safe stack, under a pale dawn.
   quietStep: `${land("quietStep", ["#5f7f99", "#a9bfca"], "#6f927a", "#4c7258")}
+<path d="M20 63Q30 40 44 48" stroke="#22303a" stroke-width="3.6" fill="none" opacity="0.4"/>
 <path d="M20 63Q30 40 44 48" stroke="#fff" stroke-width="2" stroke-dasharray="2.4 2.6" stroke-linecap="round" fill="none" opacity="0.9"/>
 <path d="M41.4 45.4l3 2.6-3.9.8" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
 <g><ellipse cx="20" cy="69" rx="11" ry="3.6" fill="#8d958c" ${edge("#4f574e")}/><path d="M11 68q9-3 18 0" stroke="#7fae6a" stroke-width="1.6" fill="none"/></g>
@@ -185,7 +186,7 @@ ${[-24, -8, 8, 24]
   .join("")}
 ${shadow(74, 44, 15, 4, 0.22)}
 <path d="M76 45l16 18" stroke="#3e2412" stroke-width="7" stroke-linecap="round"/><path d="M76 45l16 18" stroke="#8a5a2c" stroke-width="5" stroke-linecap="round"/><path d="M78 46l12 14" stroke="#c08850" stroke-width="1.2" stroke-linecap="round"/>
-<g clip-path="url(#art-keenEye-lens)"><rect x="50" y="18" width="32" height="32" fill="#e9dfc8"/><rect x="56" y="20" width="20" height="28" rx="2" fill="#f6ecd4" ${edge("#8a7850")}/><rect x="58.4" y="22.4" width="15.2" height="11" fill="#7fa8c9" ${edge("#4b6a85")}/><path d="M58.4 30q4-3 7.6-1t7.6-1.4V33.4H58.4z" fill="#4f8a5c"/><circle cx="70" cy="26" r="1.8" fill="#fff4cf"/><rect x="58.4" y="34.4" width="15.2" height="3" fill="#2a2017"/><path d="M60 39.6h12M60 42h10M60 44.4h11" stroke="#8a7850" stroke-width="0.8"/></g>
+<g clip-path="url(#art-keenEye-lens)"><rect x="50" y="18" width="32" height="32" fill="#e9dfc8"/><rect x="56" y="20" width="20" height="28" rx="2" fill="#3f7fc9" ${edge("#1f4f93")}/><rect x="57.4" y="21.4" width="17.2" height="25.2" rx="1.2" fill="#f6ecd4"/><rect x="58.4" y="22.4" width="15.2" height="11" fill="#7fa8c9" ${edge("#4b6a85")}/><path d="M58.4 30q4-3 7.6-1t7.6-1.4V33.4H58.4z" fill="#4f8a5c"/><circle cx="70" cy="26" r="1.8" fill="#fff4cf"/><rect x="58.4" y="34.4" width="15.2" height="3" fill="#2a2017"/><path d="M60 39.6h12M60 42h10M60 44.4h11" stroke="#8a7850" stroke-width="0.8"/></g>
 <circle cx="66" cy="34" r="15" fill="url(#art-keenEye-glass)"/>
 <circle cx="66" cy="34" r="15.5" fill="none" stroke="#5a3408" stroke-width="4.4"/><circle cx="66" cy="34" r="15.5" fill="none" stroke="url(#art-keenEye-brass)" stroke-width="3"/>
 <path d="M56 26a13 13 0 0 1 9-5" stroke="#fff" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.9"/>`,
@@ -245,14 +246,14 @@ ${shadow(66, 69, 16, 2.8, 0.4)}
 <g fill="#f6e6ff"><path d="M45 32l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z"/></g>`,
 
   // An ebony checker that struck an ivory one is flung off by a spring sprung from the felt.
-  counterpunch: `<defs><linearGradient id="art-counterpunch-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40283a"/><stop offset="1" stop-color="#a0603a"/></linearGradient><linearGradient id="art-counterpunch-felt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8468"/><stop offset="1" stop-color="#27493a"/></linearGradient><linearGradient id="art-counterpunch-steel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f4f5"/><stop offset="1" stop-color="#6b7680"/></linearGradient></defs>
+  counterpunch: `<defs><linearGradient id="art-counterpunch-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c48a5a"/><stop offset="1" stop-color="#e8c08a"/></linearGradient><linearGradient id="art-counterpunch-felt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8468"/><stop offset="1" stop-color="#27493a"/></linearGradient><linearGradient id="art-counterpunch-steel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f4f5"/><stop offset="1" stop-color="#6b7680"/></linearGradient></defs>
 <rect width="120" height="84" fill="url(#art-counterpunch-sky)"/>
 <path d="M0 54Q60 50 120 54V84H0z" fill="url(#art-counterpunch-felt)"/><path d="M0 54Q60 50 120 54" stroke="${INK}" stroke-width="1" fill="none" opacity="0.6"/>
 <path d="M47 68h26l-2 5H49z" fill="#0b1711"/><path d="M73 68l9-10 2 2-9 11z" fill="#8a5a2c" stroke="#3e2412" stroke-width="0.9" stroke-linejoin="round"/>
 <path d="M60 70l-7-3 14-3-14-3 14-3-14-3 14-3-14-3 7-2" stroke="#2a3138" stroke-width="3" stroke-linejoin="round" fill="none"/>
 <path d="M60 70l-7-3 14-3-14-3 14-3-14-3 14-3-14-3 7-2" stroke="url(#art-counterpunch-steel)" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
 <path d="M50 44h20v-3H50z" fill="#8b929b" ${edge("#2a3138")}/>
-<path d="M61 22l3 6 7-2-4 6 6 4-7 1 1 7-5-5-5 5 1-7-7-1 6-4-4-6 7 2z" fill="#fff2b0" ${edge("#c9952b")}/>
+<g fill="none" stroke-linecap="round"><ellipse cx="63" cy="28" rx="9" ry="6" stroke="#fff8e0" stroke-width="2"/><ellipse cx="63" cy="28" rx="14" ry="9.4" stroke="#fff8e0" stroke-width="1" stroke-dasharray="3 3" opacity="0.8"/></g><circle cx="63" cy="28" r="2.6" fill="#fff8e0"/>
 ${checker([42, 28], 12, -28, IVORY_CHECKER)}${checker([86, 20], 12, 36, EBONY_CHECKER)}
 <g stroke="#fff3d6" stroke-width="1.1" stroke-linecap="round" opacity="0.8"><path d="M98 8l8-4"/><path d="M102 16l9-1"/><path d="M28 18l-7-4"/></g>
 ${shadow(54, 72, 26, 3, 0.3)}`,
@@ -290,10 +291,10 @@ ${shadow(32, 72, 11, 2, 0.45)}${shadow(90, 72, 11, 2, 0.45)}
 <path d="M72 58q8 2 12 0" stroke="#ffd27a" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/><path d="M48 58q-8 2-12 0" stroke="#ffd27a" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/>${die([30, 62], 9.6, [5, 3, 1], GOLD, -14)}${die([90, 62], 9.6, [3, 2, 6], GOLD, 16)}`,
 
   // Gold manacles chained to a dulled die on a windswept bluff; one link is cracking.
-  shackles: `<defs><linearGradient id="art-shackles-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a3050"/><stop offset="0.55" stop-color="#c8603a"/><stop offset="1" stop-color="#f0a040"/></linearGradient><linearGradient id="art-shackles-gold" x1="0" y1="0" x2="1" y2="1">${goldStops}</linearGradient></defs>
+  shackles: `<defs><linearGradient id="art-shackles-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1830"/><stop offset="0.6" stop-color="#7a3440"/><stop offset="1" stop-color="#c8603a"/></linearGradient><linearGradient id="art-shackles-gold" x1="0" y1="0" x2="1" y2="1">${goldStops}</linearGradient></defs>
 <rect width="120" height="84" fill="url(#art-shackles-sky)"/>
 ${ribbon("M0 20C30 14 50 24 80 18S110 12 120 14C100 16 88 22 76 23 50 28 28 18 0 20z", 0.45)}
-<path d="M0 60Q34 54 70 58T120 56V84H0z" fill="#9a5a22"/><path d="M0 60Q34 54 70 58T120 56" stroke="${INK}" stroke-width="1" fill="none" opacity="0.5"/>
+<path d="M0 60Q34 54 70 58T120 56V84H0z" fill="#6e3a1c"/><path d="M0 60Q34 54 70 58T120 56" stroke="${INK}" stroke-width="1" fill="none" opacity="0.5"/>
 ${shadow(64, 72, 26, 3.8, 0.45)}
 ${die([60, 52], 17, [6, 5, 4], DULL)}
 ${chain([26, 64], [38, 66], [55, 36], 7, 3)}${chain([65, 36], [84, 62], [96, 64], 7)}

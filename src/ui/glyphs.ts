@@ -9,8 +9,8 @@ import type { CardKind } from "../core/cards.ts";
 export const GLYPHS = {
   // A crescent cupping a star: something cast in the dark.
   hex: `<path d="M8.6 1.6a4.8 4.8 0 1 0 1.8 8.2A3.8 3.8 0 1 1 8.6 1.6z"/><path d="M8.4 4.2l.5 1.1 1.1.2-.8.8.2 1.1-1-.5-1 .5.2-1.1-.8-.8 1.1-.2z"/>`,
-  // A heater shield with a raised boss.
-  ward: `<path d="M6 .9l4.4 1.7V6c0 2.7-1.9 4.3-4.4 5.1C3.5 10.3 1.6 8.7 1.6 6V2.6z"/><circle cx="6" cy="5.6" r="1.5" class="cut"/>`,
+  // A heater shield with a centre seam.
+  ward: `<path d="M6 .6l4.8 1.8V6c0 2.9-2 4.6-4.8 5.4C3.2 10.6 1.2 8.9 1.2 6V2.4z"/><path d="M6 2.4v7.4" class="cut-line" stroke-width="0.9"/>`,
   // A card back lying tilted, its lattice showing: something set face down.
   trap: `<g transform="rotate(-12 6 6)"><rect x="2.4" y="0.4" width="7.2" height="11.2" rx="1.2"/><rect x="3.6" y="1.7" width="4.8" height="8.6" rx="0.5" class="cut-line" fill="none" stroke-width="0.7"/><path d="M6 3.2l1.9 2.8L6 8.8 4.1 6z" class="cut"/></g>`,
   // A four-pointed spark.

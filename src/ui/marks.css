@@ -78,7 +78,7 @@
 }
 
 /* Where the top bar runs short of room, a tag shows its glyph and count; names are in the title. */
-@media (max-width: 1360px) {
+@media (max-width: 1200px) {
   .mark-label {
     display: none;
   }
