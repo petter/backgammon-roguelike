@@ -115,7 +115,7 @@ export function identity(): {
     },
     focus: () => name.focus(),
     fallback(fallbackName) {
-      name.placeholder = `Blank plays as ${fallbackName}`;
+      name.placeholder = `Leave blank to play as ${fallbackName}`;
     },
   };
 }

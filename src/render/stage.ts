@@ -13,6 +13,8 @@ const VIEW_HALF_W = 8.4;
 const VIEW_HALF_H = 7.2;
 /** How much of the board's width a phone held upright shows while it is a backdrop. */
 const BACKDROP_CROP = 0.5;
+/** The same for a tablet held upright: a little cropped, so the board is not a thin band. */
+const TABLET_CROP = 0.78;
 
 /** What it takes to hold something up in front of the camera, at a spot on the screen. */
 export interface Lens {
@@ -39,6 +41,13 @@ export interface Stage {
    */
   setBackdrop: (on: boolean) => void;
   lens: Lens;
+}
+
+/** How much of the board's width the backdrop keeps on a screen of this shape. */
+function backdropCrop(aspect: number): number {
+  if (aspect < 0.6) return BACKDROP_CROP;
+  if (aspect < 0.8) return TABLET_CROP;
+  return 1;
 }
 
 export function createStage(container: HTMLElement): Stage {
@@ -118,7 +127,7 @@ export function createStage(container: HTMLElement): Stage {
     const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const fitWidth = VIEW_HALF_W / (tan * camera.aspect);
     // As scenery on a tall screen, show about the middle half of the board's width.
-    const width = backdrop && camera.aspect < 0.6 ? fitWidth * BACKDROP_CROP : fitWidth;
+    const width = backdrop ? fitWidth * backdropCrop(camera.aspect) : fitWidth;
     const distance = Math.max(VIEW_HALF_H / tan, width);
     camera.position.copy(VIEW_TARGET).addScaledVector(viewDir, distance);
     camera.lookAt(VIEW_TARGET);

@@ -38,7 +38,7 @@
 @media (max-aspect-ratio: 4/5) {
   #lobby {
     background:
-      linear-gradient(180deg, #00000099 0%, #00000040 20%, #0000 36%),
+      linear-gradient(180deg, #000000b3 0%, #00000059 18%, #0000 34%, #0000 70%, #00000080 100%),
       radial-gradient(ellipse 110% 85% at 50% 50%, #0a060314 0%, #0a060359 65%, #000000b3 100%);
   }
 }
@@ -96,6 +96,11 @@
   inset: -30% -12%;
   z-index: -1;
   background: radial-gradient(closest-side, #000000b3, #00000066 55%, #0000);
+}
+
+/* On a form the title sits over the board's rail and checkers: a deeper pool beneath it. */
+#lobby:not([data-view="home"]) .lobby-title::before {
+  background: radial-gradient(closest-side, #000000d9, #0000008c 60%, #0000);
 }
 
 .lobby-title span {

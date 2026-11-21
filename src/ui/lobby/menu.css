@@ -261,21 +261,18 @@
   content: "⚠ ";
 }
 
-#lobby:is([data-view="expired"], [data-view="full"]) .swap {
-  width: 100%;
-  min-height: 48px;
-  margin: -8px 0 0;
-  border: 1px solid #6b5137;
-  background: linear-gradient(180deg, #2b1d12, #1a110a);
-  color: var(--text);
-}
+/* Very short screens, such as a chat app's built-in browser: only what the choice needs. */
+@media (max-height: 640px) {
+  .step {
+    gap: 14px;
+  }
 
-/* Outranks the plain link's hover, which would strip the button's fill. */
-@media (hover: hover) {
-  #lobby:is([data-view="expired"], [data-view="full"]) button.swap:hover:not(:disabled) {
-    border-color: var(--metal);
-    background: linear-gradient(180deg, #3a2716, #1f150c);
-    color: var(--metal-light);
+  .identity {
+    gap: 12px;
+  }
+
+  #lobby .character-motto {
+    display: none;
   }
 }
 
@@ -407,15 +404,28 @@
 }
 
 /* After a wrong code, the code is selected: typing replaces all of it. */
-/* Selected to be typed over: the pieces blush, framed in gold to show typing replaces them. */
-.code-entry.selected .code-tiles span {
+/* A rejected code blushes inside a rose frame, at every size and with or without focus. */
+.code-entry.wrong .code-tiles span.filled {
   background: linear-gradient(180deg, #fff1ed, #efcfc6);
 }
 
-.code-entry.selected .code-tiles {
+.code-entry.wrong .code-tiles {
   border-radius: 6px;
-  outline: 2px solid var(--metal);
-  outline-offset: 5px;
+  outline: 2px solid color-mix(in srgb, var(--error-edge) 75%, transparent);
+  outline-offset: 4px;
+}
+
+/* Selected, so the next letter typed replaces the whole code: the frame turns solid. */
+.code-entry.wrong.selected .code-tiles {
+  outline-color: var(--error-edge);
+}
+
+.code-entry.wrong .code-tiles span {
+  box-shadow: inset 0 -3px 0 #c4ae84;
+}
+
+.code-slot:has(.code-entry.wrong) .field-label {
+  margin-bottom: 14px;
 }
 
 /* Joining waits on the code: the button lights once all five letters are in. */
@@ -431,7 +441,7 @@
 
 /* Directly under the tiles when it is about the code. */
 .code-slot + .lobby-error {
-  margin-top: -12px;
+  margin-top: -6px;
 }
 
 @keyframes lobby-caret {

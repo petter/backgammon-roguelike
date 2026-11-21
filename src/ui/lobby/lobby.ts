@@ -73,13 +73,13 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
     title: "Invite expired",
     lede: "The game behind this link is over. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
-    swap: "Host your own game",
+    swap: "Start a new table instead",
   },
   full: {
     title: "Table is full",
     lede: "Two players are already seated at this table. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
-    swap: "Host your own game",
+    swap: "Start a new table instead",
   },
   host: {
     title: "Host a game",
@@ -95,6 +95,15 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
  * An invite link skips the menu and seats the guest straight away.
  */
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
+
+/**
+ * Applies a change to the screen. Each view is centred on its own, so where the browser
+ * can, the title and plaque glide to their new places instead of jumping.
+ */
+function glide(change: () => void): void {
+  if (!("startViewTransition" in document) || calm.matches) change();
+  else document.startViewTransition(change);
+}
 
 export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const root = el("lobby");
@@ -160,6 +169,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     error.textContent = message;
     if (aboutCode) {
       code.flag();
+      // The same code would only fail again: Join waits until it is changed.
+      go.setAttribute("aria-disabled", "true");
       codeSlot.after(error);
     } else if (view === "home") home.after(error);
     else go.before(error);
@@ -180,7 +191,9 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     go.textContent = text.go;
     swap.textContent = text.swap;
     // Choosing Join was a choice: Back leads to hosting, and a link here would outshine Join.
-    swap.hidden = next === "join";
+    // From the menu, Back is the way across; a link here would only compete with the button.
+    swap.hidden = next === "join" || next === "host";
+    go.removeAttribute("aria-disabled");
     // An invited guest came by link: there is no menu behind them to go back to.
     const dead = next === "expired" || next === "full";
     const byLink = next === "invited" || dead;
@@ -200,18 +213,12 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     else if (!touch.matches) you.focus();
   };
 
-  /**
-   * Moves to another view at the player's request. Each view is centred on its own, so where
-   * the browser can, the title and plaque glide to their new places instead of jumping.
-   */
-  const navigate = (next: View, after?: () => void) => {
-    const change = () => {
+  /** Moves to another view at the player's request. */
+  const navigate = (next: View, after?: () => void) =>
+    glide(() => {
       show(next);
       after?.();
-    };
-    if (!("startViewTransition" in document) || calm.matches) change();
-    else document.startViewTransition(change);
-  };
+    });
 
   for (const choice of home.querySelectorAll<HTMLButtonElement>("[data-go]")) {
     choice.addEventListener("click", () => {
@@ -224,8 +231,13 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     navigate("home", () => part(home, "[data-go]").focus({ focusVisible: false })),
   );
   swap.addEventListener("click", () => navigate(view === "host" ? "join" : "host"));
+  code.input.addEventListener("input", () => go.removeAttribute("aria-disabled"));
   step.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (go.getAttribute("aria-disabled") === "true") {
+      code.input.focus();
+      return;
+    }
     if (view === "expired" || view === "full") {
       code.set("");
       navigate("join");
@@ -245,27 +257,14 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   });
 
   return {
-    showMenu({ code: invite, error: problem, codeError } = {}) {
-      root.hidden = false;
-      if (invite) {
-        code.set(invite);
-        show("invited");
-      } else if (codeError && view === "invited") {
-        // The link's game is gone or taken. Stay with the invite and offer the ways on.
-        show(codeError === "full" ? "full" : "expired", false);
-      } else if (codeError) {
-        // The code was wrong or the game is full: let them check it or type another.
-        show("join", false);
-        if (problem) say(`${problem}. Check the code with your friend.`, true);
-        if (!touch.matches) code.selectAll();
-      } else {
-        show(problem ? view : "home", false);
-        if (problem) say(problem);
-      }
+    showMenu(options = {}) {
+      // On screen already, a change such as an error appearing glides rather than jumps.
+      if (root.hidden) menu(options);
+      else glide(() => menu(options));
     },
     inviteClosed(why) {
       // Only while the guest is still looking at that invite.
-      if (view === "invited") show(why === "full" ? "full" : "expired", false);
+      if (view === "invited") glide(() => show(why === "full" ? "full" : "expired", false));
     },
     showWaiting(roomCode, link) {
       root.hidden = false;
@@ -283,4 +282,23 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.hidden = true;
     },
   };
+
+  function menu({ code: invite, error: problem, codeError }: MenuOptions): void {
+    root.hidden = false;
+    if (invite) {
+      code.set(invite);
+      show("invited");
+    } else if (codeError && view === "invited") {
+      // The link's game is gone or taken. Stay with the invite and offer the ways on.
+      show(codeError === "full" ? "full" : "expired", false);
+    } else if (codeError) {
+      // The code was wrong or the game is full: let them check it or type another.
+      show("join", false);
+      if (problem) say(`${problem}. Check the code with your friend.`, true);
+      if (!touch.matches) code.selectAll();
+    } else {
+      show(problem ? view : "home", false);
+      if (problem) say(problem);
+    }
+  }
 }
