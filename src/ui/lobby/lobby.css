@@ -76,6 +76,19 @@
   filter: drop-shadow(0 2px 0 #2a1606) drop-shadow(0 0 18px #ffb34755);
 }
 
+/* A pool of shadow behind the title, so it and the tagline read over the board's points. */
+.lobby-title {
+  position: relative;
+}
+
+.lobby-title::before {
+  content: "";
+  position: absolute;
+  inset: -30% -12%;
+  z-index: -1;
+  background: radial-gradient(closest-side, #000000b3, #00000066 55%, #0000);
+}
+
 .lobby-title span {
   display: block;
   color: transparent;
@@ -140,7 +153,7 @@
   margin: 0 0 8px;
   padding: 0;
   color: var(--label);
-  font: 700 12px / 1 var(--display);
+  font: 700 13px / 1 var(--display);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -301,7 +314,7 @@
   border: 0;
   background: none;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.14em;
   text-decoration: none;
 }

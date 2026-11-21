@@ -1,5 +1,5 @@
 import { isRoomCode, normalizeCode } from "../net/protocol.ts";
-import { createRoom, joinRoom, RoomError, type RoomErrorKind } from "./room.ts";
+import { createRoom, joinRoom, RoomError, type RoomErrorKind, roomStatus } from "./room.ts";
 import type { GameStore } from "./store.ts";
 
 export interface ApiResponse {
@@ -22,6 +22,18 @@ function playerOf(body: unknown): { name?: unknown; character?: unknown } {
   return typeof body === "object" && body !== null ? body : {};
 }
 
+/** Whether the room behind an invite still has a seat for the guest. */
+async function status(store: GameStore, raw: string): Promise<ApiResponse> {
+  const code = normalizeCode(raw);
+  try {
+    if (!isRoomCode(code)) throw new RoomError("not_found", "No game with that code");
+    return { status: 200, body: { status: await roomStatus(store, code) } };
+  } catch (error) {
+    if (!(error instanceof RoomError)) throw error;
+    return { status: STATUS[error.kind], body: { error: error.message } };
+  }
+}
+
 /** An empty body is fine (no name given); anything else must be valid JSON. */
 function parseBody(text: string): { ok: true; value: unknown } | { ok: false } {
   if (text.trim() === "") return { ok: true, value: null };
@@ -34,7 +46,8 @@ function parseBody(text: string): { ok: true; value: unknown } | { ok: false } {
 
 /**
  * The lobby's HTTP API, independent of any server framework.
- * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat.
+ * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat;
+ * `GET /api/rooms/:code` says whether that seat is still free.
  * Takes the raw body text, so a malformed or oversized request is refused before it can
  * take a seat.
  */
@@ -47,6 +60,7 @@ export async function handleApi(
   const parts = path.split("/").filter(Boolean);
   if (parts[0] !== "api" || parts[1] !== "rooms")
     return { status: 404, body: { error: "Not found" } };
+  if (method === "GET" && parts.length === 3) return status(store, parts[2] ?? "");
   if (method !== "POST") return { status: 405, body: { error: "Method not allowed" } };
   if (bodyText.length > BODY_LIMIT) return { status: 413, body: { error: "Request too large" } };
   const parsed = parseBody(bodyText);

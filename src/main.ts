@@ -3,7 +3,7 @@ import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { createLocalSession } from "./net/localSession.ts";
-import { codeFromPath, type SeatGrant } from "./net/protocol.ts";
+import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
 import { createStage } from "./render/stage.ts";
@@ -132,12 +132,35 @@ const lobby = createLobbyUi({
   onCancel: toMenu,
 });
 
+/** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
+async function checkInvite(code: string): Promise<void> {
+  try {
+    const response = await fetch(`/api/rooms/${code}`);
+    if (response.status === 404) return lobby.inviteClosed("missing");
+    if (!response.ok) return;
+    const { status } = (await response.json()) as { status?: RoomStatus };
+    if (status === "full") lobby.inviteClosed("full");
+  } catch {
+    // Offline or unreachable: joining will say so when they try.
+  }
+}
+
+// The board is scenery while the start screen is up, and the playing surface once it is not.
+const lobbyEl = el("lobby");
+new MutationObserver(() => stage.setBackdrop(!lobbyEl.hidden)).observe(lobbyEl, {
+  attributes: true,
+  attributeFilter: ["hidden"],
+});
+
 function route(): void {
   leaveGame();
   const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;
   if (code && token) startRemote(code, token);
-  else lobby.showMenu({ code: code ?? undefined });
+  else {
+    lobby.showMenu({ code: code ?? undefined });
+    if (code) void checkInvite(code);
+  }
 }
 
 window.addEventListener("popstate", route);

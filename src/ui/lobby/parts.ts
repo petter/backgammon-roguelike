@@ -54,7 +54,7 @@ export function identity(): {
   element: HTMLElement;
   read: () => PlayerChoice;
   focus: () => void;
-  /** What the player will be called if they leave the name blank, shown as the placeholder. */
+  /** What the player will be called if they leave the name blank, said in the empty field. */
   fallback: (name: string) => void;
 } {
   const element = document.createElement("div");
@@ -64,10 +64,10 @@ export function identity(): {
       <label class="field">
         <span class="field-label">Your name <small>optional</small></span>
         <input id="name" class="name-input" maxlength="${NAME_MAX}" autocomplete="nickname"
-          placeholder="Anonymous" enterkeyhint="go" />
+          enterkeyhint="go" />
       </label>
       <fieldset class="characters">
-        <legend class="field-label">Your emblem</legend>
+        <legend class="field-label">Your emblem <small>just for looks</small></legend>
         <div class="character-options"></div>
       </fieldset>
       <p class="character-motto" aria-live="polite"><b></b> — <i></i></p>
@@ -115,7 +115,7 @@ export function identity(): {
     },
     focus: () => name.focus(),
     fallback(fallbackName) {
-      name.placeholder = fallbackName;
+      name.placeholder = `Blank plays as ${fallbackName}`;
     },
   };
 }
@@ -161,6 +161,8 @@ export function codeEntry(): {
     input.removeAttribute("aria-invalid");
     settle();
     paint();
+    // With the code complete, a phone's keyboard steps aside to show the rest of the form.
+    if (touch.matches && cleanCode(input.value).length === CODE_LENGTH) input.blur();
   });
   input.addEventListener("blur", settle);
   input.addEventListener("pointerdown", () => {
@@ -207,8 +209,13 @@ export function codeTiles(element: HTMLElement, code: string): void {
       return tile;
     }),
   );
-  element.setAttribute("role", "img");
-  element.setAttribute("aria-label", `Game code ${code.split("").join(" ")}`);
+  const spoken = code.split("").join(" ");
+  if (element instanceof HTMLButtonElement)
+    element.setAttribute("aria-label", `Copy game code ${spoken}`);
+  else {
+    element.setAttribute("role", "img");
+    element.setAttribute("aria-label", `Game code ${spoken}`);
+  }
 }
 
 /** Phones and tablets: share sheets and on-screen keyboards. */
@@ -233,14 +240,15 @@ export function waitingRoom(onCancel: () => void): {
     html(`
       <h2 id="waiting-title" class="lobby-heading">Your table is set</h2>
       <p class="lede">Send your friend the invite link, or read them the code.</p>
-      <div class="share-code ivory-tiles"></div>
+      <button type="button" class="share-code ivory-tiles" title="Copy the code"></button>
       <button type="button" class="primary send-link"></button>
       <input class="invite-link" readonly aria-label="Invite link" />
       <p class="waiting-status" role="status"><span class="pulse-dot"></span>Waiting for your friend to join</p>
       <button type="button" class="link cancel">Cancel</button>
     `),
   );
-  const codeBox = part(element, ".share-code");
+  const codeBox = part(element, ".share-code", HTMLButtonElement);
+  let code = "";
   const send = part(element, ".send-link", HTMLButtonElement);
   const linkField = part(element, ".invite-link", HTMLInputElement);
   let restore = 0;
@@ -271,6 +279,13 @@ export function waitingRoom(onCancel: () => void): {
     }
   };
   send.addEventListener("click", () => void sendLink());
+  // The code itself copies too, for reading out or typing into a message by hand.
+  codeBox.addEventListener("click", () => {
+    navigator.clipboard.writeText(code).then(
+      () => copied("Code copied ✓"),
+      () => {},
+    );
+  });
   linkField.addEventListener("focus", () => linkField.select());
   linkField.addEventListener("copy", (event) => {
     event.clipboardData?.setData("text/plain", link);
@@ -279,11 +294,12 @@ export function waitingRoom(onCancel: () => void): {
   part(element, ".cancel").addEventListener("click", onCancel);
   return {
     element,
-    show(code, inviteLink) {
+    show(roomCode, inviteLink) {
+      code = roomCode;
       link = inviteLink;
       // Shown without the scheme, to read as an address; copying still takes the full link.
       linkField.value = inviteLink.replace(/^https?:\/\//, "");
-      codeTiles(codeBox, code);
+      codeTiles(codeBox, roomCode);
       clearTimeout(restore);
       send.textContent = label();
     },

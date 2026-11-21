@@ -38,6 +38,8 @@ export interface LobbyUi {
   showMenu: (options?: MenuOptions) => void;
   /** The host's screen while the friend has not joined yet. */
   showWaiting: (code: string, link: string) => void;
+  /** The invite being shown leads nowhere: its game is gone or already has two players. */
+  inviteClosed: (why: "missing" | "full") => void;
   setBusy: (busy: boolean) => void;
   hide: () => void;
 }
@@ -45,11 +47,12 @@ export interface LobbyUi {
 type Step = "host" | "join" | "invited" | "expired" | "full";
 type View = "home" | Step;
 
+const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5l7 4.5-7 4.5z"/></svg>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
 const ICONS = {
   join: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="16" r="6.5"/><path d="M17.5 16H29M24 16v5M28 16v4"/></svg>`,
   host: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 24h22M7 24l-2-13 6 5 5-9 5 9 6-5-2 13"/></svg>`,
-  local: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="9.5" cy="16" r="6.5" class="light"/><circle cx="9.5" cy="16" r="3" class="groove"/><circle cx="22.5" cy="16" r="6.5"/><circle cx="22.5" cy="16" r="3" class="groove"/></svg>`,
+  local: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="12" cy="12" r="7.5" class="dark"/><circle cx="12" cy="12" r="3.4" class="groove"/><circle cx="20" cy="20" r="7.5" class="light"/><circle cx="20" cy="20" r="3.4" class="groove"/></svg>`,
 };
 
 /** Text for each form: its heading, a line of what happens, its button, and the way across. */
@@ -82,7 +85,7 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
     title: "Host a game",
     lede: "Start a table and get a link to send to a friend.",
     go: "Host new game",
-    swap: "Have a code? Join a friend",
+    swap: "Join a friend instead",
   },
 };
 
@@ -110,7 +113,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
           </button>
           <button type="button" class="choice quiet-choice" data-go="local">
             <span class="choice-icon">${ICONS.local}</span>
-            <span class="choice-text"><b>Pass and play</b><i>Both sides on this device</i></span>
+            <span class="choice-text"><b>Pass and play</b><i>Both sides on this device</i></span>${PLAY}
           </button>
         </nav>
         <form class="plaque step" novalidate hidden aria-labelledby="step-title">
@@ -179,7 +182,9 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     // An invited guest came by link: there is no menu behind them to go back to.
     const dead = next === "expired" || next === "full";
     const byLink = next === "invited" || dead;
-    back.hidden = byLink;
+    // A guest who came by link has no menu behind them, until the link turns out dead.
+    back.hidden = next === "invited";
+    back.textContent = dead ? "‹ Menu" : "‹ Back";
     inviteCode.hidden = !byLink;
     if (byLink) codeTiles(inviteTiles, code.value());
     codeSlot.hidden = next !== "join";
@@ -255,6 +260,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         show(problem ? view : "home", false);
         if (problem) say(problem);
       }
+    },
+    inviteClosed(why) {
+      // Only while the guest is still looking at that invite.
+      if (view === "invited") show(why === "full" ? "full" : "expired", false);
     },
     showWaiting(roomCode, link) {
       root.hidden = false;
