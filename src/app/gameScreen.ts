@@ -15,6 +15,7 @@ import type { Stage } from "../render/stage.ts";
 import type { Coach } from "../ui/coach.ts";
 import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
+import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
 
 const byValue = (x: number, y: number) => x - y;
@@ -86,6 +87,13 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   /** The latest update carried the winning move itself, so the result screen makes an entrance. */
   let justWon = false;
   let offline = false;
+  const away = createAwayTracker({
+    onBanner: (state) => hud.setOpponentAway(state),
+    onOnlineChange: (online) => {
+      if (!options.local) hud.setOpponentOnline(online);
+    },
+    onReconnected: (opponentName) => hud.notify(`${opponentName} reconnected`),
+  });
   const coaching = createCoaching(
     { stage, board, coach },
     options.local,
@@ -179,6 +187,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       message,
       justWon,
       coaching: coaching.active(),
+      opponentOnline: options.local || away.isOnline(),
     });
   };
 
@@ -272,12 +281,18 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     view = update.view;
     selected = null;
     refresh();
+    const other: Player = update.view.you === "white" ? "black" : "white";
+    away.setGame(!options.local && update.view.phase !== "over", name(other));
   };
 
   const session = options.connect({
     onUpdate,
+    onPresence: (presence) => {
+      if (!options.local) away.onPresence(presence);
+    },
     onError(text, fatal) {
       if (fatal) return options.onFatal(text);
+      away.onClaimError();
       // The server said no. Shown as a notice, so it is seen whatever else is on screen.
       hud.notify(text);
     },
@@ -305,6 +320,9 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     },
     onBlocked: (reason) => hud.notify(reason),
     onPick: (index) => session.send({ type: "pickCard", index }),
+    onClaimVictory: () => {
+      if (!options.local && away.beginClaim(offline)) session.send({ type: "claimVictory" });
+    },
     onRematch: () => {
       if (view?.phase === "over") session.send({ type: "rematch" });
     },
@@ -375,12 +393,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
+    away.stop();
     coaching.stop();
     finale?.kill();
     session.close();
     listeners.abort();
     hud.actions = null;
     hud.setOffline(false);
+    hud.setOpponentAway(null);
     board.setHints();
     if (checkers) stage.world.remove(checkers.group);
     settleDice(null);

@@ -74,6 +74,18 @@
       <div class="go-bars"><i></i><i></i></div>
     </div>
 
+    <div id="opponent-away" hidden>
+      <span class="away-dot" aria-hidden="true"></span>
+      <div class="away-copy">
+        <strong id="away-title"></strong>
+        <span id="away-detail"></span>
+      </div>
+      <button id="claim-victory" type="button" hidden>Claim victory</button>
+      <span id="away-bar" aria-hidden="true"></span>
+    </div>
+    <!-- Kept mounted outside the hidden banner so assistive tools reliably announce the first change. -->
+    <div id="away-announce" class="sr-only" role="status" aria-live="polite"></div>
+
     <div id="offline" role="alert" hidden>
       <span class="pulse"></span>
       <span>Connection lost. Reconnecting…</span>

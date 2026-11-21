@@ -22,9 +22,9 @@ afterEach(async () => {
 });
 
 /** The real HTTP and WebSocket stack, as production wires it, on a free local port. */
-async function listen(store: GameStore = createMemoryStore()) {
+async function listen(store: GameStore = createMemoryStore(), pingMs?: number) {
   const server = http.createServer((req, res) => serveApi(store, req, res));
-  const upgrade = createUpgradeHandler(store);
+  const upgrade = createUpgradeHandler(store, pingMs === undefined ? {} : { pingMs });
   server.on("upgrade", (req, socket, head) => {
     if (!upgrade(req, socket, head)) socket.destroy();
   });
@@ -42,8 +42,8 @@ async function listen(store: GameStore = createMemoryStore()) {
       body: (await response.json()) as { code: string; token: string },
     };
   };
-  const socket = (code: string) => {
-    const client = new WebSocket(`ws://127.0.0.1:${port}/api/rooms/${code}/ws`);
+  const socket = (code: string, suffix: "ws" | "ws2" = "ws") => {
+    const client = new WebSocket(`ws://127.0.0.1:${port}/api/rooms/${code}/${suffix}`);
     clients.push(client);
     return client;
   };
@@ -133,5 +133,43 @@ describe("node server", () => {
     const { socket } = await listen();
     const stray = socket("../../etc");
     await expect(opened(stray)).rejects.toThrow();
+  });
+
+  it("terminates a silently dead socket that stops answering pings and notifies the opponent", async () => {
+    const store = createMemoryStore();
+    const { post, socket } = await listen(store, 60);
+    const host = (await post("/api/rooms", '{"name":"Ada","presence":true}')).body;
+    const guest = (await post(`/api/rooms/${host.code}/join`, '{"name":"Grace","presence":true}'))
+      .body;
+    const room = await store.load(host.code);
+    expect(room?.seats.white?.presence).toBe(true);
+    expect(room?.seats.black?.presence).toBe(true);
+
+    const white = socket(host.code, "ws2");
+    const black = socket(host.code, "ws2");
+    await Promise.all([opened(white), opened(black)]);
+    const whiteInit = nextMessage(white);
+    const blackInit = nextMessage(black);
+    white.send(JSON.stringify({ type: "hello", token: host.token, presence: true }));
+    black.send(JSON.stringify({ type: "hello", token: guest.token, presence: true }));
+    await Promise.all([whiteInit, blackInit]);
+
+    // Silence black's pong replies to simulate a dropped network without TCP FIN.
+    black.pong = () => {};
+    const away = nextMessage(white);
+    const dropped = closed(black);
+    expect(await dropped).toBe(1006);
+    expect(await away).toMatchObject({ type: "presence", online: false });
+    white.close();
+  });
+
+  it("leaves seats unmarked when a legacy HTTP client omits presence opt-in", async () => {
+    const store = createMemoryStore();
+    const { post } = await listen(store);
+    const host = (await post("/api/rooms", '{"name":"Ada"}')).body;
+    await post(`/api/rooms/${host.code}/join`, '{"name":"Grace"}');
+    const room = await store.load(host.code);
+    expect(room?.seats.white?.presence).toBeUndefined();
+    expect(room?.seats.black?.presence).toBeUndefined();
   });
 });

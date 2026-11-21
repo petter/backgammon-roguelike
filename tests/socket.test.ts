@@ -120,14 +120,27 @@ describe("serveSocket", () => {
     const { store, host, guest, code } = await started();
     const white = fakeSocket(store, code);
     const black = fakeSocket(store, code);
-    await white.say({ type: "hello", token: host.token });
-    await black.say({ type: "hello", token: guest.token });
+    await white.say({ type: "hello", token: host.token, presence: true });
+    await black.say({ type: "hello", token: guest.token, presence: true });
     const whiteFirst = white.sent[0]!.type === "state" && white.sent[0]!.view?.current === "white";
     const [mover, other] = whiteFirst ? [white, black] : [black, white];
     other.hangUp();
     await mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
     expect(other.sent).toHaveLength(1);
-    expect(mover.sent).toHaveLength(2);
+    expect(mover.sent.filter((m) => m.type === "state")).toHaveLength(2);
+    expect(mover.sent.some((m) => m.type === "presence" && !m.online)).toBe(true);
+  });
+
+  it("does not send standalone presence frames to legacy clients that did not advertise presence in hello", async () => {
+    const { store, host, guest, code } = await started();
+    const legacy = fakeSocket(store, code);
+    const opponent = fakeSocket(store, code);
+    // Legacy client sends hello without `presence: true`.
+    await legacy.say({ type: "hello", token: host.token });
+    await opponent.say({ type: "hello", token: guest.token, presence: true });
+    opponent.hangUp();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(legacy.sent.some((m) => m.type === "presence")).toBe(false);
   });
 
   it("does not subscribe a client that hung up while hello was in flight", async () => {
@@ -198,7 +211,10 @@ describe("a socket that closes with work outstanding", () => {
     const game = (await inner.load(host.code))?.game;
     expect((await inner.load(host.code))?.version).toBe(2);
     expect(game?.phase).toBe("roll");
-    expect(watcher.sent.at(-1)).toMatchObject({ type: "state", version: 2 });
+    expect(watcher.sent.findLast((m) => m.type === "state")).toMatchObject({
+      type: "state",
+      version: 2,
+    });
     // Nothing more is sent to the socket that closed.
     expect(mover.sent).toHaveLength(sentToMover);
   });
@@ -362,7 +378,22 @@ describe("parseClientMessage", () => {
       type: "command",
       command: { type: "rematch" },
     });
+    expect(
+      parseClientMessage('{"type":"command","command":{"type":"claimVictory","x":1}}'),
+    ).toEqual({
+      type: "command",
+      command: { type: "claimVictory" },
+    });
     expect(parseClientMessage('{"type":"hello","token":"abc","extra":1}')).toEqual({
+      type: "hello",
+      token: "abc",
+    });
+    expect(parseClientMessage('{"type":"hello","token":"abc","presence":true}')).toEqual({
+      type: "hello",
+      token: "abc",
+      presence: true,
+    });
+    expect(parseClientMessage('{"type":"hello","token":"abc","presence":"yes"}')).toEqual({
       type: "hello",
       token: "abc",
     });

@@ -40,7 +40,9 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
         // Kept even if the socket has closed meanwhile: commands already received behind
         // this hello are still carried out, and the close handler lets go of the room once
         // the queue has drained.
-        connection = await openConnection(store, code, message.token, send);
+        connection = await openConnection(store, code, message.token, send, {
+          supportsPresence: message.presence === true,
+        });
       } catch (error) {
         if (!(error instanceof RoomError)) throw error;
         reject(error.message);

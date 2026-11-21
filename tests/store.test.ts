@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { storeContract } from "./storeContract.ts";
 
-storeContract("memory", () => createMemoryStore());
+storeContract("memory", (now) => createMemoryStore(undefined, now));
 
 describe("memory store expiry", () => {
   it("forgets a room after its time to live, counted from the last write", async () => {
@@ -19,6 +19,22 @@ describe("memory store expiry", () => {
     expect(await store.load("AAAAA")).toBeNull();
     expect(await store.save({ ...room, version: 2 }, 1)).toBe(false);
     expect(await store.create(room)).toBe(true);
+  });
+
+  it("sweeps expired presence records without waiting for those abandoned room ids to be read again", async () => {
+    let now = 0;
+    const store = createMemoryStore(1000, () => now);
+    await store.connectSeat("abandoned-room", "white", "c1", 25_000);
+    // Advance past TTL and touch an unrelated room: the sweep must evict `abandoned-room`.
+    now = 2000;
+    await store.connectSeat("active-room", "white", "c2", 25_000);
+    // Rewinding the clock proves the entry was actually deleted, not merely skipped on read.
+    now = 500;
+    expect((await store.getPresence("abandoned-room")).presence).toEqual({
+      revision: 0,
+      white: { connections: {}, disconnectedAt: null },
+      black: { connections: {}, disconnectedAt: null },
+    });
   });
 });
 

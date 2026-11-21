@@ -249,6 +249,9 @@ export function createCoach(): Coach {
       places.shaded,
     );
     const tagBox = placeTag(places.tag);
+    const awayEl = document.getElementById("opponent-away");
+    const awayBottom =
+      awayEl && !awayEl.hidden ? Math.ceil(awayEl.getBoundingClientRect().bottom + 8) : 0;
     const place = placeCard(
       {
         w: window.innerWidth,
@@ -264,15 +267,23 @@ export function createCoach(): Coach {
         return card.offsetHeight;
       },
     );
+    const cardTop = awayBottom > 0 ? Math.max(place.at.y, awayBottom) : place.at.y;
     card.style.width = `${place.width}px`;
     card.style.left = `${place.at.x}px`;
-    card.style.top = `${place.at.y}px`;
+    card.style.top = `${cardTop}px`;
+    if (awayBottom > 0) {
+      card.style.maxHeight = `${Math.max(80, window.innerHeight - cardTop - 8)}px`;
+      card.style.overflowY = "auto";
+    } else {
+      card.style.removeProperty("max-height");
+      card.style.removeProperty("overflow-y");
+    }
     // Whatever of the HUD the card lies over steps aside, rather than peek out round it.
     const over = {
       left: place.at.x,
       right: place.at.x + place.width,
-      top: place.at.y,
-      bottom: place.at.y + card.offsetHeight,
+      top: cardTop,
+      bottom: cardTop + card.offsetHeight,
     };
     for (const item of hudItems()) {
       const rect = item.getBoundingClientRect();
@@ -372,9 +383,17 @@ export function createCoach(): Coach {
         },
         { signal },
       );
-      // What stays lit can change size while the card is up, such as the dice being spent.
-      const watch = new ResizeObserver(() => layout());
+      // What stays lit can change size while the card is up, such as the dice being spent,
+      // and `#stage` itself can refit when the disconnect banner appears or disappears.
+      const watch = new ResizeObserver(() => {
+        layout();
+        options.onResize?.();
+      });
       for (const element of where().keep) watch.observe(element);
+      const stageEl = document.getElementById("stage");
+      if (stageEl) watch.observe(stageEl);
+      const awayBanner = document.getElementById("opponent-away");
+      if (awayBanner) watch.observe(awayBanner);
       signal.addEventListener("abort", () => watch.disconnect());
       // The card is measured to place it; the display font may still be on its way.
       void document.fonts.ready.then(() => (signal.aborted ? null : layout()));

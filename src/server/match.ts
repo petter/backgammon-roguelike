@@ -30,6 +30,8 @@ export interface MatchOptions {
    * whose first answer it never got. Made up here when not given.
    */
   ticket?: string;
+  /** Whether the seeker's client opts into presence-aware WebSocket routing (`/ws2`). */
+  presence?: boolean;
 }
 
 export const HOLD_MS = 20_000;
@@ -83,7 +85,12 @@ async function pairUp(
     if (!partner) return null;
 
     // Whoever waited longer is white, as a host would be. Who opens is up to the dice.
-    const { code, tokens } = await createMatchedRoom(store, partner, me, entropy);
+    const { code, tokens } = await createMatchedRoom(
+      store,
+      { ...partner, presence: partner.presence === true },
+      { ...me, presence: me.presence === true },
+      entropy,
+    );
     const theirs = { code, token: tokens.white };
     const mine = { code, token: tokens.black };
     if (
@@ -123,6 +130,7 @@ export async function seekMatch(
     character: characterOf(character),
     since: at,
     seen: at,
+    ...(options.presence ? { presence: true as const } : {}),
   };
   if (!(await store.addSeeker(me))) {
     me = await store.touchSeeker(me.id, at);

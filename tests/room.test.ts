@@ -3,7 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import { applyCommand, type Command, canPlayCard, legalMoves, newGame } from "../src/core/game.ts";
 import { isRoomCode, type ServerMessage } from "../src/net/protocol.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
-import { createRoom, joinRoom, openConnection, RoomError } from "../src/server/room.ts";
+import {
+  ARRIVAL_GRACE_MS,
+  CLAIM_GRACE_MS,
+  createMatchedRoom,
+  createRoom,
+  joinRoom,
+  openConnection,
+  PRESENCE_LEASE_MS,
+  RoomError,
+} from "../src/server/room.ts";
 import type { GameStore, Room } from "../src/server/store.ts";
 
 type State = Extract<ServerMessage, { type: "state" }>;
@@ -37,7 +46,12 @@ describe("lobby", () => {
     const { code, token } = await createRoom(store, "  Ada   Lovelace  ");
     expect(isRoomCode(code)).toBe(true);
     const room = await store.load(code);
-    expect(room?.seats.white).toEqual({ token, name: "Ada Lovelace", character: "gambler" });
+    expect(room?.seats.white).toEqual({
+      token,
+      name: "Ada Lovelace",
+      character: "gambler",
+      presence: true,
+    });
     expect(room?.game).toBeNull();
   });
 
@@ -643,6 +657,17 @@ describe("playing", () => {
             stop();
           };
         },
+        subscribePresence: async (roomId, listener) => {
+          state.listeners++;
+          const stop = await inner.subscribePresence(roomId, listener);
+          let stopped = false;
+          return () => {
+            if (stopped) throw new Error("unsubscribed presence twice");
+            stopped = true;
+            state.listeners--;
+            stop();
+          };
+        },
       };
       return { inner, store, state };
     }
@@ -942,6 +967,711 @@ describe("playing", () => {
       type: "error",
       message: "That game no longer exists",
       fatal: true,
+    });
+  });
+
+  describe("disconnect and claim victory", () => {
+    const presences = (inbox: ServerMessage[]) =>
+      inbox.flatMap((m) => (m.type === "presence" ? [m] : []));
+
+    it("notifies the remaining player when their opponent leaves, waits 30s without auto-ending, and lets them claim victory", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, host, guest, white, black } = await table();
+        expect(presences(white.inbox)).toEqual([]);
+
+        // Black disconnects mid-game.
+        black.connection.close();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+        ]);
+
+        // Claiming before 30s is refused and tells them how long is left.
+        await vi.advanceTimersByTimeAsync(10_000);
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Wait 20s before claiming victory");
+        expect((await store.load(code))?.game?.phase).not.toBe("over");
+
+        // Even well past 30s the game never auto-ends on its own.
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect((await store.load(code))?.game?.phase).not.toBe("over");
+
+        // Now claiming victory succeeds (regardless of whose turn it was).
+        await white.send({ type: "claimVictory" });
+        expect(white.last().view).toMatchObject({
+          phase: "over",
+          winner: "white",
+          winReason: "abandoned",
+          wins: { white: 1, black: 0 },
+        });
+        expect(white.last().events).toEqual([{ type: "gameWon", winner: "white" }]);
+
+        // If black later reconnects, they receive the final abandoned result.
+        const returned = await client(store, code, guest.token);
+        expect(returned.last().view).toMatchObject({
+          phase: "over",
+          winner: "white",
+          winReason: "abandoned",
+        });
+        returned.connection.close();
+        white.connection.close();
+        void host;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cancels abandonment and blocks claiming when the opponent reconnects in time", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, guest, white, black } = await table();
+        black.connection.close();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(presences(white.inbox).at(-1)).toEqual({
+          type: "presence",
+          online: false,
+          claimInMs: CLAIM_GRACE_MS,
+        });
+
+        // 20 seconds later, black reconnects.
+        await vi.advanceTimersByTimeAsync(20_000);
+        const back = await client(store, code, guest.token);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(presences(white.inbox).at(-1)).toEqual({
+          type: "presence",
+          online: true,
+          claimInMs: null,
+        });
+
+        // Even after another 20s, white cannot claim victory because black is back.
+        await vi.advanceTimersByTimeAsync(20_000);
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Your opponent is connected");
+        expect((await store.load(code))?.game?.phase).not.toBe("over");
+        back.connection.close();
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not trigger a disconnect during proactive socket rotation or multi-tab close", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, guest, white, black } = await table();
+        // Second socket opens for black before the first retires.
+        const rotated = await client(store, code, guest.token);
+        black.connection.close();
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(presences(white.inbox)).toEqual([]);
+
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Your opponent is connected");
+
+        // Closing the final remaining socket DOES mark black away.
+        rotated.connection.close();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+        ]);
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("sends accurate remaining claim time when the remaining player refreshes mid-countdown", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, host, white, black } = await table();
+        black.connection.close();
+        await vi.advanceTimersByTimeAsync(12_000);
+
+        // White reloads their tab: initial state snapshot carries the exact remaining time.
+        white.connection.close();
+        const reloaded = await client(store, code, host.token);
+        expect(reloaded.last().presence).toEqual({
+          online: false,
+          claimInMs: CLAIM_GRACE_MS - 12_000,
+        });
+        reloaded.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("handles an opponent who never connects after matching, after the arrival grace window", async () => {
+      vi.useFakeTimers();
+      try {
+        const store = createMemoryStore();
+        const matched = await createMatchedRoom(
+          store,
+          { name: "Ada", character: "gambler" },
+          { name: "Grace", character: "seer" },
+        );
+        const white = await client(store, matched.code, matched.tokens.white);
+        // Immediately after game start, Grace is still in the arrival window: no false alert.
+        expect(white.last().presence).toEqual({ online: true, claimInMs: null });
+        expect(presences(white.inbox)).toEqual([]);
+
+        // Once the arrival window elapses without Grace connecting, white is notified.
+        await vi.advanceTimersByTimeAsync(ARRIVAL_GRACE_MS);
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+        ]);
+
+        // After the 30s claim grace, white can claim victory.
+        await vi.advanceTimersByTimeAsync(CLAIM_GRACE_MS);
+        await white.send({ type: "claimVictory" });
+        expect(white.last().view).toMatchObject({
+          phase: "over",
+          winner: "white",
+          winReason: "abandoned",
+        });
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("detects a crashed opponent instance once its lease expires without drifting", async () => {
+      vi.useFakeTimers();
+      try {
+        const store = createMemoryStore();
+        const host = await createRoom(store, "Ada");
+        await joinRoom(store, host.code, "Grace");
+        const room = (await store.load(host.code)) as Room;
+        const white = await client(store, host.code, host.token);
+        // Simulate black's process registering a lease and then dying without closing.
+        await store.connectSeat(room.id, "black", "crashed-conn", PRESENCE_LEASE_MS);
+
+        // Before lease expiry, black still appears online.
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(presences(white.inbox)).toEqual([]);
+
+        // On the next resync after lease expiry (t = 30s, lease expired at 25s -> 5s elapsed).
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS - 5000 },
+        ]);
+
+        // 25s later (30s after the 25s lease expiry), white can claim victory.
+        await vi.advanceTimersByTimeAsync(25_000);
+        await white.send({ type: "claimVictory" });
+        expect(white.last().view).toMatchObject({ winner: "white", winReason: "abandoned" });
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not let a rematch inherit disconnect time from the previous game's result screen", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, white, black } = await table();
+        const room = (await store.load(code)) as Room;
+        const over: Room = {
+          ...room,
+          version: room.version + 1,
+          game: {
+            ...(room.game as NonNullable<Room["game"]>),
+            phase: "over",
+            winner: "white",
+            winReason: "bearOff",
+            dice: [],
+            wins: { white: 1, black: 0 },
+          },
+        };
+        await store.save(over, room.version);
+        await store.publish(code, { room: over, events: [] });
+
+        // Black asks for a rematch, then disconnects and stays away for 40s.
+        await black.send({ type: "rematch" });
+        black.connection.close();
+        await vi.advanceTimersByTimeAsync(40_000);
+
+        // White accepts the rematch: Game 2 starts fresh and must NOT be immediately claimable.
+        await white.send({ type: "rematch" });
+        expect(white.last().view?.phase).not.toBe("over");
+        expect(white.last().presence).toEqual({ online: false, claimInMs: CLAIM_GRACE_MS });
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Wait 30s before claiming victory");
+
+        // After 30s in Game 2, white can claim victory.
+        await vi.advanceTimersByTimeAsync(CLAIM_GRACE_MS);
+        await white.send({ type: "claimVictory" });
+        expect(white.last().view).toMatchObject({
+          phase: "over",
+          winner: "white",
+          winReason: "abandoned",
+          wins: { white: 2, black: 0 },
+        });
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("registers the seat lease before sending the initial state so socket rotation never false-disconnects", async () => {
+      const store = createMemoryStore();
+      const host = await createRoom(store, "Ada");
+      const guest = await joinRoom(store, host.code, "Grace");
+      const room = (await store.load(host.code)) as Room;
+      const white = await client(store, host.code, host.token);
+      const oldBlack = await client(store, host.code, guest.token);
+
+      // The instant the replacement socket receives its first state, close the old socket
+      // (mirroring remoteSession's immediate handover).
+      let leasePresentAtFirstState = false;
+      let countAtFirstState = 0;
+      const newBlack = await openConnection(store, host.code, guest.token, (message) => {
+        if (message.type === "state" && !leasePresentAtFirstState) {
+          leasePresentAtFirstState = true;
+          oldBlack.connection.close();
+        }
+      });
+      // Confirm both leases existed before oldBlack closed by checking white never got away.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      countAtFirstState = Object.keys(
+        (await store.getPresence(room.id)).presence.black.connections,
+      ).length;
+      expect(leasePresentAtFirstState).toBe(true);
+      expect(countAtFirstState).toBe(1);
+      expect(presences(white.inbox)).toEqual([]);
+      newBlack.close();
+      white.connection.close();
+    });
+
+    it("recovers a healthy open socket whose lease lapsed during a long stall", async () => {
+      vi.useFakeTimers();
+      try {
+        let now = 0;
+        const store = createMemoryStore(undefined, () => now);
+        const host = await createRoom(store, "Ada");
+        const guest = await joinRoom(store, host.code, "Grace");
+        const white = await client(store, host.code, host.token);
+        const black = await client(store, host.code, guest.token);
+
+        // Stall black's clock past the 25s lease without closing its socket, then let white observe it.
+        now = PRESENCE_LEASE_MS + 5000;
+        await vi.advanceTimersByTimeAsync(10_000);
+        // After the resync tick runs for both open sockets, black's open socket has healed its
+        // lease and white is not able to claim victory against a live connection.
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Your opponent is connected");
+        expect((await store.load(host.code))?.game?.phase).not.toBe("over");
+        white.connection.close();
+        black.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores out-of-order stale presence broadcasts and keeps presence off the move channel", async () => {
+      const { store, code, white, black, first } = await table();
+      const room = (await store.load(code)) as Room;
+      const before = room.version;
+      const moveChannelEvents: number[] = [];
+      const stopMoveWatch = await store.subscribe(code, (u) => {
+        moveChannelEvents.push(u.events.length);
+      });
+
+      const snap = await store.getPresence(room.id);
+      await store.publishPresence(room.id, {
+        roomId: room.id,
+        presence: {
+          ...snap.presence,
+          revision: snap.presence.revision + 5,
+          black: { connections: {}, disconnectedAt: snap.now },
+        },
+        at: snap.now,
+      });
+      // An out-of-order older revision claiming black is online must be ignored.
+      await store.publishPresence(room.id, {
+        roomId: room.id,
+        presence: {
+          ...snap.presence,
+          revision: snap.presence.revision + 1,
+          black: { connections: { stale: snap.now + 60_000 }, disconnectedAt: null },
+        },
+        at: snap.now,
+      });
+      expect(presences(white.inbox)).toEqual([
+        { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+      ]);
+
+      // Closing a connection publishes ONLY on the presence channel — never on `room:<code>`,
+      // so a pre-deployment server listening to `room:<code>` can never swallow move events.
+      black.connection.close();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(moveChannelEvents).toEqual([]);
+
+      // Real move at `before + 1` still delivers its events intact!
+      await first.send({ type: "pickCard", index: 0 });
+      expect(white.last().version).toBe(before + 1);
+      expect(white.last().events).toHaveLength(1);
+      expect(moveChannelEvents).toEqual([1]);
+      stopMoveWatch();
+      white.connection.close();
+    });
+
+    it("keeps pre-deployment rooms and unmarked seats ineligible for abandonment claims", async () => {
+      vi.useFakeTimers();
+      try {
+        const store = createMemoryStore();
+        const host = await createRoom(store, "Ada");
+        await joinRoom(store, host.code, "Grace");
+        // Strip gameStartedAt and seat.presence to simulate a room saved before this feature deployed.
+        const loaded = (await store.load(host.code)) as Room;
+        const { gameStartedAt: _dropped, ...legacy } = loaded;
+        await store.save(
+          {
+            ...legacy,
+            version: loaded.version + 1,
+            seats: {
+              white: { token: host.token, name: "Ada", character: "gambler" },
+              black: {
+                token: loaded.seats.black!.token,
+                name: "Grace",
+                character: "gambler",
+              },
+            },
+          },
+          loaded.version,
+        );
+
+        // Only Ada returns after the deploy; Grace could still be on (or rotate onto) an old server.
+        const white = await client(store, host.code, host.token);
+        expect(white.last().presence).toEqual({ online: true, claimInMs: null });
+
+        // Even 10+ minutes later (past multiple 240s old-server rotations), Grace stays ineligible.
+        await vi.advanceTimersByTimeAsync(600_000);
+        expect(presences(white.inbox)).toEqual([]);
+        await white.send({ type: "claimVictory" });
+        expect(white.errors().at(-1)).toBe("Your opponent is connected");
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps an unmarked host ineligible even when a presence-aware guest joins on a new server", async () => {
+      vi.useFakeTimers();
+      try {
+        const store = createMemoryStore();
+        // Pre-deployment waiting lobby: white seat has no `presence: true` flag.
+        await store.create({
+          id: "legacy-lobby",
+          code: "OLDLB",
+          version: 0,
+          seats: { white: { token: "host-tok", name: "Ada", character: "gambler" } },
+          game: null,
+        });
+
+        // Guest joins on the new server (writes gameStartedAt, sets black.presence = true).
+        const guest = await joinRoom(store, "OLDLB", "Grace");
+        const black = await client(store, "OLDLB", guest.token);
+
+        // Even 10+ minutes later (covering old-server rotations), host cannot be claimed against.
+        await vi.advanceTimersByTimeAsync(600_000);
+        expect(presences(black.inbox)).toEqual([]);
+        await black.send({ type: "claimVictory" });
+        expect(black.errors().at(-1)).toBe("Your opponent is connected");
+        black.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("re-delivers online presence on resync after a socket crosses a game-over/rematch stage boundary", async () => {
+      vi.useFakeTimers();
+      try {
+        const { store, code, white, black } = await table();
+        const room = (await store.load(code)) as Room;
+        // Advance room to game-over v2 while black is online (white's lastKey = "1:over:online").
+        const over: Room = {
+          ...room,
+          version: room.version + 1,
+          game: {
+            ...(room.game as NonNullable<Room["game"]>),
+            phase: "over",
+            winner: "white",
+            winReason: "bearOff",
+            dice: [],
+            wins: { white: 1, black: 0 },
+            rematch: { white: false, black: false },
+          },
+        };
+        await store.save(over, room.version);
+        const snap = await store.getPresence(room.id);
+        await store.publish(code, {
+          room: over,
+          events: [],
+          presence: snap.presence,
+          at: snap.now,
+        });
+        const countBefore = presences(white.inbox).length;
+
+        // Now suppose white missed the rematch boundary frame and receives an ordinary move in
+        // game 2 (v4, no presence attached). Resync must still deliver `online: true` because
+        // the stage changed from `1:over` to `1:active`.
+        const rematchMove: Room = {
+          ...over,
+          version: over.version + 2,
+          game: {
+            ...over.game!,
+            phase: "roll",
+            winner: null,
+            winReason: null,
+          },
+          gameStartedAt: Date.now(),
+          gameStartedMatch: 1,
+        };
+        await store.save(rematchMove, over.version);
+        await store.publish(code, { room: rematchMove, events: [] });
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(presences(white.inbox).slice(countBefore)).toEqual([
+          { type: "presence", online: true, claimInMs: null },
+        ]);
+        white.connection.close();
+        black.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores a delayed same-revision presence broadcast with an older timestamp", async () => {
+      vi.useFakeTimers();
+      try {
+        const store = createMemoryStore();
+        const matched = await createMatchedRoom(
+          store,
+          { name: "Ada", character: "gambler" },
+          { name: "Grace", character: "seer" },
+        );
+        const room = (await store.load(matched.code)) as Room;
+        const white = await client(store, matched.code, matched.tokens.white);
+        // Capture initial presence snapshot (rev 1, at t=0, within 10s arrival grace).
+        const initialSnap = await store.getPresence(room.id);
+
+        // Advance past arrival grace: resync marks Grace away without bumping revision.
+        await vi.advanceTimersByTimeAsync(ARRIVAL_GRACE_MS);
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+        ]);
+
+        // Releasing the delayed initial broadcast (same revision, older timestamp) must NOT
+        // falsely flip Grace back to online.
+        await store.publishPresence(room.id, {
+          roomId: room.id,
+          presence: initialSnap.presence,
+          at: initialSnap.now,
+        });
+        expect(presences(white.inbox)).toEqual([
+          { type: "presence", online: false, claimInMs: CLAIM_GRACE_MS },
+        ]);
+        white.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not attach stale cached presence on ordinary moves that would rewind the countdown", async () => {
+      vi.useFakeTimers();
+      try {
+        const { first, second } = await table();
+        second.connection.close();
+        await vi.advanceTimersByTimeAsync(9000);
+
+        await first.send({ type: "pickCard", index: 0 });
+        expect(first.last().presence).toBeUndefined();
+        first.connection.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("retains a newer disconnect broadcast that arrives while connectSeat is still in flight", async () => {
+      const inner = createMemoryStore();
+      const host = await createRoom(inner, "Ada");
+      const guest = await joinRoom(inner, host.code, "Grace");
+      const black = await client(inner, host.code, guest.token);
+
+      let releaseConnect: (() => void) | null = null;
+      const store: GameStore = {
+        ...inner,
+        connectSeat: async (roomId, seat, connId, leaseMs) => {
+          const result = await inner.connectSeat(roomId, seat, connId, leaseMs);
+          if (seat === "white") {
+            await new Promise<void>((resolve) => {
+              releaseConnect = resolve;
+            });
+          }
+          return result;
+        },
+      };
+
+      const whiteInbox: ServerMessage[] = [];
+      const opening = openConnection(store, host.code, host.token, (m) => whiteInbox.push(m));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Black disconnects AFTER white's connectSeat took its snapshot, BEFORE openConnection finishes.
+      black.connection.close();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      (releaseConnect as unknown as () => void)();
+      const white = await opening;
+
+      const initial = whiteInbox.find((m): m is State => m.type === "state");
+      expect(initial?.presence).toMatchObject({ online: false });
+      white.close();
+    });
+
+    it("allows fresh connections to both active and finished legacy rooms saved before match scores existed", async () => {
+      const store = createMemoryStore();
+      const host = await createRoom(store, "Ada");
+      await joinRoom(store, host.code, "Grace");
+      const loaded = (await store.load(host.code)) as Room;
+      const { wins: _w, rematch: _r, winReason: _wr, ...activeLegacyGame } = loaded.game!;
+      await store.save(
+        {
+          id: loaded.id,
+          code: loaded.code,
+          version: loaded.version + 1,
+          seats: loaded.seats,
+          game: activeLegacyGame as unknown as Room["game"],
+        },
+        loaded.version,
+      );
+      const activeConn = await client(store, host.code, host.token);
+      expect(activeConn.last().view?.wins).toEqual({ white: 0, black: 0 });
+      expect(activeConn.last().presence).toEqual({ online: true, claimInMs: null });
+      activeConn.connection.close();
+
+      // Same for an already-finished legacy room missing `wins`.
+      const finishedLegacyGame = {
+        ...activeLegacyGame,
+        phase: "over" as const,
+        winner: "white" as const,
+        dice: [],
+      };
+      await store.save(
+        {
+          id: loaded.id,
+          code: loaded.code,
+          version: loaded.version + 2,
+          seats: loaded.seats,
+          game: finishedLegacyGame as unknown as Room["game"],
+        },
+        loaded.version + 1,
+      );
+      const finishedConn = await client(store, host.code, host.token);
+      expect(finishedConn.last().view?.wins).toEqual({ white: 1, black: 0 });
+      expect(finishedConn.last().view?.winReason).toBe("bearOff");
+      expect(finishedConn.last().presence).toEqual({ online: true, claimInMs: null });
+      finishedConn.connection.close();
+    });
+
+    it("does not let a delayed older game-over update clear a newer rematch countdown", async () => {
+      let now = 10_000;
+      const { store, code, white, black } = await table(createMemoryStore(undefined, () => now));
+      const room = (await store.load(code)) as Room;
+      const over: Room = {
+        ...room,
+        version: room.version + 1,
+        game: {
+          ...(room.game as NonNullable<Room["game"]>),
+          phase: "over",
+          winner: "white",
+          winReason: "bearOff",
+          dice: [],
+          wins: { white: 1, black: 0 },
+          rematch: { white: false, black: true },
+        },
+      };
+      await store.save(over, room.version);
+      await store.publish(code, { room: over, events: [] });
+
+      black.connection.close();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      now += 15_000;
+      await white.send({ type: "rematch" });
+      expect(white.last().presence).toMatchObject({ online: false, claimInMs: CLAIM_GRACE_MS });
+      const countBefore = presences(white.inbox).length;
+
+      // Now deliver the delayed older game-over update at the same presence revision.
+      const snap = await store.getPresence(room.id);
+      await store.publish(code, {
+        room: over,
+        events: [],
+        presence: snap.presence,
+        at: snap.now,
+      });
+      expect(presences(white.inbox)).toHaveLength(countBefore);
+      white.connection.close();
+    });
+
+    it("releases the subscription when eviction fires before subscribe() resolves", async () => {
+      const inner = createMemoryStore();
+      const host = await createRoom(inner, "Ada");
+      let listeners = 0;
+      const store: GameStore = {
+        ...inner,
+        subscribe: async (code, listener) => {
+          listeners++;
+          const unsub = await inner.subscribe(code, listener);
+          // Replacement-room broadcast arrives before subscribe() returns its handle.
+          listener({
+            room: { id: "different-room", code, version: 1, seats: {}, game: null },
+            events: [],
+          });
+          return () => {
+            listeners--;
+            unsub();
+          };
+        },
+      };
+      await expect(openConnection(store, host.code, host.token, () => {})).rejects.toMatchObject({
+        kind: "not_found",
+      });
+      expect(listeners).toBe(0);
+    });
+
+    it("still delivers a committed rematch even if reading presence afterwards fails", async () => {
+      const inner = createMemoryStore();
+      let failPresence = false;
+      const store: GameStore = {
+        ...inner,
+        getPresence: async (roomId) => {
+          if (failPresence) throw new Error("redis blip");
+          return inner.getPresence(roomId);
+        },
+      };
+      const { code, white, black } = await table(store);
+      const room = (await store.load(code)) as Room;
+      const over: Room = {
+        ...room,
+        version: room.version + 1,
+        game: {
+          ...(room.game as NonNullable<Room["game"]>),
+          phase: "over",
+          winner: "white",
+          winReason: "bearOff",
+          dice: [],
+          wins: { white: 1, black: 0 },
+          rematch: { white: false, black: true },
+        },
+      };
+      await store.save(over, room.version);
+      await store.publish(code, { room: over, events: [] });
+
+      failPresence = true;
+      await expect(white.send({ type: "rematch" })).resolves.toBeUndefined();
+      expect(white.errors()).toEqual([]);
+      expect(white.last().view?.phase).not.toBe("over");
+      expect(white.last().events[0]).toMatchObject({ type: "gameStarted" });
+      white.connection.close();
+      black.connection.close();
     });
   });
 });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GameEvent } from "../src/core/game.ts";
-import type { ServerMessage } from "../src/net/protocol.ts";
+import type { OpponentPresence, ServerMessage } from "../src/net/protocol.ts";
 import {
   type ClientSocket,
   createRemoteSession,
@@ -65,7 +65,11 @@ class FakeSocket implements ClientSocket {
   }
 }
 
-function state(version: number, events: GameEvent[] = []): ServerMessage {
+function state(
+  version: number,
+  events: GameEvent[] = [],
+  presence?: OpponentPresence,
+): ServerMessage {
   return {
     type: "state",
     version,
@@ -76,6 +80,7 @@ function state(version: number, events: GameEvent[] = []): ServerMessage {
     },
     view: null,
     events,
+    ...(presence ? { presence } : {}),
   };
 }
 
@@ -85,6 +90,7 @@ function session() {
   const sockets: FakeSocket[] = [];
   const statuses: SessionStatus[] = [];
   const updates: SessionUpdate[] = [];
+  const presences: Array<OpponentPresence | null> = [];
   const errors: Array<[string, boolean]> = [];
   const api = createRemoteSession(
     "AAAAA",
@@ -92,6 +98,7 @@ function session() {
     {
       onStatus: (s) => statuses.push(s),
       onUpdate: (u) => updates.push(u),
+      onPresence: (p) => presences.push(p),
       onError: (message, fatal) => errors.push([message, fatal]),
     },
     () => {
@@ -100,7 +107,7 @@ function session() {
       return socket;
     },
   );
-  return { api, sockets, statuses, updates, errors };
+  return { api, sockets, statuses, updates, presences, errors };
 }
 
 beforeEach(() => {
@@ -115,7 +122,7 @@ describe("remote session", () => {
     const { sockets, statuses, updates } = session();
     expect(statuses).toEqual(["connecting"]);
     sockets[0]!.accept();
-    expect(sockets[0]!.sent).toEqual([{ type: "hello", token: "token" }]);
+    expect(sockets[0]!.sent).toEqual([{ type: "hello", token: "token", presence: true }]);
     sockets[0]!.deliver(state(0));
     expect(statuses).toEqual(["connecting", "connected"]);
     expect(updates).toHaveLength(1);
@@ -513,5 +520,280 @@ describe("remote session", () => {
     vi.advanceTimersByTime(ROTATE_MS * 3);
     expect(sockets).toHaveLength(2);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("delivers live presence updates from the active socket and resyncs presence on reconnect", () => {
+    const { api, sockets, presences, updates } = session();
+    sockets[0]!.accept();
+    sockets[0]!.deliver(state(3, [], { online: true, claimInMs: null }));
+    sockets[0]!.deliver({ type: "presence", online: false, claimInMs: 30_000 });
+    expect(presences).toEqual([
+      { online: true, claimInMs: null },
+      { online: false, claimInMs: 30_000 },
+    ]);
+
+    // While offline, the opponent reconnected without making a move (same version 3).
+    sockets[0]!.end();
+    vi.advanceTimersByTime(1);
+    sockets[1]!.accept();
+    sockets[1]!.deliver(state(3, [], { online: true, claimInMs: null }));
+    expect(updates).toHaveLength(1);
+    expect(presences.at(-1)).toEqual({ online: true, claimInMs: null });
+
+    // Presence messages arriving on a retiring socket after rotation are ignored.
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "roll" });
+    sockets[2]!.accept();
+    sockets[2]!.deliver(state(3, [], { online: true, claimInMs: null }));
+    const count = presences.length;
+    sockets[1]!.deliver({ type: "presence", online: false, claimInMs: 25_000 });
+    expect(presences).toHaveLength(count);
+  });
+
+  it("delivers state updates before snapshot presence so handlers already see the installed view", () => {
+    const sockets: FakeSocket[] = [];
+    const order: string[] = [];
+    createRemoteSession(
+      "AAAAA",
+      "token",
+      {
+        onStatus: () => {},
+        onUpdate: () => order.push("update"),
+        onPresence: () => order.push("presence"),
+        onError: () => {},
+      },
+      () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    );
+    sockets[0]!.accept();
+    sockets[0]!.deliver(state(1, [], { online: false, claimInMs: 12_000 }));
+    expect(order).toEqual(["update", "presence"]);
+  });
+
+  it("still delivers active-socket presence when a retiring socket delivered that game version first", () => {
+    const { api, sockets, presences, updates } = session();
+    sockets[0]!.accept();
+    sockets[0]!.deliver(state(4, [], { online: false, claimInMs: null }));
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "rematch" });
+    sockets[1]!.accept();
+    sockets[1]!.deliver(state(4, [], { online: false, claimInMs: null }));
+    const before = presences.length;
+
+    // Retiring socket delivers rematch v5 first (updates view, skips retiring presence).
+    sockets[0]!.deliver(state(5, [], { online: false, claimInMs: 30_000 }));
+    expect(updates).toHaveLength(2);
+    expect(presences).toHaveLength(before);
+
+    // Active socket then delivers v5 with presence: must NOT be skipped!
+    sockets[1]!.deliver(state(5, [], { online: false, claimInMs: 30_000 }));
+    expect(presences.at(-1)).toEqual({ online: false, claimInMs: 30_000 });
+  });
+
+  it("keeps the rematch countdown when a replacement promotes with an older game-over v4 snapshot before catching up to v5", () => {
+    const { sockets, presences } = session();
+    const baseView = {
+      you: "white" as const,
+      board: { points: [], bar: { white: 0, black: 0 }, off: { white: 0, black: 0 } },
+      current: "white" as const,
+      dice: [],
+      winner: null,
+      winReason: null,
+      shielded: { white: false, black: false },
+      wins: { white: 1, black: 0 },
+      rematch: { white: false, black: false },
+      hand: [],
+      offer: [],
+      counts: {
+        white: { hand: 0, deck: 0, discard: 0 },
+        black: { hand: 0, deck: 0, discard: 0 },
+      },
+    };
+    const overView = { ...baseView, phase: "over" as const, winner: "white" as const };
+    const rematchView = { ...baseView, phase: "pick" as const };
+    const lobby = {
+      code: "AAAAA",
+      you: "white" as const,
+      players: {
+        white: { name: "Ada", character: "seer" as const },
+        black: { name: "Grace", character: "gambler" as const },
+      },
+    };
+    sockets[0]!.accept();
+    sockets[0]!.deliver({
+      type: "state",
+      version: 5,
+      lobby,
+      view: rematchView,
+      events: [],
+      presence: { online: false, claimInMs: 30_000 },
+    });
+    expect(presences).toEqual([{ online: false, claimInMs: 30_000 }]);
+
+    // Rotate: replacement promotes with a slightly stale game-over v4 snapshot, then catches up to v5.
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1]!.accept();
+    sockets[1]!.deliver({
+      type: "state",
+      version: 4,
+      lobby,
+      view: overView,
+      events: [],
+      presence: { online: false, claimInMs: null },
+    });
+    // Must NOT regress presence to v4's `claimInMs: null`.
+    expect(presences).toEqual([{ online: false, claimInMs: 30_000 }]);
+
+    // A standalone presence frame emitted while the replacement is still on game-over v4
+    // must also be ignored until the replacement catches up to the rematch stage.
+    sockets[1]!.deliver({ type: "presence", online: false, claimInMs: null });
+    expect(presences).toEqual([{ online: false, claimInMs: 30_000 }]);
+
+    // Replacement catches up to v5 with updated remaining time: must apply on the new socket.
+    sockets[1]!.deliver({
+      type: "state",
+      version: 5,
+      lobby,
+      view: rematchView,
+      events: [],
+      presence: { online: false, claimInMs: 28_000 },
+    });
+    expect(presences.at(-1)).toEqual({ online: false, claimInMs: 28_000 });
+
+    // Once caught up to v5's stage, standalone presence frames on the replacement apply normally.
+    sockets[1]!.deliver({ type: "presence", online: true, claimInMs: null });
+    expect(presences.at(-1)).toEqual({ online: true, claimInMs: null });
+  });
+
+  it("keeps the replacement's initial away presence when the old socket delivered an ordinary move first", () => {
+    const { sockets, presences } = session();
+    const activeView = (phase: "pick" | "roll") => ({
+      you: "white" as const,
+      board: { points: [], bar: { white: 0, black: 0 }, off: { white: 0, black: 0 } },
+      current: "white" as const,
+      dice: [],
+      phase,
+      winner: null,
+      winReason: null,
+      shielded: { white: false, black: false },
+      wins: { white: 0, black: 0 },
+      rematch: { white: false, black: false },
+      hand: [],
+      offer: [],
+      counts: {
+        white: { hand: 0, deck: 0, discard: 0 },
+        black: { hand: 0, deck: 0, discard: 0 },
+      },
+    });
+    const lobby = {
+      code: "AAAAA",
+      you: "white" as const,
+      players: {
+        white: { name: "Ada", character: "seer" as const },
+        black: { name: "Grace", character: "gambler" as const },
+      },
+    };
+    sockets[0]!.accept();
+    sockets[0]!.deliver({
+      type: "state",
+      version: 1,
+      lobby,
+      view: activeView("pick"),
+      events: [],
+      presence: { online: true, claimInMs: null },
+    });
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1]!.accept();
+
+    // Old socket delivers ordinary move v2 (without presence) before replacement's v1 arrives.
+    sockets[0]!.deliver({
+      type: "state",
+      version: 2,
+      lobby,
+      view: activeView("roll"),
+      events: [],
+    });
+
+    // Replacement promotes with its initial v1 snapshot carrying the opponent's away state,
+    // followed by the ordinary v2 move without presence. The away notification must NOT be dropped.
+    sockets[1]!.deliver({
+      type: "state",
+      version: 1,
+      lobby,
+      view: activeView("pick"),
+      events: [],
+      presence: { online: false, claimInMs: 30_000 },
+    });
+    expect(presences.at(-1)).toEqual({ online: false, claimInMs: 30_000 });
+
+    sockets[1]!.deliver({
+      type: "state",
+      version: 2,
+      lobby,
+      view: activeView("roll"),
+      events: [],
+    });
+    expect(presences.at(-1)).toEqual({ online: false, claimInMs: 30_000 });
+  });
+
+  it("clears stale claim availability silently when rotating onto an older server whose snapshot omits presence", () => {
+    const { sockets, presences } = session();
+    const activeView = {
+      you: "white" as const,
+      board: { points: [], bar: { white: 0, black: 0 }, off: { white: 0, black: 0 } },
+      current: "white" as const,
+      dice: [],
+      phase: "roll" as const,
+      winner: null,
+      winReason: null,
+      shielded: { white: false, black: false },
+      wins: { white: 0, black: 0 },
+      rematch: { white: false, black: false },
+      hand: [],
+      offer: [],
+      counts: {
+        white: { hand: 0, deck: 0, discard: 0 },
+        black: { hand: 0, deck: 0, discard: 0 },
+      },
+    };
+    sockets[0]!.accept();
+    sockets[0]!.deliver({
+      type: "state",
+      version: 4,
+      lobby: {
+        code: "AAAAA",
+        you: "white",
+        players: {
+          white: { name: "Ada", character: "seer" },
+          black: { name: "Grace", character: "gambler" },
+        },
+      },
+      view: activeView,
+      events: [],
+      presence: { online: false, claimInMs: 0 },
+    });
+    expect(presences.at(-1)).toEqual({ online: false, claimInMs: 0 });
+
+    // Rotate onto an older server that omits `presence` on its state snapshot.
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1]!.accept();
+    sockets[1]!.deliver({
+      type: "state",
+      version: 4,
+      lobby: {
+        code: "AAAAA",
+        you: "white",
+        players: {
+          white: { name: "Ada", character: "seer" },
+          black: { name: "Grace", character: "gambler" },
+        },
+      },
+      view: activeView,
+      events: [],
+    });
+    expect(presences.at(-1)).toBeNull();
   });
 });

@@ -22,7 +22,12 @@ export const BODY_LIMIT = 1024;
  * The fields a player may send about themselves, and the ticket a seeker chose. Still
  * untrusted: the room cleans them.
  */
-function playerOf(body: unknown): { name?: unknown; character?: unknown; ticket?: unknown } {
+function playerOf(body: unknown): {
+  name?: unknown;
+  character?: unknown;
+  ticket?: unknown;
+  presence?: unknown;
+} {
   return typeof body === "object" && body !== null ? body : {};
 }
 
@@ -59,10 +64,17 @@ async function match(
   options: MatchOptions,
 ): Promise<ApiResponse> {
   if (parts.length === 2) {
-    const { name, character, ticket } = playerOf(body);
+    const { name, character, ticket, presence } = playerOf(body);
     if (ticket !== undefined && (typeof ticket !== "string" || !isTicket(ticket)))
       return { status: 400, body: { error: "That is not a ticket" } };
-    return { status: 200, body: await seekMatch(store, name, character, { ...options, ticket }) };
+    return {
+      status: 200,
+      body: await seekMatch(store, name, character, {
+        ...options,
+        ticket,
+        presence: presence === true,
+      }),
+    };
   }
   const ticket = parts[2] ?? "";
   if (!isTicket(ticket)) throw new RoomError("not_found", "No longer looking for a game");
@@ -101,14 +113,20 @@ export async function handleApi(
 
   try {
     if (area === "match") return await match(store, parts, body, matchOptions);
-    const { name, character } = playerOf(body);
+    const { name, character, presence } = playerOf(body);
     if (parts.length === 2) {
-      return { status: 201, body: await createRoom(store, name, undefined, character) };
+      return {
+        status: 201,
+        body: await createRoom(store, name, undefined, character, presence === true),
+      };
     }
     if (parts.length === 4 && parts[3] === "join") {
       const code = normalizeCode(parts[2] ?? "");
       if (!isRoomCode(code)) throw new RoomError("not_found", "No game with that code");
-      return { status: 200, body: await joinRoom(store, code, name, undefined, character) };
+      return {
+        status: 200,
+        body: await joinRoom(store, code, name, { character, presence: presence === true }),
+      };
     }
     return { status: 404, body: { error: "Not found" } };
   } catch (error) {

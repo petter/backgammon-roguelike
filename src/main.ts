@@ -7,6 +7,7 @@ import { createLocalSession } from "./net/localSession.ts";
 import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
+import { seatMemory } from "./net/seatStorage.ts";
 import { ticketMemory } from "./net/unsettled.ts";
 import { createBoard } from "./render/board.ts";
 import { CheckersView } from "./render/checkers.ts";
@@ -31,29 +32,7 @@ let stopGame: (() => void) | null = null;
 let search: Search | null = null;
 
 /** Seat tokens live in sessionStorage: per tab, so two tabs can be two players. */
-const seats = {
-  get(code: string): string | null {
-    try {
-      return sessionStorage.getItem(`seat:${code}`);
-    } catch {
-      return null;
-    }
-  },
-  set(code: string, token: string): void {
-    try {
-      sessionStorage.setItem(`seat:${code}`, token);
-    } catch {
-      // Without storage the seat still works until the tab is reloaded.
-    }
-  },
-  forget(code: string): void {
-    try {
-      sessionStorage.removeItem(`seat:${code}`);
-    } catch {
-      // Nothing to forget.
-    }
-  },
-};
+const seats = seatMemory();
 
 function leaveGame(): void {
   stopGame?.();
@@ -125,9 +104,9 @@ const unsettled = {
     unsettledHere = ticket;
     unsettledTickets.set(ticket);
   },
-  clear() {
-    unsettledHere = null;
-    unsettledTickets.clear();
+  clear(ticket?: string) {
+    if (ticket === undefined || unsettledHere === ticket) unsettledHere = null;
+    unsettledTickets.clear(ticket);
   },
 };
 /** Whether that is being done right now. */
@@ -145,17 +124,15 @@ function seek(player: PlayerChoice): void {
     onSeat: (seat) => {
       if (search !== mine) return;
       search = null;
-      // Any ticket kept from this search has ended here; it must not lead back to this table.
-      unsettled.clear();
+      // Only clear this search's ticket so any distinct legacy ticket still settles if needed.
+      unsettled.clear(mine.ticket());
       enterRoom(seat.code, seat.token);
     },
     onTrouble: (problem) => {
       if (search === mine) lobby.searchTrouble(problem);
     },
     onLeave: (ticket) => unsettled.set(ticket),
-    onSettled: (ticket) => {
-      if (unsettled.get() === ticket) unsettled.clear();
-    },
+    onSettled: (ticket) => unsettled.clear(ticket),
   });
   search = mine;
 }
@@ -188,7 +165,7 @@ function cancelSeek(then: () => void): boolean {
 async function settle(running: Search | null): Promise<void> {
   const outcome = running ? await running.cancel() : null;
   cancelling = false;
-  if (outcome?.settled) unsettled.clear();
+  if (outcome?.settled && running) unsettled.clear(running.ticket());
   if (outcome?.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else afterCancel();
 }
@@ -204,7 +181,7 @@ async function settleThenSeek(ticket: string, player: PlayerChoice): Promise<voi
     lobby.showMenu({ error: "Could not reach the game server" });
     return;
   }
-  unsettled.clear();
+  unsettled.clear(ticket);
   // Matched after all: that stranger has been waiting, so the player joins them.
   if (outcome.seat) enterRoom(outcome.seat.code, outcome.seat.token);
   else seek(player);
@@ -220,7 +197,7 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
     const response = await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(player),
+      body: JSON.stringify({ ...player, presence: true }),
     });
     const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
     if (!response.ok || !body.code || !body.token) {

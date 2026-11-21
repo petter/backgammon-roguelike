@@ -8,7 +8,9 @@ import { BODY_LIMIT, handleApi } from "./http.ts";
 import { serveSocket } from "./socket.ts";
 import type { GameStore } from "./store.ts";
 
-const SOCKET_PATH = /^\/api\/rooms\/([A-Za-z]+)\/ws$/;
+// `/ws` stays open for pre-deployment clients; `/ws2` is accepted only by presence-aware
+// servers so new clients never land on an old instance during a rolling deploy.
+const SOCKET_PATH = /^\/api\/rooms\/([A-Za-z]+)\/(?:ws|ws2)$/;
 
 /** The path of a request, without its query string. */
 export function pathOf(req: IncomingMessage): string {
@@ -53,13 +55,18 @@ export function serveApi(store: GameStore, req: IncomingMessage, res: ServerResp
     });
 }
 
+/** How often the server checks that an open WebSocket is still answering protocol pings. */
+export const WS_PING_MS = 10_000;
+
 /**
  * Returns an upgrade handler for a Node HTTP server. It takes over requests for a room's
  * socket and returns `false` for anything else, leaving those to other listeners.
  */
 export function createUpgradeHandler(
   store: GameStore,
+  options: { pingMs?: number } = {},
 ): (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean {
+  const { pingMs = WS_PING_MS } = options;
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   return (req, socket, head) => {
     const match = SOCKET_PATH.exec(pathOf(req));
@@ -69,11 +76,31 @@ export function createUpgradeHandler(
       // be thrown as an uncaught exception and take the whole process down.
       // `ws` closes the socket itself, with the matching close code.
       ws.on("error", (error) => console.error("Room socket error", error.message));
+      // Browsers reply to WebSocket control-frame pings in the network thread even in
+      // backgrounded tabs, so missing a pong reliably identifies a silently dead connection.
+      let alive = true;
+      ws.on("pong", () => {
+        alive = true;
+      });
+      const heartbeat = setInterval(() => {
+        if (!alive) {
+          ws.terminate();
+          return;
+        }
+        alive = false;
+        ws.ping();
+      }, pingMs);
+      heartbeat.unref();
+      ws.on("close", () => clearInterval(heartbeat));
       serveSocket(store, normalizeCode(match[1] ?? ""), {
         send: (text) => ws.send(text),
         close: () => ws.close(),
         // With the default binaryType, `ws` hands over each message as one Buffer.
-        onMessage: (listener) => ws.on("message", (data) => listener((data as Buffer).toString())),
+        onMessage: (listener) =>
+          ws.on("message", (data) => {
+            alive = true;
+            listener((data as Buffer).toString());
+          }),
         onClose: (listener) => ws.on("close", listener),
       });
     });

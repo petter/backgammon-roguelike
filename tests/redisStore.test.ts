@@ -8,8 +8,8 @@ import { storeContract } from "./storeContract.ts";
 // Needs a real Redis: `REDIS_URL=redis://localhost:6379 pnpm test`. Skipped otherwise.
 const url = process.env.REDIS_URL;
 const stores: RedisStore[] = [];
-const open = (ttl?: number, keyPrefix?: string) => {
-  const store = createRedisStore(url ?? "", ttl, { keyPrefix });
+const open = (ttl?: number, keyPrefix?: string, now?: () => number) => {
+  const store = createRedisStore(url ?? "", ttl, { keyPrefix, now });
   stores.push(store);
   return store;
 };
@@ -37,6 +37,20 @@ function isolated(store: RedisStore, prefix: string): RedisStore {
       store.subscribe(tag(code), (update) =>
         listener({ ...update, room: { ...update.room, code: strip(update.room.code) } }),
       ),
+    publishPresence: (roomId, update) =>
+      store.publishPresence(tag(roomId), { ...update, roomId: tag(update.roomId) }),
+    subscribePresence: (roomId, listener) =>
+      store.subscribePresence(tag(roomId), (update) =>
+        listener({ ...update, roomId: strip(update.roomId) }),
+      ),
+    clock: () => store.clock(),
+    connectSeat: (roomId, seat, connId, leaseMs) =>
+      store.connectSeat(roomId, seat, connId, leaseMs),
+    renewSeat: (roomId, seat, connId, leaseMs) => store.renewSeat(roomId, seat, connId, leaseMs),
+    disconnectSeat: (roomId, seat, connId) => store.disconnectSeat(roomId, seat, connId),
+    getPresence: (roomId) => store.getPresence(roomId),
+    claimSeat: (room, expectedVersion, opponent, timings) =>
+      store.claimSeat({ ...room, code: tag(room.code) }, expectedVersion, opponent, timings),
     // Seekers are kept apart by the store's own key prefix.
     addSeeker: (seeker) => store.addSeeker(seeker),
     touchSeeker: (id, now) => store.touchSeeker(id, now),
@@ -57,10 +71,44 @@ describe.skipIf(!url)("redis", () => {
       await store.publish(code, update);
       await new Promise((resolve) => setTimeout(resolve, 100));
     },
+    publishPresence: async (roomId, update) => {
+      await store.publishPresence(roomId, update);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    },
   });
-  storeContract("redis", () => {
+  storeContract("redis", (now) => {
     const prefix = `t${Date.now()}-${run++}-`;
-    return settled(isolated(open(undefined, `${prefix}:`), prefix));
+    return settled(isolated(open(undefined, `${prefix}:`, now), prefix));
+  });
+
+  it("uses Redis server TIME as a single clock across separate instances for presence and claims", async () => {
+    const prefix = `clk${Date.now()}:`;
+    const instanceA = open(undefined, prefix);
+    const instanceB = open(undefined, prefix);
+    const t1 = await instanceA.clock();
+    const t2 = await instanceB.clock();
+    expect(Math.abs(t1 - t2)).toBeLessThan(1000);
+
+    const host = await createRoom(instanceA, "Ada");
+    const guest = await joinRoom(instanceB, host.code, "Grace");
+    const a = await openConnection(instanceA, host.code, host.token, () => {}, {
+      claimGraceMs: 80,
+      arrivalGraceMs: 50,
+    });
+    const b = await openConnection(instanceB, host.code, guest.token, () => {}, {
+      claimGraceMs: 80,
+      arrivalGraceMs: 50,
+    });
+    b.close();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await a.command({ type: "claimVictory" });
+    expect((await instanceA.load(host.code))?.game).toMatchObject({
+      phase: "over",
+      winner: "white",
+      winReason: "abandoned",
+    });
+    a.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
   it("keeps a seeker who keeps asking in the queue, however long nobody else arrives", async () => {

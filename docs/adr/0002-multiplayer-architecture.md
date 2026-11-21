@@ -148,5 +148,46 @@ Players without a friend can be paired with a stranger.
   it gave up on the way out the same way before it looks any further.
 - Seekers live in Redis as one JSON value each, expiring ten minutes after they were last
   heard from, plus a sorted set of waiting tickets by when they started looking.
-- Not built: skill rating, regions, or anything for an opponent who leaves mid-game. Those
-  apply to friend games too.
+- Not built: skill rating or regions.
+
+## Addendum: opponent disconnect and claiming victory (2026-11-21)
+
+When a player disconnects or leaves mid-game, the remaining player is never stranded.
+
+- **Presence is separate from game versions and game channels.** Per-seat connection leases
+  live in the store under `presence:<room.id>` with a monotonic `revision`, never bumping
+  `room.version` so reconnects, heartbeats and socket rotations cannot disrupt contiguous
+  event playback or contend with game writes. Live presence broadcasts travel on a dedicated
+  `presence:<room.id>` pub/sub channel so pre-deployment servers subscribed only to
+  `room:<code>` never see them or swallow racing move events. Standalone `presence` frames
+  are sent only to clients that advertise `presence: true` in `hello`.
+- **Presence-aware routing during rolling deploys.** Presence-aware clients opt into
+  `seat.presence = true` at seat creation, persist seat tokens and unsettled matchmaking
+  tickets under versioned `sessionStorage` keys (`seat:v2:<code>`, `unsettled-ticket:v2`)
+  so a reload onto an older bundle cannot resume them, and connect exclusively to
+  `/api/rooms/:code/ws2`, which pre-deployment servers reject (while new servers accept both
+  `/ws` and `/ws2`). Any seat without `seat.presence = true`, or any game lacking a matching
+  `(gameStartedAt, gameStartedMatch)`, remains ineligible for abandonment claims so a legacy
+  client on (or rotating onto) an old server can never be claimed against while playing.
+- **Single store clock and atomic claims.** In Redis, every presence timestamp and
+  `claimSeat` check runs on Redis's own `TIME` clock inside Lua scripts, so cross-instance
+  clock skew cannot shorten or extend the 30-second grace. `claimSeat` verifies the room
+  version, verifies opponent absence, and writes the winning state in one atomic step.
+- **Connection leases handle multi-instance, stalls and rotation.** Each connection
+  registers its own 25 s lease _before_ sending initial state (so a rotating replacement is
+  registered before the client retires the old socket). Leases renew on the 10 s resync
+  tick; `renewSeat` never resurrects a closed connection, and if a still-open socket's lease
+  lapsed during a stall, it safely re-registers.
+- **Silent drops are caught without penalizing background tabs.** The Node upgrade handler
+  sends WebSocket protocol-level `ping` frames every 10 s and terminates sockets that fail
+  to answer with a `pong`. Browsers answer control-frame pings in the network thread even in
+  backgrounded tabs, while a dead network fails within 10–20 s.
+- **30-second grace, never auto-ended.** When a seat drops to zero live connections during a
+  game, the server records `disconnectedAt` and publishes a `presence` update with the
+  remaining `claimInMs` (avoiding client clock skew). Newly seated players get a 10 s
+  arrival window before counting as absent; pre-deployment rooms lacking `gameStartedAt`
+  and seats without the `/ws2` presence opt-in remain ineligible for abandonment claims;
+  and rematches clamp `disconnectedAt` to the new game's start time. After 30 s, the remaining player is offered a **Claim victory**
+  button; the game never auto-ends. Clicking it sends `{ type: "claimVictory" }`, ending the
+  game with `winReason: "abandoned"` (returning any offered cards to discard). If the
+  opponent reconnects first, the banner disappears and play resumes normally.

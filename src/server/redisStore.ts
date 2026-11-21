@@ -1,11 +1,22 @@
 import { Redis } from "ioredis";
 
 import {
+  CLAIM_SEAT,
+  CONNECT_SEAT,
+  DISCONNECT_SEAT,
+  GET_PRESENCE,
+  RENEW_SEAT,
+} from "./redisPresenceScripts.ts";
+import {
   cancelledSeeker,
+  type ClaimOutcome,
   type GameStore,
   Listeners,
+  type PresenceUpdate,
   type Room,
+  type RoomPresence,
   type RoomUpdate,
+  type SeatPresence,
   SEEKER_TTL_SECONDS,
   type Seeker,
 } from "./store.ts";
@@ -91,7 +102,24 @@ return 1
 `;
 
 const key = (code: string) => `room:${code}`;
+const presenceKey = (roomId: string) => `presence:${roomId}`;
 const seekerKey = (id: string) => `seeker:${id}`;
+
+function normalizeSeat(raw: Partial<SeatPresence> | undefined): SeatPresence {
+  const connections = raw?.connections && !Array.isArray(raw.connections) ? raw.connections : {};
+  const disconnectedAt = typeof raw?.disconnectedAt === "number" ? raw.disconnectedAt : null;
+  return { connections, disconnectedAt };
+}
+
+function decodePresence(text: string): RoomPresence {
+  const parsed = JSON.parse(text) as Partial<RoomPresence>;
+  return {
+    revision: typeof parsed.revision === "number" ? parsed.revision : 0,
+    white: normalizeSeat(parsed.white),
+    black: normalizeSeat(parsed.black),
+  };
+}
+
 /**
  * Waiting seekers' ids, scored by when they started looking. It never expires: an id whose
  * record has run out is dropped when the queue is next read.
@@ -101,6 +129,8 @@ const QUEUE = "seekers";
 export interface RedisStoreOptions {
   /** Put before every key, so tests sharing one Redis cannot see each other's data. */
   keyPrefix?: string;
+  /** Optional clock override for deterministic tests; production uses Redis's own `TIME`. */
+  now?: () => number;
 }
 
 export interface RedisStore extends GameStore {
@@ -122,6 +152,9 @@ export function createRedisStore(
   redis.on("error", (error) => console.error("Redis error", error.message));
 
   const listeners = new Listeners();
+  const presenceListeners = new Listeners<PresenceUpdate>();
+  const hasListeners = (channel: string) =>
+    listeners.has(channel) || presenceListeners.has(channel);
   let subscriber: Redis | null = null;
   // A connection in subscribe mode can do nothing else, so it gets its own. One per
   // instance serves every room; ioredis resubscribes by itself after a reconnect.
@@ -132,7 +165,11 @@ export function createRedisStore(
     subscriber.on("message", (channel: string, text: string) => {
       // Nothing thrown here may escape: it would take the whole process down with it.
       try {
-        listeners.notify(channel, JSON.parse(text) as RoomUpdate);
+        if (channel.startsWith("presence:")) {
+          presenceListeners.notify(channel, JSON.parse(text) as PresenceUpdate);
+        } else {
+          listeners.notify(channel, JSON.parse(text) as RoomUpdate);
+        }
       } catch (error) {
         console.error("Ignoring a malformed room update", error);
       }
@@ -148,7 +185,7 @@ export function createRedisStore(
   const release = (channel: string) => {
     leftover.add(channel);
     for (const stale of Array.from(leftover)) {
-      if (listeners.has(stale)) {
+      if (hasListeners(stale)) {
         leftover.delete(stale);
         continue;
       }
@@ -157,13 +194,35 @@ export function createRedisStore(
       subscriber
         .unsubscribe(stale)
         // Someone may have subscribed again while this was in flight; then it stays.
-        .then(() => !listeners.has(stale) && leftover.delete(stale))
+        .then(() => !hasListeners(stale) && leftover.delete(stale))
         .catch((error: unknown) =>
           console.error("Could not unsubscribe from a room", (error as Error).message),
         )
         .finally(() => releasing.delete(stale));
     }
   };
+  const subscribeChannel = async <T>(
+    bag: Listeners<T>,
+    channel: string,
+    listener: (update: T) => void,
+  ): Promise<() => void> => {
+    // Registered before Redis confirms, so nothing published in between can be missed.
+    const remove = bag.add(channel, listener);
+    const stop = () => {
+      if (remove()) release(channel);
+    };
+    try {
+      // Idempotent, and resolves only once Redis has confirmed the subscription.
+      await subscribing().subscribe(channel);
+    } catch (error) {
+      // The caller gets no handle to remove the listener with, so remove it here.
+      stop();
+      throw error;
+    }
+    return stop;
+  };
+
+  const nowArg = () => (options.now ? String(options.now()) : "");
 
   return {
     async create(room) {
@@ -190,21 +249,103 @@ export function createRedisStore(
       await redis.publish(key(code), JSON.stringify(update));
     },
     async subscribe(code, listener) {
-      const channel = key(code);
-      // Registered before Redis confirms, so nothing published in between can be missed.
-      const remove = listeners.add(channel, listener);
-      const stop = () => {
-        if (remove()) release(channel);
-      };
-      try {
-        // Idempotent, and resolves only once Redis has confirmed the subscription.
-        await subscribing().subscribe(channel);
-      } catch (error) {
-        // The caller gets no handle to remove the listener with, so remove it here.
-        stop();
-        throw error;
+      return subscribeChannel(listeners, key(code), listener);
+    },
+    async publishPresence(roomId, update) {
+      await redis.publish(presenceKey(roomId), JSON.stringify(update));
+    },
+    async subscribePresence(roomId, listener) {
+      return subscribeChannel(presenceListeners, presenceKey(roomId), listener);
+    },
+    async clock() {
+      if (options.now) return options.now();
+      const [sec, usec] = await redis.time();
+      return Number(sec) * 1000 + Math.floor(Number(usec) / 1000);
+    },
+    async connectSeat(roomId, seat, connId, leaseMs) {
+      const reply = (await redis.eval(
+        CONNECT_SEAT,
+        1,
+        presenceKey(roomId),
+        seat,
+        connId,
+        leaseMs,
+        ttlSeconds,
+        nowArg(),
+      )) as [string, number, number];
+      return { presence: decodePresence(reply[0]), changed: reply[1] === 1, now: reply[2] };
+    },
+    async renewSeat(roomId, seat, connId, leaseMs) {
+      const reply = (await redis.eval(
+        RENEW_SEAT,
+        1,
+        presenceKey(roomId),
+        seat,
+        connId,
+        leaseMs,
+        ttlSeconds,
+        nowArg(),
+      )) as [string, number, number] | null;
+      return reply
+        ? { presence: decodePresence(reply[0]), active: reply[1] === 1, now: reply[2] }
+        : null;
+    },
+    async disconnectSeat(roomId, seat, connId) {
+      const reply = (await redis.eval(
+        DISCONNECT_SEAT,
+        1,
+        presenceKey(roomId),
+        seat,
+        connId,
+        ttlSeconds,
+        nowArg(),
+      )) as [string, number, number] | null;
+      return reply
+        ? { presence: decodePresence(reply[0]), changed: reply[1] === 1, now: reply[2] }
+        : null;
+    },
+    async getPresence(roomId) {
+      const reply = (await redis.eval(
+        GET_PRESENCE,
+        1,
+        presenceKey(roomId),
+        ttlSeconds,
+        nowArg(),
+      )) as [string, number];
+      return { presence: decodePresence(reply[0]), now: reply[1] };
+    },
+    async claimSeat(room, expectedVersion, opponent, timings): Promise<ClaimOutcome> {
+      const reply = (await redis.eval(
+        CLAIM_SEAT,
+        2,
+        key(room.code),
+        presenceKey(room.id),
+        room.id,
+        expectedVersion,
+        JSON.stringify(room),
+        opponent,
+        timings.claimGraceMs,
+        timings.arrivalGraceMs,
+        ttlSeconds,
+        nowArg(),
+      )) as [string, number, string?, number?];
+      const [status, at, pText, remaining] = reply;
+      if (status === "ok" && pText) {
+        return { ok: true, presence: decodePresence(pText), now: at };
       }
-      return stop;
+      if (status === "too_early" && pText) {
+        return {
+          ok: false,
+          reason: "too_early",
+          remainingMs: remaining ?? 0,
+          presence: decodePresence(pText),
+          now: at,
+        };
+      }
+      if (status === "online" && pText) {
+        return { ok: false, reason: "online", presence: decodePresence(pText), now: at };
+      }
+      return { ok: false, reason: "conflict", now: at };
     },
     async addSeeker(seeker) {
       const added = await redis.eval(

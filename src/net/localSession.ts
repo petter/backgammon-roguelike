@@ -31,6 +31,9 @@ export function createLocalSession(handlers: SessionHandlers, seed: number): Ses
   return {
     send(command) {
       try {
+        if (command.type === "claimVictory") {
+          throw new GameError("Cannot claim victory in a local game");
+        }
         if (command.type === "rematch") {
           // One screen, so one press speaks for both players.
           state = applyCommand(state, "white", command).state;

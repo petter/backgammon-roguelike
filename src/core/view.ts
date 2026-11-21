@@ -1,6 +1,6 @@
 import type { BoardState, Player } from "./board.ts";
 import type { CardId } from "./cards.ts";
-import type { GameEvent, GameState, Phase } from "./game.ts";
+import type { GameEvent, GameState, Phase, WinReason } from "./game.ts";
 
 /**
  * Everything one player is allowed to know. Built field by field, so anything added to
@@ -13,6 +13,7 @@ export interface PlayerView {
   dice: number[];
   phase: Phase;
   winner: Player | null;
+  winReason: WinReason | null;
   shielded: Record<Player, boolean>;
   /** Games won in this match so far. */
   wins: Record<Player, number>;
@@ -38,6 +39,7 @@ export function viewFor(state: GameState, viewer: Player): PlayerView {
     dice: state.dice,
     phase: state.phase,
     winner: state.winner,
+    winReason: state.winReason,
     shielded: state.shielded,
     wins: state.wins,
     rematch: state.rematch,

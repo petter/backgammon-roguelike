@@ -20,6 +20,9 @@ export const HAND_LIMIT = 5;
 /** `pick`: choose one offered card. `roll`: roll the dice. `move`: play checkers and cards. */
 export type Phase = "pick" | "roll" | "move" | "over";
 
+/** How a finished game ended: normal bear-off, or victory claimed after the opponent left. */
+export type WinReason = "bearOff" | "abandoned";
+
 export interface PlayerCards {
   /** Draw pile; the last element is the top. */
   deck: CardId[];
@@ -37,6 +40,8 @@ export interface GameState {
   dice: number[];
   phase: Phase;
   winner: Player | null;
+  /** How the game was won, once `phase === "over"`. */
+  winReason: WinReason | null;
   cards: Record<Player, PlayerCards>;
   /** A shielded player's lone checkers cannot be hit. Lasts until their next turn. */
   shielded: Record<Player, boolean>;
@@ -58,6 +63,8 @@ export type Command =
   | { type: "move"; from: number | "bar"; to: number | "off"; die: number }
   | { type: "playCard"; index: number }
   | { type: "endTurn" }
+  /** Claims victory once the opponent has been disconnected past the grace period. */
+  | { type: "claimVictory" }
   /** Asks to play again. Only once the game is over; the new game starts when both have. */
   | { type: "rematch" };
 
@@ -310,6 +317,7 @@ export function newGame(
       dice: [],
       phase: "roll",
       winner: null,
+      winReason: null,
       cards,
       shielded: { white: false, black: false },
       wins,
@@ -372,7 +380,10 @@ function moveChecker(state: GameState, wanted: Omit<Move, "player">): Result {
   if (applied.board.off[player] < CHECKERS_PER_PLAYER) return { state: moved, events };
   events.push({ type: "gameWon", winner: player });
   const wins = { ...moved.wins, [player]: moved.wins[player] + 1 };
-  return { state: { ...moved, dice: [], phase: "over", winner: player, wins }, events };
+  return {
+    state: { ...moved, dice: [], phase: "over", winner: player, winReason: "bearOff", wins },
+    events,
+  };
 }
 
 function playCard(state: GameState, index: number): Result {
@@ -444,6 +455,41 @@ function rematch(state: GameState, player: Player, seeds?: GameSeeds): Result {
   };
 }
 
+function foldOffer(cards: PlayerCards): PlayerCards {
+  const copy = cloneCards(cards);
+  if (copy.offer.length > 0) {
+    copy.discard.push(...copy.offer);
+    copy.offer = [];
+  }
+  return copy;
+}
+
+/**
+ * Ends an active game in `player`'s favour after their opponent abandoned it. The caller
+ * (the room server) is responsible for checking that the opponent has actually been away
+ * past the reconnect grace period.
+ */
+function claimVictory(state: GameState, player: Player): Result {
+  if (state.phase === "over") throw new GameError("The game is over");
+  const wins = { ...state.wins, [player]: state.wins[player] + 1 };
+  const cards = {
+    white: foldOffer(state.cards.white),
+    black: foldOffer(state.cards.black),
+  };
+  return {
+    state: {
+      ...state,
+      dice: [],
+      phase: "over",
+      winner: player,
+      winReason: "abandoned",
+      cards,
+      wins,
+    },
+    events: [{ type: "gameWon", winner: player }],
+  };
+}
+
 /**
  * The single entry point for changing a game. Throws `GameError` when the rules say no.
  * `seeds` deal the new game if this command starts a rematch; a server must pass them.
@@ -455,6 +501,7 @@ export function applyCommand(
   seeds?: GameSeeds,
 ): Result {
   if (command.type === "rematch") return rematch(state, player, seeds);
+  if (command.type === "claimVictory") return claimVictory(state, player);
   if (state.phase === "over") throw new GameError("The game is over");
   if (player !== state.current) throw new GameError("It is not your turn");
   switch (command.type) {

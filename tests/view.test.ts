@@ -39,6 +39,7 @@ describe("viewFor", () => {
         "phase",
         "rematch",
         "shielded",
+        "winReason",
         "winner",
         "wins",
         "you",

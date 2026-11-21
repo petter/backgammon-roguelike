@@ -489,15 +489,15 @@
   }
 }
 
-/* Phones held sideways: everything has to fit in a short window. */
+/* Phones held sideways: everything has to fit in a short window without scrolling over decorative effects. */
 @media (max-height: 520px) {
   .go-bars i {
-    height: 4vh;
+    height: 2vh;
   }
 
   .go-stack {
-    gap: 4px;
-    padding-block: 4vh;
+    gap: 2px;
+    padding-block: 10px;
   }
 
   .go-motto {
@@ -505,16 +505,34 @@
   }
 
   .go-crest {
-    width: clamp(64px, 24vh, 150px);
+    width: clamp(52px, 17vh, 120px);
   }
 
   /* Room for the sagging last letter of DEFEAT above the ribbon. */
   .defeat .go-ribbon {
-    margin-top: 6px;
+    margin-top: 4px;
+  }
+
+  .go-tally b {
+    font-size: clamp(24px, 4.5vw, 38px);
+  }
+
+  .go-actions {
+    gap: 4px;
+    margin-top: 2px;
   }
 
   #rematch {
-    padding: 8px 32px;
+    padding: 6px 28px;
+    font-size: 14px;
+  }
+
+  #rematch-status {
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    white-space: nowrap;
   }
 }
 

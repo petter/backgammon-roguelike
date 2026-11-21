@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   cancelledSeeker,
+  emptyPresence,
   type GameStore,
+  type PresenceUpdate,
   type Room,
   type RoomUpdate,
   type Seeker,
@@ -19,7 +21,7 @@ function seeker(id: string, since: number, seen = since): Seeker {
 const grant = (token: string) => ({ code: "AAAAA", token });
 
 /** Behaviour every `GameStore` must share. Run it against each implementation. */
-export function storeContract(name: string, makeStore: () => GameStore): void {
+export function storeContract(name: string, makeStore: (now?: () => number) => GameStore): void {
   describe(`${name} store contract`, () => {
     it("creates, loads and refuses a duplicate code", async () => {
       const store = makeStore();
@@ -129,6 +131,31 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect(a).toHaveLength(1);
     });
 
+    it("delivers presence updates on their own channel, isolated from room move channels", async () => {
+      const store = makeStore();
+      const moves: RoomUpdate[] = [];
+      const seenA: PresenceUpdate[] = [];
+      const seenB: PresenceUpdate[] = [];
+      const stopMove = await store.subscribe("AAAAA", (u) => moves.push(u));
+      const stopA = await store.subscribePresence("room-1", (u) => seenA.push(u));
+      const stopB = await store.subscribePresence("room-2", (u) => seenB.push(u));
+      const update: PresenceUpdate = {
+        roomId: "room-1",
+        presence: { ...emptyPresence(), revision: 3 },
+        at: 5000,
+      };
+      await store.publishPresence("room-1", update);
+      expect(seenA).toEqual([update]);
+      expect(seenB).toEqual([]);
+      expect(moves).toEqual([]);
+
+      stopA();
+      await store.publishPresence("room-1", { ...update, at: 6000 });
+      expect(seenA).toHaveLength(1);
+      stopB();
+      stopMove();
+    });
+
     it("lists waiting seekers longest first and moves seen forward on a touch", async () => {
       const store = makeStore();
       await store.addSeeker(seeker("late", 2000));
@@ -233,6 +260,300 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       const listed = await store.waitingSeekers(1);
       if (listed[0]) listed[0].name = "changed again";
       expect((await store.touchSeeker("a", 1000))?.name).toBe("a");
+    });
+
+    it("tracks seat connection leases across multiple connections and disconnects", async () => {
+      let now = 1000;
+      const store = makeStore(() => now);
+      expect((await store.getPresence("room-p")).presence).toEqual({
+        revision: 0,
+        white: { connections: {}, disconnectedAt: null },
+        black: { connections: {}, disconnectedAt: null },
+      });
+
+      const first = await store.connectSeat("room-p", "white", "c1", 25_000);
+      expect(first.changed).toBe(true);
+      expect(first.now).toBe(1000);
+      expect(first.presence.revision).toBe(1);
+      expect(first.presence.white).toEqual({ connections: { c1: 26_000 }, disconnectedAt: null });
+
+      // A second live connection (e.g. socket rotation or second tab) does not flip presence.
+      now = 5000;
+      const second = await store.connectSeat("room-p", "white", "c2", 25_000);
+      expect(second.changed).toBe(false);
+      expect(second.presence.revision).toBe(2);
+      expect(second.presence.white.connections).toEqual({ c1: 26_000, c2: 30_000 });
+
+      // Closing the first connection while the second stays open leaves the seat online.
+      now = 6000;
+      const dropOne = await store.disconnectSeat("room-p", "white", "c1");
+      expect(dropOne?.changed).toBe(false);
+      expect(dropOne?.presence.white).toEqual({
+        connections: { c2: 30_000 },
+        disconnectedAt: null,
+      });
+
+      // Closing the last connection marks the seat disconnected at that instant.
+      now = 9000;
+      const dropLast = await store.disconnectSeat("room-p", "white", "c2");
+      expect(dropLast?.changed).toBe(true);
+      expect(dropLast?.presence.white).toEqual({ connections: {}, disconnectedAt: 9000 });
+
+      // Closing again is idempotent and does not shift disconnectedAt.
+      now = 12_000;
+      const dropAgain = await store.disconnectSeat("room-p", "white", "c2");
+      expect(dropAgain?.changed).toBe(false);
+      expect(dropAgain?.presence.white.disconnectedAt).toBe(9000);
+
+      // Reconnecting clears disconnectedAt, bumps revision, and flips presence back online.
+      now = 15_000;
+      const back = await store.connectSeat("room-p", "white", "c3", 25_000);
+      expect(back.changed).toBe(true);
+      expect(back.presence.revision).toBeGreaterThan(dropLast?.presence.revision ?? 0);
+      expect(back.presence.white).toEqual({ connections: { c3: 40_000 }, disconnectedAt: null });
+    });
+
+    it("renews live leases without resurrecting closed ones, and pins expired leases", async () => {
+      let now = 0;
+      const store = makeStore(() => now);
+      await store.connectSeat("room-r", "white", "w1", 25_000);
+      await store.connectSeat("room-r", "black", "b1", 25_000);
+
+      // Renewing a live connection extends its expiry and reports active: true.
+      now = 10_000;
+      const renewed = await store.renewSeat("room-r", "white", "w1", 30_000);
+      expect(renewed?.active).toBe(true);
+      expect(renewed?.presence.white.connections).toEqual({ w1: 40_000 });
+
+      // Once a connection closes, a late renew reports active: false and never resurrects it.
+      now = 12_000;
+      await store.disconnectSeat("room-r", "white", "w1");
+      now = 13_000;
+      const lateRenew = await store.renewSeat("room-r", "white", "w1", 30_000);
+      expect(lateRenew?.active).toBe(false);
+      expect(lateRenew?.presence.white).toEqual({ connections: {}, disconnectedAt: 12_000 });
+
+      // When black's lease expires without a clean close, pruning pins disconnectedAt to its expiry.
+      now = 30_000;
+      const afterExpiry = (await store.getPresence("room-r")).presence;
+      expect(afterExpiry.black).toEqual({ connections: {}, disconnectedAt: 25_000 });
+      // Later reads keep disconnectedAt pinned at 25_000 rather than drifting forward.
+      now = 45_000;
+      expect((await store.getPresence("room-r")).presence.black.disconnectedAt).toBe(25_000);
+    });
+
+    it("atomically rejects claimSeat when opponent reconnects or grace has not elapsed, and commits once eligible", async () => {
+      let now = 1000;
+      const store = makeStore(() => now);
+      const started: Room = {
+        id: "room-claim",
+        code: "CLAIM",
+        version: 1,
+        seats: {
+          white: { token: "w", name: "Ada", presence: true },
+          black: { token: "b", name: "Grace", presence: true },
+        },
+        game: {
+          board: { points: [], bar: { white: 0, black: 0 }, off: { white: 0, black: 0 } },
+          current: "white",
+          dice: [],
+          phase: "roll",
+          winner: null,
+          winReason: null,
+          cards: {
+            white: { deck: [], hand: [], discard: [], offer: [] },
+            black: { deck: [], hand: [], discard: [], offer: [] },
+          },
+          shielded: { white: false, black: false },
+          wins: { white: 0, black: 0 },
+          rematch: { white: false, black: false },
+          rng: 1,
+        },
+        gameStartedAt: 1000,
+        gameStartedMatch: 0,
+      };
+      const winning: Room = {
+        ...started,
+        version: 2,
+        game: {
+          ...started.game!,
+          phase: "over",
+          winner: "white",
+          winReason: "abandoned",
+          wins: { white: 1, black: 0 },
+        },
+      };
+      const timings = {
+        claimGraceMs: 30_000,
+        arrivalGraceMs: 10_000,
+      };
+      await store.create(started);
+      await store.connectSeat("room-claim", "white", "w1", 25_000);
+      await store.connectSeat("room-claim", "black", "b1", 25_000);
+
+      // Connected opponent: rejected atomically without modifying the room.
+      expect(await store.claimSeat(winning, 1, "black", timings)).toMatchObject({
+        ok: false,
+        reason: "online",
+      });
+      expect((await store.load("CLAIM"))?.version).toBe(1);
+
+      // Opponent disconnects; before 30s -> too_early.
+      now = 2000;
+      await store.disconnectSeat("room-claim", "black", "b1");
+      now = 20_000;
+      expect(await store.claimSeat(winning, 1, "black", timings)).toMatchObject({
+        ok: false,
+        reason: "too_early",
+        remainingMs: 12_000,
+      });
+
+      // Opponent reconnects right at 32s before claimSeat runs -> rejected as online!
+      now = 32_000;
+      await store.connectSeat("room-claim", "black", "b2", 25_000);
+      expect(await store.claimSeat(winning, 1, "black", timings)).toMatchObject({
+        ok: false,
+        reason: "online",
+      });
+      expect((await store.load("CLAIM"))?.version).toBe(1);
+
+      // Opponent disconnects again and stays away past 30s -> wrong expectedVersion conflicts.
+      now = 40_000;
+      await store.disconnectSeat("room-claim", "black", "b2");
+      now = 70_000;
+      expect(await store.claimSeat(winning, 0, "black", timings)).toMatchObject({
+        ok: false,
+        reason: "conflict",
+      });
+
+      // Matching version + elapsed grace -> atomically commits winning state.
+      const claimed = await store.claimSeat(winning, 1, "black", timings);
+      expect(claimed).toMatchObject({ ok: true, now: 70_000 });
+      expect((await store.load("CLAIM"))?.version).toBe(2);
+      expect((await store.load("CLAIM"))?.game?.winner).toBe("white");
+    });
+
+    it("keeps legacy rooms and unmarked seats ineligible for abandonment claims indefinitely", async () => {
+      let now = 1000;
+      const store = makeStore(() => now);
+      const timings = {
+        claimGraceMs: 30_000,
+        arrivalGraceMs: 10_000,
+      };
+      const baseGame: NonNullable<Room["game"]> = {
+        board: { points: [], bar: { white: 0, black: 0 }, off: { white: 0, black: 0 } },
+        current: "white",
+        dice: [],
+        phase: "roll",
+        winner: null,
+        winReason: null,
+        cards: {
+          white: { deck: [], hand: [], discard: [], offer: [] },
+          black: { deck: [], hand: [], discard: [], offer: [] },
+        },
+        shielded: { white: false, black: false },
+        wins: { white: 0, black: 0 },
+        rematch: { white: false, black: false },
+        rng: 1,
+      };
+      const winFor = (base: Room, winner: "white" | "black"): Room => ({
+        ...base,
+        version: base.version + 1,
+        game: {
+          ...baseGame,
+          phase: "over",
+          winner,
+          winReason: "abandoned",
+          wins: { white: winner === "white" ? 1 : 0, black: winner === "black" ? 1 : 0 },
+        },
+      });
+
+      // Case 1: New server created host (`presence: true`), old server handled guest join
+      // (so `gameStartedAt` is omitted). Even long past 310s (after old-server rotations),
+      // neither seat can be claimed against.
+      const mixedJoin: Room = {
+        id: "room-mixed-join",
+        code: "MIXED",
+        version: 1,
+        seats: {
+          white: { token: "w", name: "Ada", presence: true },
+          black: { token: "b", name: "Grace" },
+        },
+        game: baseGame,
+      };
+      await store.create(mixedJoin);
+      await store.connectSeat("room-mixed-join", "black", "b1", 25_000);
+      now = 1_000_000;
+      expect(await store.claimSeat(winFor(mixedJoin, "black"), 1, "white", timings)).toMatchObject({
+        ok: false,
+        reason: "online",
+      });
+
+      // Case 2: Legacy host (`presence` omitted), new server joined guest (`gameStartedAt` set).
+      // Even if a second tab connects to a new server and closes (setting `disconnectedAt`) and
+      // 10+ minutes elapse (covering old-server socket rotations), the unmarked seat stays ineligible.
+      now = 1000;
+      const secondTab: Room = {
+        id: "room-second-tab",
+        code: "TAB02",
+        version: 1,
+        seats: {
+          white: { token: "w", name: "Ada" },
+          black: { token: "b", name: "Grace", presence: true },
+        },
+        game: baseGame,
+        gameStartedAt: 1000,
+        gameStartedMatch: 0,
+      };
+      await store.create(secondTab);
+      await store.connectSeat("room-second-tab", "black", "b1", 25_000);
+      now = 2000;
+      await store.connectSeat("room-second-tab", "white", "w-tab2", 25_000);
+      now = 3000;
+      await store.disconnectSeat("room-second-tab", "white", "w-tab2");
+      now = 1_000_000;
+      expect(await store.claimSeat(winFor(secondTab, "black"), 1, "white", timings)).toMatchObject({
+        ok: false,
+        reason: "online",
+      });
+
+      // Case 3: Rematch started by an old server preserves the previous game's `gameStartedAt`
+      // and `gameStartedMatch: 0` even though `wins` now totals 1. A marked player who left on
+      // the previous result screen cannot be claimed immediately in the new rematch.
+      now = 1000;
+      const oldRematch: Room = {
+        id: "room-old-rematch",
+        code: "RMOLD",
+        version: 5,
+        seats: {
+          white: { token: "w", name: "Ada", presence: true },
+          black: { token: "b", name: "Grace", presence: true },
+        },
+        game: { ...baseGame, wins: { white: 1, black: 0 } },
+        gameStartedAt: 1000,
+        gameStartedMatch: 0,
+      };
+      await store.create(oldRematch);
+      await store.connectSeat("room-old-rematch", "white", "w1", 25_000);
+      await store.connectSeat("room-old-rematch", "black", "b1", 25_000);
+      now = 2000;
+      await store.disconnectSeat("room-old-rematch", "white", "w1");
+      now = 60_000;
+      expect(await store.claimSeat(winFor(oldRematch, "black"), 5, "white", timings)).toMatchObject(
+        { ok: false, reason: "online" },
+      );
+    });
+
+    it("hands out copies of presence, never shared references", async () => {
+      const store = makeStore(() => 1000);
+      await store.connectSeat("room-c", "white", "w1", 25_000);
+      const { presence: p } = await store.getPresence("room-c");
+      p.white.connections.w1 = 999_999;
+      p.white.disconnectedAt = 1234;
+      expect((await store.getPresence("room-c")).presence.white).toEqual({
+        connections: { w1: 26_000 },
+        disconnectedAt: null,
+      });
     });
   });
 }
