@@ -1,3 +1,4 @@
+import { Redis } from "ioredis";
 import { afterAll, describe, expect, it } from "vitest";
 import { createRedisStore, type RedisStore } from "../src/server/redisStore.ts";
 import { createRoom, joinRoom, openConnection } from "../src/server/room.ts";
@@ -58,6 +59,26 @@ describe.skipIf(!url)("redis", () => {
     expect(await store.load(code)).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 1300));
     expect(await store.load(code)).toBeNull();
+  });
+
+  it("registers no listener when Redis refuses the subscription", async () => {
+    const admin = new Redis(url ?? "");
+    const store = open();
+    const code = `s${Date.now()}`;
+    const ghost: number[] = [];
+    try {
+      await admin.call("ACL", "SETUSER", "default", "-subscribe");
+      await expect(store.subscribe(code, (u) => ghost.push(u.room.version))).rejects.toThrow();
+    } finally {
+      await admin.call("ACL", "SETUSER", "default", "+subscribe");
+    }
+    const healthy: number[] = [];
+    await store.subscribe(code, (u) => healthy.push(u.room.version));
+    await store.publish(code, { room: { code, version: 2, seats: {}, game: null }, events: [] });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(healthy).toEqual([2]);
+    expect(ghost).toEqual([]);
+    await admin.quit();
   });
 
   it("carries a game between two separate server instances", async () => {

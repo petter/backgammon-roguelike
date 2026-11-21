@@ -515,6 +515,84 @@ describe("playing", () => {
     }
   });
 
+  it("says nothing after close, even when a command was already under way", async () => {
+    const inner = createMemoryStore();
+    let release: (() => void) | null = null;
+    let hold = false;
+    const store: GameStore = {
+      ...inner,
+      load: async (code) => {
+        const room = await inner.load(code);
+        if (hold) await new Promise<void>((resolve) => (release = resolve));
+        return room;
+      },
+    };
+    const host = await createRoom(store, "Ada");
+    const white = await client(store, host.code, host.token);
+    hold = true;
+    const pending = white.send({ type: "roll" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    white.connection.close();
+    (release as unknown as () => void)();
+    await pending;
+    expect(white.inbox).toHaveLength(1);
+  });
+
+  it("evicts a connection whose room code now belongs to a different game", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const store = createMemoryStore(1000, () => now);
+      const fixed = (token: string) => ({ token: () => token, int: () => 0 });
+      const old = await createRoom(store, "Ada", fixed("old-host"));
+      const stale = await client(store, old.code, old.token);
+
+      // The room expires and the same code is handed out again, to other people.
+      now = 5000;
+      const fresh = await createRoom(store, "Eve", fixed("new-host"));
+      expect(fresh.code).toBe(old.code);
+      await joinRoom(store, fresh.code, "Mallory", fixed("new-guest"));
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(stale.inbox.at(-1)).toEqual({
+        type: "error",
+        message: "That game no longer exists",
+        fatal: true,
+      });
+      // Nothing from the new game reached the old connection, by push or by resync.
+      expect(JSON.stringify(stale.inbox)).not.toContain("Eve");
+      expect(stale.inbox.filter((m) => m.type === "state")).toHaveLength(1);
+
+      const count = stale.inbox.length;
+      await stale.send({ type: "roll" });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(stale.inbox.length).toBe(count);
+      expect((await store.load(fresh.code))?.version).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refuses a command from a connection whose room was replaced, before any resync", async () => {
+    let now = 0;
+    const store = createMemoryStore(1000, () => now);
+    const fixed = (token: string) => ({ token: () => token, int: () => 0 });
+    const old = await createRoom(store, "Ada", fixed("old-host"));
+    await joinRoom(store, old.code, "Grace", fixed("old-guest"));
+    const stale = await client(store, old.code, "old-host");
+    const staleGuest = await client(store, old.code, "old-guest");
+    now = 5000;
+    await createRoom(store, "Eve", fixed("new-host"));
+    await joinRoom(store, old.code, "Mallory", fixed("new-guest"));
+    const before = (await store.load(old.code))?.version;
+    for (const connection of [stale, staleGuest]) {
+      await connection.send({ type: "pickCard", index: 0 });
+      expect(connection.inbox.at(-1)).toMatchObject({ type: "error", fatal: true });
+    }
+    expect((await store.load(old.code))?.version).toBe(before);
+    expect(JSON.stringify([stale.inbox, staleGuest.inbox])).not.toContain("Mallory");
+  });
+
   it("reports a room that vanished as a fatal error", async () => {
     let gone = false;
     const inner = createMemoryStore();

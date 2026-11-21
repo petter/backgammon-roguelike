@@ -184,6 +184,21 @@ export async function openConnection(
 
   let sent = -1;
   let closed = false;
+  /** Sends an error, unless the connection is closed. */
+  const complain = (message: string, fatal: boolean) => {
+    if (!closed) send({ type: "error", message, fatal });
+  };
+  /**
+   * Whether this room is still the one the token was issued for. A code can be reused after
+   * a room expires; a connection that outlived its room must not see the new one.
+   */
+  const owns = (room: Room) => seatOf(room, token) === seat;
+  let stop = () => {};
+  /** Ends a connection whose room is gone or has been replaced. */
+  const evict = () => {
+    complain("That game no longer exists", true);
+    stop();
+  };
   /**
    * Sends a room state unless this connection already has that version or a newer one.
    * The version counts as sent only once `send` has returned: if it throws, a later
@@ -191,6 +206,7 @@ export async function openConnection(
    */
   const deliver = (room: Room, events: GameEvent[]) => {
     if (closed || room.version <= sent) return;
+    if (!owns(room)) return evict();
     send(stateMessage(room, seat, events));
     sent = room.version;
   };
@@ -211,24 +227,26 @@ export async function openConnection(
   const resync = setInterval(() => {
     store
       .load(code)
-      .then((room) => room && deliver(room, []))
+      .then((room) => (room ? deliver(room, []) : undefined))
       .catch((error) => console.error("Could not resync a room", error));
   }, resyncMs);
   // Never the reason a process stays alive.
   (resync as { unref?: () => void }).unref?.();
 
+  stop = () => {
+    // Also stops a resync that is already reading from delivering once it returns.
+    closed = true;
+    clearInterval(resync);
+    unsubscribe();
+  };
+
   return {
     async command(command) {
       for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
         const room = await store.load(code);
-        if (!room) {
-          send({ type: "error", message: "That game no longer exists", fatal: true });
-          return;
-        }
-        if (!room.game) {
-          send({ type: "error", message: "The game has not started yet", fatal: false });
-          return;
-        }
+        if (closed) return;
+        if (!room || !owns(room)) return evict();
+        if (!room.game) return complain("The game has not started yet", false);
         let result: ReturnType<typeof applyCommand>;
         try {
           // Fresh randomness for every command. The stored RNG state is small enough to
@@ -237,8 +255,7 @@ export async function openConnection(
           result = applyCommand(game, seat, command);
         } catch (error) {
           if (!(error instanceof GameError)) throw error;
-          send({ type: "error", message: error.message, fatal: false });
-          return;
+          return complain(error.message, false);
         }
         const next: Room = { ...room, version: room.version + 1, game: result.state };
         if (await store.save(next, room.version)) {
@@ -254,13 +271,8 @@ export async function openConnection(
           return;
         }
       }
-      send({ type: "error", message: "The game is busy, try again", fatal: false });
+      complain("The game is busy, try again", false);
     },
-    close() {
-      // Also stops a resync that is already reading from delivering once it returns.
-      closed = true;
-      clearInterval(resync);
-      unsubscribe();
-    },
+    close: () => stop(),
   };
 }

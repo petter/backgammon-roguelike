@@ -37,6 +37,23 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect((await store.load("AAAAA"))?.version).toBe(0);
     });
 
+    it("lets an old unsubscribe be called again without detaching a newer subscriber", async () => {
+      const store = makeStore();
+      const first: number[] = [];
+      const second: number[] = [];
+      const stopFirst = await store.subscribe("AAAAA", (u) => first.push(u.room.version));
+      stopFirst();
+      const stopSecond = await store.subscribe("AAAAA", (u) => second.push(u.room.version));
+      stopFirst();
+      await store.publish("AAAAA", { room: room("AAAAA", 1), events: [] });
+      expect(first).toEqual([]);
+      expect(second).toEqual([1]);
+      stopSecond();
+      stopSecond();
+      await store.publish("AAAAA", { room: room("AAAAA", 2), events: [] });
+      expect(second).toEqual([1]);
+    });
+
     it("keeps delivering when one listener throws", async () => {
       const store = makeStore();
       const seen: number[] = [];

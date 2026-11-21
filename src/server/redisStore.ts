@@ -78,14 +78,21 @@ export function createRedisStore(url: string, ttlSeconds = DAY_SECONDS): RedisSt
         listeners.set(channel, set);
       }
       set.add(listener);
-      // Idempotent, and resolves only once Redis has confirmed the subscription.
-      await subscribing().subscribe(channel);
-      return () => {
+      const remove = () => {
         set.delete(listener);
         if (set.size > 0 || listeners.get(channel) !== set) return;
         listeners.delete(channel);
         subscriber?.unsubscribe(channel).catch(() => {});
       };
+      try {
+        // Idempotent, and resolves only once Redis has confirmed the subscription.
+        await subscribing().subscribe(channel);
+      } catch (error) {
+        // The caller gets no handle to remove the listener with, so remove it here.
+        remove();
+        throw error;
+      }
+      return remove;
     },
     async close() {
       await Promise.all([redis.quit(), subscriber?.quit()].map((p) => p?.catch(() => {})));

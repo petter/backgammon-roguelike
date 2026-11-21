@@ -45,7 +45,8 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       set.add(listener);
       return () => {
         set.delete(listener);
-        if (set.size === 0) listeners.delete(code);
+        // Only drop the entry if it is still this set: a later subscriber may have its own.
+        if (set.size === 0 && listeners.get(code) === set) listeners.delete(code);
       };
     },
   };
