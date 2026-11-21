@@ -1,7 +1,12 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 import type { Player } from "../core/board.ts";
 import { type PickTarget, pickAt, TRAY_W, TRAY_X } from "./layout.ts";
+import { clothTexture, vignetteTexture } from "./textures.ts";
+
+/** Height of the table top the board rests on: the underside of the board. */
+const TABLE_Y = -0.5;
 
 const VIEW_TARGET = new THREE.Vector3((TRAY_X + TRAY_W / 2 - 7) / 2, 0, 0);
 const VIEW_HALF_W = 8.4;
@@ -33,17 +38,28 @@ export function createStage(container: HTMLElement): Stage {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   container.append(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x14110f);
+  scene.background = vignetteTexture("#2a1f17", "#0b0908");
+  // A soft studio room, reflected in the lacquer of the checkers and the frame.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.45;
+  pmrem.dispose();
   const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 200);
 
-  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x2a2018, 1.1));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  scene.add(new THREE.HemisphereLight(0xfff1dc, 0x2a1d14, 0.55));
+  const sun = new THREE.DirectionalLight(0xffeedd, 2.4);
   sun.position.set(-6, 14, 6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 4;
   const shadowCam = sun.shadow.camera;
   shadowCam.left = -11;
   shadowCam.right = 11;
@@ -51,6 +67,29 @@ export function createStage(container: HTMLElement): Stage {
   shadowCam.bottom = -9;
   shadowCam.far = 40;
   scene.add(sun);
+
+  // The table, outside `world` so it stays put while the board shakes on it.
+  const weave = clothTexture("#a8a8a8", 31);
+  weave.repeat.set(20, 20);
+  const table = new THREE.Mesh(
+    new THREE.CircleGeometry(30, 64),
+    new THREE.MeshStandardMaterial({ color: 0x3b2a20, map: weave, roughness: 0.95 }),
+  );
+  table.rotation.x = -Math.PI / 2;
+  table.position.y = TABLE_Y;
+  table.receiveShadow = true;
+  // A dark falloff over the cloth, as if one lamp hangs over the board.
+  const dusk = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshBasicMaterial({
+      map: vignetteTexture("rgba(0,0,0,0)", "rgba(0,0,0,0.9)", 0.3),
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  dusk.rotation.x = -Math.PI / 2;
+  dusk.position.set(VIEW_TARGET.x, TABLE_Y + 0.005, 0);
+  scene.add(table, dusk);
 
   const world = new THREE.Group();
   scene.add(world);
