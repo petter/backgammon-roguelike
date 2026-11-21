@@ -37,7 +37,6 @@
 }
 
 .go-backdrop,
-.go-flash,
 .go-sparks {
   position: absolute;
   inset: 0;
@@ -47,15 +46,32 @@
 }
 
 .go-backdrop {
-  background: radial-gradient(ellipse at 50% 40%, #1a0f0566 0%, #0a0604d9 55%, #000 100%);
-  backdrop-filter: blur(6px) saturate(0.6) brightness(0.45);
+  background: radial-gradient(ellipse at 50% 40%, #120a04b8 0%, #0a0604e6 55%, #000 100%);
+  backdrop-filter: blur(10px) saturate(0.5) brightness(0.3);
 }
 
 .defeat .go-backdrop {
   background:
-    radial-gradient(ellipse at 50% 40%, #0000 0%, #0a0606e0 60%, #000 100%),
-    radial-gradient(ellipse at 50% 110%, #5a0d0d88, #0000 60%);
-  backdrop-filter: blur(5px) grayscale(1) brightness(0.45);
+    radial-gradient(ellipse at 50% 40%, #0a0606b0 0%, #0a0606e6 60%, #000 100%),
+    radial-gradient(ellipse at 50% 110%, #6a0f0f99, #0000 60%);
+  backdrop-filter: blur(10px) grayscale(1) brightness(0.3);
+}
+
+/* The HUD fades away behind the result; a notice, such as a refused rematch, still shows. */
+#hud .row > * {
+  transition: opacity 0.6s;
+}
+
+#hud.covered .row > :not(#notice) {
+  opacity: 0;
+}
+
+/* Above the rays and the particles, so the letterbox stays clean. */
+.go-bars {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
 }
 
 /* Film bars, with a fine line of metal along their inner edge. */
@@ -79,32 +95,44 @@
   box-shadow: 0 -1px 0 color-mix(in srgb, var(--metal) 45%, transparent);
 }
 
-/* The streak of light that splits the screen just before the crest strikes. */
+/* The streak of light that splits the screen just before the crest strikes, through its middle. */
 .go-line {
   position: absolute;
-  top: 34%;
-  left: 0;
-  right: 0;
+  top: 50%;
+  left: 50%;
+  width: 200vw;
   height: 2px;
+  margin: -1px 0 0 -100vw;
   background: linear-gradient(90deg, #0000, #fff6d6 30%, #fff 50%, #fff6d6 70%, #0000);
   box-shadow: 0 0 24px 4px #ffd56a99;
   opacity: 0;
   pointer-events: none;
 }
 
+/* The flash of the strike, centred on the crest. */
 .go-flash {
-  background: radial-gradient(circle at 50% 34%, #fff8e0, #ffcf6066 30%, #0000 65%);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 240vmax;
+  height: 240vmax;
+  margin: -120vmax 0 0 -120vmax;
+  background: radial-gradient(circle closest-side, #fff8e0, #ffcf6066 25%, #0000 60%);
   mix-blend-mode: screen;
   opacity: 0;
+  pointer-events: none;
 }
 
+/* The loser's flash is a red glow behind the crest, not light over it. */
 .defeat .go-flash {
-  background: radial-gradient(circle at 50% 34%, #b31a1a, #5a0d0d88 35%, #0000 70%);
+  z-index: -1;
+  background: radial-gradient(circle closest-side, #b31a1a, #5a0d0d88 30%, #0000 60%);
   mix-blend-mode: normal;
 }
 
 .go-stack {
   position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -115,7 +143,8 @@
 
 .go-crest {
   position: relative;
-  width: clamp(120px, min(30vmin, 25vh), 300px);
+  isolation: isolate;
+  width: clamp(120px, min(35vmin, 29vh), 320px);
   aspect-ratio: 1;
 }
 
@@ -142,22 +171,34 @@
   stroke-dashoffset: 0;
 }
 
-/* God rays turning slowly behind the crest. */
+/* God rays turning slowly behind the crest: fine soft beams over a few broad ones. */
 .go-rays {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 230vmax;
-  height: 230vmax;
-  margin: -115vmax 0 0 -115vmax;
-  background: repeating-conic-gradient(from 0deg, #ffd56a2e 0deg 5deg, #0000 5deg 15deg);
-  mask: radial-gradient(circle, #000 0%, #0008 12%, #0000 32%);
+  width: 110vmax;
+  height: 110vmax;
+  margin: -55vmax 0 0 -55vmax;
+  background:
+    repeating-conic-gradient(#0000 0deg, #ffd56a36 2.5deg, #0000 5deg 18deg),
+    repeating-conic-gradient(from 4deg, #0000 0deg, #ffd56a1a 5deg, #0000 10deg 40deg);
+  mask: radial-gradient(circle closest-side, #000, #0008 37%, #0000);
   animation: go-spin 70s linear infinite;
   pointer-events: none;
 }
 
+/* The loser gets no light, only a dim red glow that breathes behind the broken crest. */
 .defeat .go-rays {
-  display: none;
+  width: 70vmax;
+  height: 70vmax;
+  margin: -35vmax 0 0 -35vmax;
+  background: radial-gradient(circle closest-side, #8a141470, #4a0a0a40 45%, #0000);
+  mask: none;
+  animation: none;
+}
+
+.go-live.defeat .go-rays {
+  animation: go-breathe 6s ease-in-out infinite;
 }
 
 .go-ring {
@@ -214,7 +255,7 @@
   animation-delay: calc(var(--i) * 70ms + 0.4s);
 }
 
-.go-live .go-art {
+.go-live.victory .go-art {
   animation: go-float 4s ease-in-out infinite;
 }
 
@@ -346,9 +387,36 @@
   background: linear-gradient(180deg, #642020, #240d0d);
 }
 
+#rematch:focus-visible {
+  outline: 2px solid var(--metal-light);
+  outline-offset: 4px;
+}
+
 #rematch-status {
-  min-height: 1.4em;
   margin: 0;
+}
+
+#rematch-status:empty {
+  display: none;
+}
+
+#leave {
+  padding: 6px 12px;
+  font:
+    700 12px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.2em;
+  text-decoration: none;
+  text-transform: uppercase;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+
+#leave:hover,
+#leave:focus-visible {
+  background: none;
+  opacity: 1;
 }
 
 @keyframes go-spin {
@@ -368,6 +436,12 @@
     background-position:
       -100% 0,
       0 0;
+  }
+}
+
+@keyframes go-breathe {
+  50% {
+    opacity: 0.55;
   }
 }
 
@@ -393,12 +467,37 @@
   .go-stack {
     padding-block: 7vh;
   }
+
+  .go-crest {
+    width: clamp(120px, min(44vw, 29vh), 220px);
+  }
+}
+
+/* Phones held sideways: everything has to fit in a short window. */
+@media (max-height: 520px) {
+  .go-bars i {
+    height: 4vh;
+  }
+
+  .go-stack {
+    gap: 4px;
+    padding-block: 4vh;
+  }
+
+  .go-crest {
+    width: clamp(64px, 22vh, 140px);
+  }
+
+  .go-motto {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .go-rays,
   .go-live .go-art,
-  .go-live.victory #result span {
+  .go-live.victory #result span,
+  .go-pop {
     animation: none;
   }
 }

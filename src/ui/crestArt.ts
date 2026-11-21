@@ -24,8 +24,8 @@ export type Outcome = keyof typeof METALS;
 const C = 100;
 
 /** Where the loser's crest splits: from the rim down into the portrait. */
-const CRACK = "M134 22l-10 23 8 9-15 20 6 8-13 19 4 12";
-const SPLINTERS = "M124 45l-16-3-7 11M117 74l14 8M114 102l-11 6";
+const CRACK = "M136 30l-12 17 8 9-15 20 6 8-13 19 4 12-8 14 5 10-4 34";
+const SPLINTERS = "M124 47l-16-3-7 11M117 76l14 8M110 104l-12 6M107 140l12 7";
 
 function polar(radius: number, degrees: number): string {
   const a = ((degrees - 90) * Math.PI) / 180;
@@ -52,7 +52,11 @@ function laurel(side: -1 | 1): string {
     const size = 1 - i * 0.045;
     return `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(5 * size).toFixed(1)}" ry="${(11 * size).toFixed(1)}" transform="rotate(${tilt.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
   }).join("");
-  return `<g class="go-laurel" fill="url(#go-metal)" stroke="#0006" stroke-width="0.8">${leaves}</g>`;
+  // The stem the leaves grow from: an arc just inside them.
+  const from = polar(88, 180 - side * 22);
+  const to = polar(88, 180 - side * 150);
+  const stem = `<path d="M${from} A88 88 0 0 ${side < 0 ? 1 : 0} ${to}" fill="none" stroke="url(#go-metal)" stroke-width="2.2"/>`;
+  return `<g class="go-laurel" fill="url(#go-metal)" stroke="#0006" stroke-width="0.8">${stem}${leaves}</g>`;
 }
 
 /**
@@ -90,10 +94,11 @@ export function crestArt(outcome: Outcome, character: CharacterId): string {
     ${
       victory
         ? ""
-        : `<g fill="none" stroke-linejoin="bevel" stroke-linecap="round">
-            <path class="go-crack" pathLength="1" d="${CRACK}" stroke="#e8eef5" stroke-width="6.5" opacity="0.55"/>
-            <path class="go-crack" pathLength="1" d="${CRACK}" stroke="#08080a" stroke-width="4"/>
-            <path class="go-crack" pathLength="1" d="${SPLINTERS}" stroke="#08080a" stroke-width="2.4"/>
+        : `<clipPath id="go-face"><circle cx="100" cy="100" r="79"/></clipPath>
+          <g fill="none" stroke-linejoin="miter" stroke-linecap="butt" clip-path="url(#go-face)">
+            <path class="go-crack" pathLength="1" d="${CRACK}" stroke="#e8eef5" stroke-width="1.2" opacity="0.5" transform="translate(1.4 1)"/>
+            <path class="go-crack" pathLength="1" d="${CRACK}" stroke="#08080a" stroke-width="2.4"/>
+            <path class="go-crack" pathLength="1" d="${SPLINTERS}" stroke="#08080a" stroke-width="1.4"/>
           </g>`
     }
   </svg>`;

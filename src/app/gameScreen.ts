@@ -60,6 +60,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let checkers: CheckersView | null = null;
   let selected: number | "bar" | null = null;
   let message = "";
+  /** The latest update carried the winning move itself, so the result screen makes an entrance. */
+  let justWon = false;
   let offline = false;
 
   const dice = new DiceView();
@@ -135,6 +137,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       rolling,
       local: options.local,
       message,
+      justWon,
     });
   };
 
@@ -199,6 +202,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (!options.local) stage.setSeat(update.view.you);
     }
     message = "";
+    justWon = update.events.some((event) => event.type === "gameWon");
     if (checkers) {
       message = play(update.events, checkers, update.view);
     } else {

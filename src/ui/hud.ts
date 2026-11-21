@@ -33,6 +33,8 @@ export interface HudModel {
   /** Both seats share this screen, so name the player instead of saying "you". */
   local: boolean;
   message: string;
+  /** The game was won in the latest update, as it happened rather than from a snapshot. */
+  justWon: boolean;
 }
 
 export interface Hud {

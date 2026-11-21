@@ -73,7 +73,7 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
         x: Math.random() * w,
         y: -10,
         vx: (Math.random() - 0.5) * 10,
-        vy: 18 + Math.random() * 30,
+        vy: 35 + Math.random() * 45,
         age: 0,
         life: 8 + Math.random() * 6,
         size: 1 + Math.random() * 2.2,
@@ -117,8 +117,8 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       const fade = 1 - p.age / p.life;
-      // Ambient particles fade in too, so none pops into view.
-      const alpha = p.streak ? fade : Math.min(1, p.age * 2) * fade;
+      // Ambient particles fade in and out over a couple of seconds, so none pops.
+      const alpha = p.streak ? fade : Math.min(1, p.age * 2) * Math.min(1, (p.life - p.age) / 2);
       if (p.streak) {
         context.strokeStyle = `hsla(${p.hue}, 100%, ${60 + 30 * fade}%, ${alpha})`;
         context.lineWidth = p.size;
@@ -148,12 +148,41 @@ export function createSparks(canvas: HTMLCanvasElement): Sparks {
       particles = [];
       spawnDebt = 0;
       resize();
+      // Ash is already falling everywhere when the screen opens, not only at the top.
+      if (next === "defeat") {
+        for (let i = 0; i < 70; i++) {
+          ambient();
+          const p = particles[particles.length - 1];
+          p.y = Math.random() * window.innerHeight;
+          p.age = Math.random() * p.life * 0.5;
+        }
+      }
       cancelAnimationFrame(frame);
       last = performance.now();
       frame = requestAnimationFrame(tick);
     },
     burst(x, y) {
       const victory = outcome === "victory";
+      // The loser's crest throws a few dying embers among the dust.
+      if (!victory) {
+        for (let i = 0; i < 24; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 200 + Math.random() * 380;
+          add({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 60,
+            age: 0,
+            life: 0.5 + Math.random() * 0.7,
+            size: 1 + Math.random() * 1.4,
+            hue: 6 + Math.random() * 14,
+            streak: true,
+            sway: 0,
+            drag: 2,
+          });
+        }
+      }
       const count = victory ? 160 : 70;
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;

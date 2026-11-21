@@ -21,6 +21,11 @@ export interface GameOverModel {
   lobby: LobbyView;
   /** Hot-seat: there is no loser on this screen, so it always celebrates the winner. */
   local: boolean;
+  /**
+   * The game was won just now, before the viewer's eyes. Otherwise (a reload, a late
+   * reconnect) the result is simply shown as it stands, without the entrance.
+   */
+  justWon: boolean;
 }
 
 export interface GameOverScreen {
@@ -48,6 +53,7 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
   const bars = [...root.querySelectorAll<HTMLElement>(".go-bars i")];
   const line = part(".go-line");
   const flash = part(".go-flash");
+  const hud = el("hud");
   const crest = part(".go-crest");
   const rays = part(".go-rays");
   const ring = part(".go-ring");
@@ -88,6 +94,12 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
     sparks.stop();
     gsap.set(animated(), { clearProps: "all" });
     root.classList.remove("go-live");
+  };
+
+  /** The HUD fades out behind the result and takes no input while it is up. */
+  const coverHud = (covered: boolean) => {
+    hud.classList.toggle("covered", covered);
+    hud.inert = covered;
   };
 
   /** Lays out everything for this result, before it is animated in. */
@@ -143,20 +155,25 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
   };
 
   /** The entrance: bars close in, the crest strikes, the word lands, then the controls. */
-  const play = (outcome: Outcome) => {
+  const play = (outcome: Outcome, entrance: boolean) => {
     const victory = outcome === "victory";
+    const still = !entrance || prefersLessMotion();
+    const narrow = window.innerWidth <= 640;
     const letters = [...title.children];
     const cracks = [...art.querySelectorAll(".go-crack")];
     const count = score.querySelector<HTMLElement>("b[data-before]");
     const after = count?.textContent ?? "";
     if (count) count.textContent = count.dataset.before ?? after;
     const impact = IMPACT_AT;
-    sparks.start(outcome);
+    if (!prefersLessMotion()) sparks.start(outcome);
 
     const tl = gsap.timeline({ onComplete: () => root.classList.add("go-live") });
-    tl.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.3)
+    // Half dark before the strike, so the board can still be seen taking the blow.
+    tl.fromTo(backdrop, { opacity: 0 }, { opacity: 0.5, duration: 0.5, ease: "power2.out" }, 0.3)
+      .to(backdrop, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, impact + 0.15)
       .fromTo(bars, { scaleY: 0 }, { scaleY: 1, duration: 0.5, ease: "power3.out" }, 0.35)
-      .set([ribbon, score, actionsBox, ...letters, ring, rays], { opacity: 0 }, 0)
+      .set([ribbon, score, ...letters, ring, rays], { opacity: 0 }, 0)
+      .set(actionsBox, { autoAlpha: 0 }, 0)
       .set(crest, { opacity: 0 }, 0);
 
     if (victory) {
@@ -185,11 +202,15 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
           },
           impact + 0.1,
         )
-        .from(title, { letterSpacing: "0.5em", duration: 1.1, ease: "power3.out" }, impact + 0.1);
+        .from(
+          title,
+          { letterSpacing: narrow ? "0.25em" : "0.5em", duration: 1.1, ease: "power3.out" },
+          impact + 0.1,
+        );
     } else {
       tl.fromTo(
         crest,
-        { y: () => -window.innerHeight * 0.7, rotation: -12, opacity: 1 },
+        { y: () => -window.innerHeight * 0.7, rotation: -12, opacity: 1, immediateRender: false },
         { y: 0, rotation: 0, duration: 0.4, ease: "power3.in" },
         impact - 0.4,
       )
@@ -205,11 +226,18 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
           { strokeDashoffset: 0, duration: 0.3, ease: "power1.in", stagger: 0.12 },
           impact + 0.15,
         )
+        .fromTo(rays, { opacity: 0 }, { opacity: 1, duration: 1.4 }, impact)
+        // Heavy letters: they drop like iron and stop dead, each with a small jolt.
         .fromTo(
           letters,
-          { y: -90, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.7, ease: "bounce.out", stagger: 0.08 },
-          impact + 0.25,
+          { y: -110, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.35, ease: "power4.in", stagger: 0.05 },
+          impact + 0.12,
+        )
+        .to(
+          title,
+          { keyframes: { y: [0, 5, -1, 0] }, duration: 0.3, ease: "none" },
+          impact + 0.47 + 0.05 * (letters.length - 1),
         )
         // The last letter works loose and sags.
         .to(
@@ -240,6 +268,7 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
       )
       .call(
         () => {
+          if (still) return;
           const box = crest.getBoundingClientRect();
           sparks.burst(box.left + box.width / 2, box.top + box.height / 2);
         },
@@ -257,6 +286,7 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
         () => {
           if (!count) return;
           count.textContent = after;
+          if (still) return;
           count.classList.remove("go-pop");
           void count.offsetWidth;
           count.classList.add("go-pop");
@@ -264,18 +294,17 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
         [],
         impact + 1.15,
       )
+      // Hidden controls take no clicks: a stray click after the last move must not leave.
       .fromTo(
         actionsBox,
-        { opacity: 0, y: 18 },
-        { opacity: 1, y: 0, duration: 0.45 },
+        { autoAlpha: 0, y: 18 },
+        { autoAlpha: 1, y: 0, duration: 0.45, immediateRender: false },
         impact + 1.3,
-      );
+      )
+      .call(() => rematch.focus({ preventScroll: true }), [], impact + 1.3);
 
     intro = tl;
-    if (prefersLessMotion()) {
-      tl.progress(1);
-      sparks.stop();
-    }
+    if (still) tl.progress(1);
   };
 
   return {
@@ -288,7 +317,8 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
         stop();
         build(model, outcome);
         root.hidden = false;
-        play(outcome);
+        coverHud(true);
+        play(outcome, model.justWon);
       }
       const asked = view.rematch[view.you];
       rematch.textContent = model.local ? "Play again" : "Rematch";
@@ -302,6 +332,7 @@ export function createGameOver(actions: { onRematch(): void; onLeave(): void }):
     hide() {
       if (root.hidden) return;
       root.hidden = true;
+      coverHud(false);
       stop();
     },
   };
