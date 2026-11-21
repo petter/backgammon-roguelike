@@ -35,6 +35,8 @@ export interface GameScreenOptions {
   onStarted(): void;
   /** The session ended for good, for example because the room is gone. */
   onFatal(message: string): void;
+  /** The player wants to go back to the start screen. */
+  onLeave(): void;
 }
 
 /**
@@ -160,6 +162,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         settleDice(null, event.player);
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
+      } else if (event.type === "gameStarted") {
+        // A rematch: everything goes back to the starting position.
+        pieces.reset(next.board);
+        settleDice(null, event.first);
+        text = `New game: ${name(event.first)} starts`;
       }
     }
     return text;
@@ -232,6 +239,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     },
     onBlocked: (reason) => hud.notify(reason),
     onPick: (index) => session.send({ type: "pickCard", index }),
+    onRematch: () => {
+      if (view?.phase === "over") session.send({ type: "rematch" });
+    },
+    onLeave: options.onLeave,
   };
 
   stageEl.addEventListener(

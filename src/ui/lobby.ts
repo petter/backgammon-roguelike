@@ -1,9 +1,17 @@
+import { CHARACTER_IDS, CHARACTERS, type CharacterId, characterOf } from "../core/characters.ts";
 import { CODE_LENGTH, normalizeCode } from "../net/protocol.ts";
+import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
 
+/** What a player chooses about themselves before taking a seat. */
+export interface PlayerChoice {
+  name: string;
+  character: CharacterId;
+}
+
 export interface LobbyActions {
-  onCreate(name: string): void;
-  onJoin(code: string, name: string): void;
+  onCreate(player: PlayerChoice): void;
+  onJoin(code: string, player: PlayerChoice): void;
   onLocal(): void;
 }
 
@@ -17,21 +25,57 @@ export interface LobbyUi {
 }
 
 const NAME_KEY = "name";
+const CHARACTER_KEY = "character";
 
-function recall(): string {
+function recall(key: string): string {
   try {
-    return localStorage.getItem(NAME_KEY) ?? "";
+    return localStorage.getItem(key) ?? "";
   } catch {
     return "";
   }
 }
 
-function remember(name: string): void {
+function remember(key: string, value: string): void {
   try {
-    localStorage.setItem(NAME_KEY, name);
+    localStorage.setItem(key, value);
   } catch {
-    // Storage can be unavailable; the name is only a convenience.
+    // Storage can be unavailable; remembering the choice is only a convenience.
   }
+}
+
+/** Fills the picker: one radio button per character, drawn as its medallion. */
+function characterPicker(root: HTMLElement, chosen: CharacterId): () => CharacterId {
+  const motto = document.createElement("p");
+  motto.className = "quiet motto";
+  const options = document.createElement("div");
+  options.className = "character-options";
+  let current = chosen;
+  const show = () => {
+    motto.textContent = `${CHARACTERS[current].name}. ${CHARACTERS[current].motto}`;
+  };
+  for (const id of CHARACTER_IDS) {
+    const label = document.createElement("label");
+    label.className = "character";
+    label.title = CHARACTERS[id].name;
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "character";
+    input.value = id;
+    input.checked = id === chosen;
+    input.setAttribute("aria-label", CHARACTERS[id].name);
+    input.addEventListener("change", () => {
+      current = id;
+      show();
+    });
+    const art = document.createElement("span");
+    art.className = "portrait";
+    art.innerHTML = characterArt(id);
+    label.append(input, art);
+    options.append(label);
+  }
+  show();
+  root.append(options, motto);
+  return () => current;
 }
 
 export function createLobbyUi(actions: LobbyActions): LobbyUi {
@@ -45,13 +89,15 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const buttons = [...menu.querySelectorAll("button")];
   let link = "";
 
-  name.value = recall();
-  const playerName = () => {
-    remember(name.value.trim());
-    return name.value.trim();
+  name.value = recall(NAME_KEY);
+  const character = characterPicker(el("characters"), characterOf(recall(CHARACTER_KEY)));
+  const player = (): PlayerChoice => {
+    remember(NAME_KEY, name.value.trim());
+    remember(CHARACTER_KEY, character());
+    return { name: name.value.trim(), character: character() };
   };
 
-  el("create").addEventListener("click", () => actions.onCreate(playerName()));
+  el("create").addEventListener("click", () => actions.onCreate(player()));
   el("local").addEventListener("click", () => actions.onLocal());
   menu.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -61,7 +107,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       code.focus();
       return;
     }
-    actions.onJoin(wanted, playerName());
+    actions.onJoin(wanted, player());
   });
   copy.addEventListener("click", async () => {
     try {

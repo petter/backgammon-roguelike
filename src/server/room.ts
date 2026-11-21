@@ -1,5 +1,14 @@
 import type { Player } from "../core/board.ts";
-import { applyCommand, type Command, GameError, type GameEvent, newGame } from "../core/game.ts";
+import { characterOf } from "../core/characters.ts";
+import {
+  applyCommand,
+  type Command,
+  GameError,
+  type GameEvent,
+  type GameSeeds,
+  type GameState,
+  newGame,
+} from "../core/game.ts";
 import { redactEvent, viewFor } from "../core/view.ts";
 import {
   CODE_ALPHABET,
@@ -50,11 +59,27 @@ function cleanName(raw: unknown, fallback: string): string {
   return name || fallback;
 }
 
+/** Three unrelated secrets for a new game, so neither deck gives the other away. */
+function freshSeeds(entropy: Entropy): GameSeeds {
+  return {
+    white: entropy.int(SEED_RANGE),
+    black: entropy.int(SEED_RANGE),
+    play: entropy.int(SEED_RANGE),
+  };
+}
+
 function randomCode(entropy: Entropy): string {
   return Array.from(
     { length: CODE_LENGTH },
     () => CODE_ALPHABET[entropy.int(CODE_ALPHABET.length)],
   ).join("");
+}
+
+/** A game saved before matches kept a score has none; give it an empty one. */
+function upToDate(game: GameState): GameState {
+  const none = { white: 0, black: 0 };
+  const no = { white: false, black: false };
+  return { ...game, wins: game.wins ?? none, rematch: game.rematch ?? no };
 }
 
 function seatOf(room: Room, token: string): Player | null {
@@ -67,7 +92,7 @@ function seatOf(room: Room, token: string): Player | null {
 function lobbyView(room: Room, you: Player): LobbyView {
   const player = (seat: Player) => {
     const taken = room.seats[seat];
-    return taken ? { name: taken.name } : null;
+    return taken ? { name: taken.name, character: characterOf(taken.character) } : null;
   };
   return { code: room.code, you, players: { white: player("white"), black: player("black") } };
 }
@@ -78,7 +103,7 @@ export function stateMessage(room: Room, seat: Player, events: GameEvent[]): Ser
     type: "state",
     version: room.version,
     lobby: lobbyView(room, seat),
-    view: room.game ? viewFor(room.game, seat) : null,
+    view: room.game ? viewFor(upToDate(room.game), seat) : null,
     events: events.map((event) => redactEvent(event, seat)),
   };
 }
@@ -88,11 +113,13 @@ export async function createRoom(
   store: GameStore,
   name: unknown,
   entropy: Entropy = cryptoEntropy,
+  character?: unknown,
 ): Promise<SeatGrant> {
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = randomCode(entropy);
     const token = entropy.token();
-    const seats = { white: { token, name: cleanName(name, "Host") } };
+    const host = { token, name: cleanName(name, "Host"), character: characterOf(character) };
+    const seats = { white: host };
     const room: Room = { id: entropy.token(), code, version: 0, seats, game: null };
     if (await store.create(room)) return { code, token };
   }
@@ -105,6 +132,7 @@ export async function joinRoom(
   code: string,
   name: unknown,
   entropy: Entropy = cryptoEntropy,
+  character?: unknown,
 ): Promise<SeatGrant> {
   for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
     const room = await store.load(code);
@@ -112,15 +140,12 @@ export async function joinRoom(
     if (room.seats.black) throw new RoomError("full", "That game already has two players");
 
     const token = entropy.token();
-    const started = newGame({
-      white: entropy.int(SEED_RANGE),
-      black: entropy.int(SEED_RANGE),
-      play: entropy.int(SEED_RANGE),
-    });
+    const started = newGame(freshSeeds(entropy));
+    const guest = { token, name: cleanName(name, "Guest"), character: characterOf(character) };
     const next: Room = {
       ...room,
       version: room.version + 1,
-      seats: { ...room.seats, black: { token, name: cleanName(name, "Guest") } },
+      seats: { ...room.seats, black: guest },
       game: started.state,
     };
     if (await store.save(next, room.version)) {
@@ -267,8 +292,9 @@ export async function openConnection(
         try {
           // Fresh randomness for every command. The stored RNG state is small enough to
           // brute-force from the dice a player sees, so it must never run on as a sequence.
-          const game = { ...room.game, rng: entropy.int(SEED_RANGE) };
-          result = applyCommand(game, seat, command);
+          const game = { ...upToDate(room.game), rng: entropy.int(SEED_RANGE) };
+          const seeds = command.type === "rematch" ? freshSeeds(entropy) : undefined;
+          result = applyCommand(game, seat, command, seeds);
         } catch (error) {
           if (!(error instanceof GameError)) throw error;
           return complain(error.message, false);

@@ -9,7 +9,7 @@ import { createBoard } from "./render/board.ts";
 import { createStage } from "./render/stage.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
-import { createLobbyUi } from "./ui/lobby.ts";
+import { createLobbyUi, type PlayerChoice } from "./ui/lobby.ts";
 
 startAnalytics();
 
@@ -53,6 +53,13 @@ function leaveGame(): void {
   hud.hide();
 }
 
+/** Back to the start screen. The seat is kept, so the browser's Back button returns to the game. */
+function toMenu(): void {
+  leaveGame();
+  if (location.pathname !== "/") history.pushState(null, "", "/");
+  lobby.showMenu();
+}
+
 function startRemote(code: string, token: string): void {
   leaveGame();
   stopGame = runGame(deps, {
@@ -69,6 +76,7 @@ function startRemote(code: string, token: string): void {
       history.replaceState(null, "", "/");
       lobby.showMenu({ error: message });
     },
+    onLeave: toMenu,
   });
 }
 
@@ -84,17 +92,18 @@ function startLocal(): void {
       hud.show();
     },
     onFatal: (message) => lobby.showMenu({ error: message }),
+    onLeave: toMenu,
   });
 }
 
 /** Asks the server for a seat, then enters the room. */
-async function takeSeat(path: string, name: string): Promise<void> {
+async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
   lobby.setBusy(true);
   try {
     const response = await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(player),
     });
     const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
     if (!response.ok || !body.code || !body.token) {
@@ -112,8 +121,8 @@ async function takeSeat(path: string, name: string): Promise<void> {
 }
 
 const lobby = createLobbyUi({
-  onCreate: (name) => void takeSeat("/api/rooms", name),
-  onJoin: (code, name) => void takeSeat(`/api/rooms/${code}/join`, name),
+  onCreate: (player) => void takeSeat("/api/rooms", player),
+  onJoin: (code, player) => void takeSeat(`/api/rooms/${code}/join`, player),
   onLocal: startLocal,
 });
 

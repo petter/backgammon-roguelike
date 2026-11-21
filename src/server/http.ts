@@ -17,8 +17,9 @@ const STATUS: Record<RoomErrorKind, number> = {
 /** Longest request body the lobby accepts, in UTF-16 code units. */
 export const BODY_LIMIT = 1024;
 
-function nameOf(body: unknown): unknown {
-  return typeof body === "object" && body !== null ? (body as { name?: unknown }).name : undefined;
+/** The fields a player may send about themselves. Still untrusted: the room cleans them. */
+function playerOf(body: unknown): { name?: unknown; character?: unknown } {
+  return typeof body === "object" && body !== null ? body : {};
 }
 
 /** An empty body is fine (no name given); anything else must be valid JSON. */
@@ -53,11 +54,14 @@ export async function handleApi(
   const body = parsed.value;
 
   try {
-    if (parts.length === 2) return { status: 201, body: await createRoom(store, nameOf(body)) };
+    const { name, character } = playerOf(body);
+    if (parts.length === 2) {
+      return { status: 201, body: await createRoom(store, name, undefined, character) };
+    }
     if (parts.length === 4 && parts[3] === "join") {
       const code = normalizeCode(parts[2]);
       if (!isRoomCode(code)) throw new RoomError("not_found", "No game with that code");
-      return { status: 200, body: await joinRoom(store, code, nameOf(body)) };
+      return { status: 200, body: await joinRoom(store, code, name, undefined, character) };
     }
     return { status: 404, body: { error: "Not found" } };
   } catch (error) {

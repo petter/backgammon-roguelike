@@ -16,6 +16,8 @@ export function game(partial: Partial<GameState> = {}): GameState {
     winner: null,
     cards: { white: cards(), black: cards() },
     shielded: { white: false, black: false },
+    wins: { white: 0, black: 0 },
+    rematch: { white: false, black: false },
     rng: 1,
     ...partial,
   };

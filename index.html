@@ -27,6 +27,14 @@
       </div>
     </div>
 
+    <div id="gameover" hidden>
+      <h2 id="result">Game over</h2>
+      <p id="score"></p>
+      <button id="rematch" type="button">Rematch</button>
+      <p id="rematch-status" class="quiet" role="status" aria-live="polite"></p>
+      <button id="leave" type="button" class="quiet">Leave game</button>
+    </div>
+
     <div id="offline" role="alert" hidden>
       <span class="pulse"></span>
       <span>Connection lost. Reconnecting…</span>
@@ -47,6 +55,9 @@
             Your name
             <input id="name" maxlength="20" autocomplete="nickname" />
           </label>
+          <fieldset id="characters">
+            <legend>Your character</legend>
+          </fieldset>
           <button id="create" type="button">Start a game</button>
           <p class="or">or join a friend</p>
           <label>

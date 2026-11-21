@@ -106,3 +106,9 @@ Test levels:
 
 - Accounts, match history, card collections or run progression are added. Add Neon then.
 - Vercel's WebSocket limits prove too tight for a full match.
+
+## Addendum: rematch and characters (2026-11-20)
+
+- A rematch is a game command, `rematch`, accepted from either seat once the game is over. The game state records who has asked and the match score; when both have asked, the server deals a new game from three fresh secrets (one per deck, one for play), never from the finished game's RNG.
+- The room, its code and both seat tokens stay the same across a rematch, so reconnecting and refreshing work as before.
+- A character is a cosmetic id stored on the seat. The server accepts only known ids and falls back to a default.

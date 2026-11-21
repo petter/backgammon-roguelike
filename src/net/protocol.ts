@@ -1,4 +1,5 @@
 import type { Player } from "../core/board.ts";
+import type { CharacterId } from "../core/characters.ts";
 import type { Command, GameEvent } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 
@@ -11,7 +12,7 @@ export const NAME_MAX = 20;
 export interface LobbyView {
   code: string;
   you: Player;
-  players: Record<Player, { name: string } | null>;
+  players: Record<Player, { name: string; character: CharacterId } | null>;
 }
 
 export type ClientMessage =
@@ -73,6 +74,7 @@ function parseCommand(raw: unknown): Command | null {
   switch (c.type) {
     case "roll":
     case "endTurn":
+    case "rematch":
       return { type: c.type };
     case "pickCard":
     case "playCard":

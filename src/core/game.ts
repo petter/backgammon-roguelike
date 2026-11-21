@@ -40,6 +40,10 @@ export interface GameState {
   cards: Record<Player, PlayerCards>;
   /** A shielded player's lone checkers cannot be hit. Lasts until their next turn. */
   shielded: Record<Player, boolean>;
+  /** Games won in this match so far. Carried over by a rematch. */
+  wins: Record<Player, number>;
+  /** Who has asked to play again. Only ever set once the game is over. */
+  rematch: Record<Player, boolean>;
   /**
    * RNG state. Secret: whoever knows it can predict every roll and draw. It is only 32 bits,
    * so a server must also replace it with fresh entropy before each command; otherwise a
@@ -53,7 +57,9 @@ export type Command =
   | { type: "roll" }
   | { type: "move"; from: number | "bar"; to: number | "off"; die: number }
   | { type: "playCard"; index: number }
-  | { type: "endTurn" };
+  | { type: "endTurn" }
+  /** Asks to play again. Only once the game is over; the new game starts when both have. */
+  | { type: "rematch" };
 
 /** `cards` and `card` are `null` once redacted for the opponent. */
 export type GameEvent =
@@ -66,7 +72,10 @@ export type GameEvent =
   | { type: "diceChanged"; player: Player; dice: number[]; doubled: boolean }
   | { type: "shieldRaised"; player: Player }
   | { type: "turnEnded"; player: Player; next: Player }
-  | { type: "gameWon"; winner: Player };
+  | { type: "gameWon"; winner: Player }
+  | { type: "rematchOffered"; player: Player }
+  /** A rematch began: the board is set up afresh. The first turn's events follow. */
+  | { type: "gameStarted"; first: Player };
 
 export interface Result {
   state: GameState;
@@ -279,7 +288,10 @@ function expandSeed(seed: number): GameSeeds {
  * A new match. A single number gives a fully reproducible game, for local play and tests.
  * A server should pass three unrelated secrets instead.
  */
-export function newGame(seed: number | GameSeeds): Result {
+export function newGame(
+  seed: number | GameSeeds,
+  wins: Record<Player, number> = { white: 0, black: 0 },
+): Result {
   const seeds = typeof seed === "number" ? expandSeed(seed) : seed;
   const cards = {
     white: freshCards(createRng(seeds.white)),
@@ -296,6 +308,8 @@ export function newGame(seed: number | GameSeeds): Result {
       winner: null,
       cards,
       shielded: { white: false, black: false },
+      wins,
+      rematch: { white: false, black: false },
       rng: rng.state,
     },
     first,
@@ -353,7 +367,8 @@ function move(state: GameState, wanted: Omit<Move, "player">): Result {
 
   if (applied.board.off[player] < CHECKERS_PER_PLAYER) return { state: moved, events };
   events.push({ type: "gameWon", winner: player });
-  return { state: { ...moved, dice: [], phase: "over", winner: player }, events };
+  const wins = { ...moved.wins, [player]: moved.wins[player] + 1 };
+  return { state: { ...moved, dice: [], phase: "over", winner: player, wins }, events };
 }
 
 function playCard(state: GameState, index: number): Result {
@@ -404,8 +419,38 @@ function endTurn(state: GameState): Result {
   return { state: begun.state, events: [{ type: "turnEnded", player, next }, ...begun.events] };
 }
 
-/** The single entry point for changing a game. Throws `GameError` when the rules say no. */
-export function applyCommand(state: GameState, player: Player, command: Command): Result {
+/**
+ * Records that `player` wants to play again. Once both do, a new game starts with the same
+ * seats and the running score. It is dealt from `seeds`; without them, from the game's own
+ * RNG, which is fine for local play but lets a player work out the opponent's deck.
+ */
+function rematch(state: GameState, player: Player, seeds?: GameSeeds): Result {
+  if (state.phase !== "over") throw new GameError("The game is not over yet");
+  if (state.rematch[player]) throw new GameError("You have already asked for a rematch");
+  if (!state.rematch[opponent(player)]) {
+    return {
+      state: { ...state, rematch: { ...state.rematch, [player]: true } },
+      events: [{ type: "rematchOffered", player }],
+    };
+  }
+  const started = newGame(seeds ?? state.rng, state.wins);
+  return {
+    state: started.state,
+    events: [{ type: "gameStarted", first: started.state.current }, ...started.events],
+  };
+}
+
+/**
+ * The single entry point for changing a game. Throws `GameError` when the rules say no.
+ * `seeds` deal the new game if this command starts a rematch; a server must pass them.
+ */
+export function applyCommand(
+  state: GameState,
+  player: Player,
+  command: Command,
+  seeds?: GameSeeds,
+): Result {
+  if (command.type === "rematch") return rematch(state, player, seeds);
   if (state.phase === "over") throw new GameError("The game is over");
   if (player !== state.current) throw new GameError("It is not your turn");
   switch (command.type) {

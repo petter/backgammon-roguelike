@@ -36,8 +36,10 @@ describe("viewFor", () => {
         "hand",
         "offer",
         "phase",
+        "rematch",
         "shielded",
         "winner",
+        "wins",
         "you",
       ].sort(),
     );

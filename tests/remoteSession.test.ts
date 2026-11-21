@@ -68,7 +68,11 @@ function state(version: number, events: GameEvent[] = []): ServerMessage {
   return {
     type: "state",
     version,
-    lobby: { code: "AAAAA", you: "white", players: { white: { name: "Ada" }, black: null } },
+    lobby: {
+      code: "AAAAA",
+      you: "white",
+      players: { white: { name: "Ada", character: "seer" }, black: null },
+    },
     view: null,
     events,
   };

@@ -352,6 +352,10 @@ describe("ping", () => {
 
 describe("parseClientMessage", () => {
   it("accepts well-formed messages and strips unknown fields", () => {
+    expect(parseClientMessage('{"type":"command","command":{"type":"rematch","x":1}}')).toEqual({
+      type: "command",
+      command: { type: "rematch" },
+    });
     expect(parseClientMessage('{"type":"hello","token":"abc","extra":1}')).toEqual({
       type: "hello",
       token: "abc",
@@ -429,6 +433,19 @@ describe("handleApi", () => {
     expect((await store.load(code))?.seats.black?.name).toBe("Guest");
 
     expect((await handleApi(store, "POST", `/api/rooms/${code}/join`, "{}")).status).toBe(409);
+  });
+
+  it("takes the character from the request, and the default when it is not a known one", async () => {
+    const store = createMemoryStore();
+    const body = '{"name":"Ada","character":"corsair"}';
+    const { code } = (await handleApi(store, "POST", "/api/rooms", body)).body as { code: string };
+    await handleApi(store, "POST", `/api/rooms/${code}/join`, '{"character":["seer"]}');
+    const room = await store.load(code);
+    expect(room?.seats.white?.character).toBe("corsair");
+    expect(room?.seats.black?.character).toBe("gambler");
+    for (const odd of ['"seer"', "[1]", "7", "null"]) {
+      expect((await handleApi(store, "POST", "/api/rooms", odd)).status, odd).toBe(201);
+    }
   });
 
   it("refuses malformed JSON without taking the seat", async () => {

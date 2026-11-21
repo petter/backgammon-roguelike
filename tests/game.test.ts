@@ -210,6 +210,68 @@ describe("turn flow", () => {
   });
 });
 
+describe("rematch", () => {
+  const won = () => {
+    const board = emptyBoard();
+    place(board, "white", 0, 1);
+    place(board, "black", 23, 1);
+    board.off.white = 14;
+    board.off.black = 14;
+    const state = game({ board, dice: [4], wins: { white: 1, black: 2 } });
+    return applyCommand(state, "white", { type: "move", from: 0, to: "off", die: 4 }).state;
+  };
+
+  it("counts the win", () => {
+    expect(won().wins).toEqual({ white: 2, black: 2 });
+  });
+
+  it("is refused while the game is still being played", () => {
+    expect(() => applyCommand(game(), "white", { type: "rematch" })).toThrow(GameError);
+    expect(() => applyCommand(game(), "black", { type: "rematch" })).toThrow(GameError);
+  });
+
+  it("waits for the other player, whoever asks first", () => {
+    for (const asker of ["white", "black"] as const) {
+      const asked = applyCommand(won(), asker, { type: "rematch" });
+      expect(asked.events).toEqual([{ type: "rematchOffered", player: asker }]);
+      expect(asked.state.phase).toBe("over");
+      expect(asked.state.rematch[asker]).toBe(true);
+      expect(asked.state.board).toEqual(won().board);
+      expect(() => applyCommand(asked.state, asker, { type: "rematch" })).toThrow(GameError);
+    }
+  });
+
+  it("starts a fresh game with the score kept once both have asked", () => {
+    const asked = applyCommand(won(), "black", { type: "rematch" }).state;
+    const { state, events } = applyCommand(asked, "white", { type: "rematch" });
+    expect(state.board).toEqual(initialBoard());
+    expect(state.winner).toBeNull();
+    expect(state.phase).not.toBe("over");
+    expect(state.wins).toEqual({ white: 2, black: 2 });
+    expect(state.rematch).toEqual({ white: false, black: false });
+    expect(state.shielded).toEqual({ white: false, black: false });
+    expect(events[0]).toEqual({ type: "gameStarted", first: state.current });
+    for (const player of ["white", "black"] as const) {
+      const mine = state.cards[player];
+      const held = mine.deck.length + mine.hand.length + mine.discard.length + mine.offer.length;
+      expect(held).toBe(starterDeck().length);
+    }
+  });
+
+  it("deals the new game from the seeds it is given, not from the old game", () => {
+    const asked = applyCommand(won(), "black", { type: "rematch" }).state;
+    const seeds = { white: 11, black: 22, play: 33 };
+    const a = applyCommand({ ...asked, rng: 1 }, "white", { type: "rematch" }, seeds).state;
+    const b = applyCommand({ ...asked, rng: 2 }, "white", { type: "rematch" }, seeds).state;
+    expect(a).toEqual(b);
+    expect(a.cards).toEqual(newGame(seeds).state.cards);
+    const other = { ...seeds, white: 12 };
+    const c = applyCommand(asked, "white", { type: "rematch" }, other).state;
+    expect(c.cards.black).toEqual(a.cards.black);
+    expect(c.cards.white).not.toEqual(a.cards.white);
+  });
+});
+
 describe("using as many dice as possible", () => {
   const pairs = (moves: { from: number | "bar"; to: number | "off"; die: number }[]) =>
     moves.map((m) => `${m.from}>${m.to} (${m.die})`).sort();

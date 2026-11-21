@@ -14,6 +14,10 @@ export interface PlayerView {
   phase: Phase;
   winner: Player | null;
   shielded: Record<Player, boolean>;
+  /** Games won in this match so far. */
+  wins: Record<Player, number>;
+  /** Who has asked to play again, once the game is over. */
+  rematch: Record<Player, boolean>;
   hand: CardId[];
   /** Cards you may pick from. Empty unless it is your pick phase. */
   offer: CardId[];
@@ -35,6 +39,8 @@ export function viewFor(state: GameState, viewer: Player): PlayerView {
     phase: state.phase,
     winner: state.winner,
     shielded: state.shielded,
+    wins: state.wins,
+    rematch: state.rematch,
     hand: state.cards[viewer].hand,
     offer: state.cards[viewer].offer,
     counts: { white: count("white"), black: count("black") },

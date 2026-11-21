@@ -30,6 +30,25 @@ reconnecting. Rooms live in memory and are lost when the dev server restarts.
 3. Move checkers and play cards from your hand, in any order.
 4. End the turn once no checker move is left.
 
+A roll must be played so as to use as many dice as possible. If only one die can be played,
+it must be the higher one when either could be. Checkers that would waste a die are not
+offered as moves; clicking one says why.
+
+On a touch screen, the first tap on a hand card raises it so it can be read, and the second
+plays it. Tap anywhere else to put it back.
+
+## Characters
+
+Each player picks a character on the start screen. It is shown as a medallion next to their
+name. Characters are cosmetic for now: they change nothing about the rules.
+
+## Rematch
+
+When a game ends, both players are offered a rematch. The new game starts once both have
+asked, with the same seats and colours, freshly shuffled decks and a random first player.
+The score of the match is kept and shown next to each name. In hot-seat play one press of
+"Play again" is enough. "Leave game" goes back to the start screen.
+
 ## Dice
 
 The dice are physical objects on the board. A roll throws them from the roller's edge; they
@@ -89,8 +108,3 @@ Function. `vercel.json` routes every `/api/*` request to it and serves the app f
   everything sent on it has been answered, so nothing in flight is lost. It also
   pings every 20 s to notice a dead connection, and shows a banner while it is reconnecting.
 - `REDIS_URL=redis://localhost:6379 pnpm test` also runs the Redis store tests.
-
-## Not built yet
-
-- The rule that a roll must be played so as to use as many dice as possible.
-- Characters, and any way to start a rematch.

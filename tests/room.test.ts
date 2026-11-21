@@ -36,7 +36,7 @@ describe("lobby", () => {
     const { code, token } = await createRoom(store, "  Ada   Lovelace  ");
     expect(isRoomCode(code)).toBe(true);
     const room = await store.load(code);
-    expect(room?.seats.white).toEqual({ token, name: "Ada Lovelace" });
+    expect(room?.seats.white).toEqual({ token, name: "Ada Lovelace", character: "gambler" });
     expect(room?.game).toBeNull();
   });
 
@@ -48,6 +48,31 @@ describe("lobby", () => {
     expect((await store.load(a.code))?.seats.white?.name).toBe("Host");
     expect((await store.load(b.code))?.seats.white?.name).toHaveLength(20);
     expect((await store.load(c.code))?.seats.white?.name).toBe("Host");
+  });
+
+  it("keeps a known character and replaces anything else with the default", async () => {
+    const store = createMemoryStore();
+    const host = await createRoom(store, "Ada", undefined, "seer");
+    await joinRoom(store, host.code, "Grace", undefined, "corsair");
+    const white = await client(store, host.code, host.token);
+    expect(white.last().lobby.players).toEqual({
+      white: { name: "Ada", character: "seer" },
+      black: { name: "Grace", character: "corsair" },
+    });
+    for (const junk of ["wizard", "toString", "__proto__", "", 3, null, { id: "seer" }, ["seer"]]) {
+      const made = await createRoom(store, "Eve", undefined, junk);
+      expect((await store.load(made.code))?.seats.white?.character, String(junk)).toBe("gambler");
+    }
+  });
+
+  it("gives a seat saved before characters existed the default one", async () => {
+    const store = createMemoryStore();
+    const host = await createRoom(store, "Ada", undefined, "seer");
+    const room = (await store.load(host.code)) as Room;
+    const old = { token: host.token, name: "Ada" };
+    await store.save({ ...room, version: room.version + 1, seats: { white: old } }, room.version);
+    const white = await client(store, host.code, host.token);
+    expect(white.last().lobby.players.white).toEqual({ name: "Ada", character: "gambler" });
   });
 
   it("retries when a generated code is already taken", async () => {
@@ -70,7 +95,7 @@ describe("lobby", () => {
 
     await joinRoom(store, host.code, "Grace");
     expect(white.last().version).toBe(1);
-    expect(white.last().lobby.players.black).toEqual({ name: "Grace" });
+    expect(white.last().lobby.players.black).toEqual({ name: "Grace", character: "gambler" });
     expect(white.last().view?.you).toBe("white");
   });
 
@@ -367,7 +392,7 @@ describe("playing", () => {
       expect(white.last().view).toBeNull();
       await vi.advanceTimersByTimeAsync(10_000);
       expect(white.last().view?.you).toBe("white");
-      expect(white.last().lobby.players.black).toEqual({ name: "Grace" });
+      expect(white.last().lobby.players.black).toEqual({ name: "Grace", character: "gambler" });
       white.connection.close();
     } finally {
       vi.useRealTimers();
@@ -783,6 +808,110 @@ describe("playing", () => {
       expect(await store.load(host.code)).toEqual(replacement);
       expect(mover.inbox.at(-1)).toMatchObject({ type: "error", fatal: true });
       expect(JSON.stringify(mover.inbox)).not.toContain("Mallory");
+    });
+  });
+
+  describe("rematch", () => {
+    /** Ends the stored game with white as the winner, as if the last checker had come off. */
+    async function finished() {
+      const t = await table();
+      const room = (await t.store.load(t.code)) as Room;
+      const game = room.game as NonNullable<Room["game"]>;
+      const over: Room = {
+        ...room,
+        version: room.version + 1,
+        game: { ...game, phase: "over", winner: "white", dice: [], wins: { white: 1, black: 0 } },
+      };
+      expect(await t.store.save(over, room.version)).toBe(true);
+      await t.store.publish(t.code, { room: over, events: [] });
+      return t;
+    }
+
+    it("is refused during a game", async () => {
+      const { first, second } = await table();
+      await first.send({ type: "rematch" });
+      await second.send({ type: "rematch" });
+      expect(first.errors()).toEqual(["The game is not over yet"]);
+      expect(second.errors()).toEqual(["The game is not over yet"]);
+      expect(first.last().view?.phase).not.toBe("over");
+    });
+
+    it("tells both players who has asked, and starts a new game when both have", async () => {
+      const { white, black } = await finished();
+      await black.send({ type: "rematch" });
+      for (const seat of [white, black]) {
+        expect(seat.last().view).toMatchObject({
+          phase: "over",
+          winner: "white",
+          rematch: { white: false, black: true },
+        });
+        expect(seat.last().events).toEqual([{ type: "rematchOffered", player: "black" }]);
+      }
+      await black.send({ type: "rematch" });
+      expect(black.errors()).toEqual(["You have already asked for a rematch"]);
+
+      await white.send({ type: "rematch" });
+      for (const seat of [white, black]) {
+        const { view, events, lobby } = seat.last();
+        expect(view).toMatchObject({
+          winner: null,
+          wins: { white: 1, black: 0 },
+          rematch: { white: false, black: false },
+          board: newGame(1).state.board,
+        });
+        expect(view?.phase).not.toBe("over");
+        expect(events[0]).toEqual({ type: "gameStarted", first: view?.current });
+        expect(lobby.players.white?.name).toBe("Ada");
+        expect(lobby.players.black?.name).toBe("Grace");
+      }
+      expect(white.last().view?.you).toBe("white");
+      expect(black.last().view?.you).toBe("black");
+    });
+
+    it("deals the rematch from three fresh secrets, never from the finished game", async () => {
+      const store = createMemoryStore();
+      const drawn: number[] = [];
+      let next = 1000;
+      const entropy = {
+        token: () => `tok${next++}`,
+        int: (n: number) => {
+          const value = next++ % n;
+          drawn.push(value);
+          return value;
+        },
+      };
+      const host = await createRoom(store, "Ada", entropy);
+      const guest = await joinRoom(store, host.code, "Grace", entropy);
+      const room = (await store.load(host.code)) as Room;
+      const game = room.game as NonNullable<Room["game"]>;
+      const asked = { white: false, black: true };
+      const over = { ...game, phase: "over" as const, winner: "white" as const, rematch: asked };
+      await store.save({ ...room, version: room.version + 1, game: over }, room.version);
+      const white = await openConnection(store, host.code, host.token, () => {}, { entropy });
+      drawn.length = 0;
+      await white.command({ type: "rematch" });
+      white.close();
+      void guest;
+      // One reseed for the command, then one seed per deck and one for play.
+      expect(drawn).toHaveLength(4);
+      const [, w, b, play] = drawn;
+      const started = (await store.load(host.code))?.game;
+      expect(started?.cards).toEqual(newGame({ white: w, black: b, play }).state.cards);
+    });
+
+    it("keeps a game saved before matches had a score playable", async () => {
+      const { store, code, first } = await table();
+      const room = (await store.load(code)) as Room;
+      const { wins: _wins, rematch: _rematch, ...old } = room.game as NonNullable<Room["game"]>;
+      await store.save(
+        { ...room, version: room.version + 1, game: old as Room["game"] },
+        room.version,
+      );
+      await store.publish(code, { room: (await store.load(code)) as Room, events: [] });
+      expect(first.last().view?.wins).toEqual({ white: 0, black: 0 });
+      await first.send({ type: "pickCard", index: 0 });
+      expect(first.errors()).toEqual([]);
+      expect((await store.load(code))?.game?.rematch).toEqual({ white: false, black: false });
     });
   });
 

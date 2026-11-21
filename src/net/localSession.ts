@@ -13,7 +13,10 @@ export function createLocalSession(handlers: SessionHandlers, seed: number): Ses
       lobby: {
         code: "LOCAL",
         you: state.current,
-        players: { white: { name: "White" }, black: { name: "Black" } },
+        players: {
+          white: { name: "White", character: "gambler" },
+          black: { name: "Black", character: "sentinel" },
+        },
       },
       view: viewFor(state, state.current),
       events: happened,
@@ -28,7 +31,13 @@ export function createLocalSession(handlers: SessionHandlers, seed: number): Ses
   return {
     send(command) {
       try {
-        ({ state, events } = applyCommand(state, state.current, command));
+        if (command.type === "rematch") {
+          // One screen, so one press speaks for both players.
+          state = applyCommand(state, "white", command).state;
+          ({ state, events } = applyCommand(state, "black", command));
+        } else {
+          ({ state, events } = applyCommand(state, state.current, command));
+        }
       } catch (error) {
         if (!(error instanceof GameError)) throw error;
         handlers.onError(error.message, false);

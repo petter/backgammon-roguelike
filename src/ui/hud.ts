@@ -1,8 +1,10 @@
 import type { Player } from "../core/board.ts";
+import { CHARACTERS, type CharacterId, DEFAULT_CHARACTER } from "../core/characters.ts";
 import { cardBlock } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import { createCard, fanCard } from "./card.ts";
+import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
 
 export interface HudActions {
@@ -12,6 +14,10 @@ export interface HudActions {
   /** The player tried a card that cannot be played now; `reason` says why. */
   onBlocked(reason: string): void;
   onPick(offerIndex: number): void;
+  /** Asks to play again once the game is over. */
+  onRematch(): void;
+  /** Goes back to the start screen. */
+  onLeave(): void;
 }
 
 export interface HudModel {
@@ -58,6 +64,10 @@ function keepOnScreen(card: HTMLElement): void {
 interface ChipModel {
   player: Player;
   name: string;
+  character: CharacterId;
+  wins: number;
+  /** Whether any game of this match has been won yet; until then no score is shown. */
+  scored: boolean;
   you: boolean;
   active: boolean;
   hand: number;
@@ -70,6 +80,10 @@ function playerChip(model: ChipModel): HTMLElement {
   chip.className = `player${model.active ? " active" : ""}`;
   const dot = document.createElement("span");
   dot.className = `dot ${model.player}`;
+  const portrait = document.createElement("span");
+  portrait.className = "portrait";
+  portrait.title = CHARACTERS[model.character].name;
+  portrait.innerHTML = characterArt(model.character);
   const label = document.createElement("strong");
   label.textContent = model.you ? `${model.name} (you)` : model.name;
   const colour = document.createElement("span");
@@ -80,7 +94,14 @@ function playerChip(model: ChipModel): HTMLElement {
   details.className = "quiet";
   const cards = `${model.hand} ${model.hand === 1 ? "card" : "cards"}`;
   details.textContent = model.shielded ? `${cards}, shielded` : cards;
-  chip.append(dot, label, colour, details);
+  chip.append(portrait, dot, label, colour, details);
+  if (model.scored) {
+    const wins = document.createElement("span");
+    wins.className = "wins";
+    wins.textContent = String(model.wins);
+    wins.title = `${model.wins} ${model.wins === 1 ? "game" : "games"} won`;
+    chip.append(wins);
+  }
   return chip;
 }
 
@@ -108,6 +129,19 @@ export function createHud(): Hud {
   const offer = el("offer");
   const offerCards = el("offer-cards");
   const notice = el("notice");
+  const gameOver = el("gameover");
+  const result = el("result");
+  const score = el("score");
+  const rematch = el<HTMLButtonElement>("rematch");
+  const rematchStatus = el("rematch-status");
+  /** The hand card a touch has raised to be read, and the hand it belongs to. */
+  let raised: { index: number; hand: string } | null = null;
+  /** What kind of pointer last pressed a hand card: "touch", "pen", "mouse" or nothing. */
+  let pressedWith = "";
+  const lower = () => {
+    raised = null;
+    for (const card of hand.children) card.classList.remove("card-raised");
+  };
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const hud: Hud = {
@@ -130,6 +164,9 @@ export function createHud(): Hud {
           playerChip({
             player,
             name: name(player),
+            character: lobby.players[player]?.character ?? DEFAULT_CHARACTER,
+            wins: view.wins[player],
+            scored: view.wins.white + view.wins.black > 0,
             you: !model.local && player === view.you,
             active: view.phase !== "over" && view.current === player,
             hand: view.counts[player].hand,
@@ -155,6 +192,9 @@ export function createHud(): Hud {
       roll.disabled = !(myTurn && view.phase === "roll");
       end.disabled = !model.canEnd;
 
+      // A raised card stays raised through a redraw, as long as it is still the same hand.
+      const handKey = view.hand.join();
+      if (raised && raised.hand !== handKey) raised = null;
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
           // Why this card cannot be played now, if it cannot. Such a card still takes
@@ -167,10 +207,26 @@ export function createHud(): Hud {
             : model.rolling
               ? "Wait for the dice to land"
               : cardBlock(view, card);
-          const button = createCard(card, () =>
-            blocked ? hud.actions?.onBlocked(blocked) : hud.actions?.onPlay(index),
-          );
+          const button = createCard(card, () => {
+            // A finger cannot point at a card without pressing it, so the first tap only
+            // raises the card to be read; the second one plays it.
+            const touched = pressedWith === "touch" || pressedWith === "pen";
+            pressedWith = "";
+            if (touched && raised?.index !== index) {
+              lower();
+              raised = { index, hand: handKey };
+              keepOnScreen(button);
+              button.classList.add("card-raised");
+              return;
+            }
+            if (blocked) hud.actions?.onBlocked(blocked);
+            else hud.actions?.onPlay(index);
+          });
           fanCard(button, index, view.hand.length);
+          button.addEventListener("pointerdown", (event) => {
+            pressedWith = event.pointerType;
+          });
+          if (raised?.index === index) button.classList.add("card-raised");
           button.addEventListener("pointerenter", () => keepOnScreen(button));
           button.addEventListener("focus", () => keepOnScreen(button));
           if (blocked) {
@@ -181,6 +237,23 @@ export function createHud(): Hud {
           return button;
         }),
       );
+      for (const card of hand.querySelectorAll<HTMLElement>(".card-raised")) keepOnScreen(card);
+
+      const over = view.phase === "over";
+      gameOver.hidden = !over;
+      if (over) {
+        result.textContent = turnText(model, name);
+        score.textContent = `${name("white")} ${view.wins.white} \u2013 ${view.wins.black} ${name("black")}`;
+        const asked = view.rematch[view.you];
+        rematch.textContent = model.local ? "Play again" : "Rematch";
+        rematch.disabled = asked;
+        rematchStatus.textContent = asked
+          ? `Waiting for ${name(other)}\u2026`
+          : view.rematch[other]
+            ? `${name(other)} wants a rematch`
+            : "";
+      }
+
       const picking = myTurn && view.phase === "pick" && view.offer.length > 0;
       offer.hidden = !picking;
       offerCards.replaceChildren(
@@ -209,6 +282,8 @@ export function createHud(): Hud {
     hide() {
       root.hidden = true;
       offer.hidden = true;
+      gameOver.hidden = true;
+      raised = null;
       notice.hidden = true;
       offlineBanner.hidden = true;
       root.classList.remove("offline");
@@ -216,5 +291,12 @@ export function createHud(): Hud {
   };
   roll.addEventListener("click", () => hud.actions?.onRoll());
   end.addEventListener("click", () => hud.actions?.onEnd());
+  rematch.addEventListener("click", () => hud.actions?.onRematch());
+  el("leave").addEventListener("click", () => hud.actions?.onLeave());
+  // A tap anywhere else puts a raised card back.
+  document.addEventListener("pointerdown", (event) => {
+    if (raised && !(event.target instanceof Element && event.target.closest("#hand .card")))
+      lower();
+  });
   return hud;
 }

@@ -1,10 +1,13 @@
 import type { Player } from "../core/board.ts";
+import type { CharacterId } from "../core/characters.ts";
 import type { GameEvent, GameState } from "../core/game.ts";
 
 export interface Seat {
   /** Secret that proves a connection owns this seat. */
   token: string;
   name: string;
+  /** Who the player appears as. Seats saved before characters existed have none. */
+  character?: CharacterId;
 }
 
 export interface Room {

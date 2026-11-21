@@ -100,6 +100,31 @@ body {
   background: #3d2616;
 }
 
+/* A character's medallion. */
+.portrait {
+  display: block;
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+
+.portrait svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Games won in this match. */
+.wins {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #ffd24a;
+  color: #1c1612;
+  font-weight: 700;
+  text-align: center;
+}
+
 .dot {
   width: 22px;
   height: 22px;
@@ -781,16 +806,29 @@ kbd {
   margin-left: 0;
 }
 
-#hand .card:hover .card-foot,
-#hand .card:focus-visible .card-foot {
+/*
+ * A card is raised by focus, by a tap (`card-raised`, set from script) or by a pointer that
+ * can hover. Hover is left out on touch screens, where it would stick to the last card tapped.
+ */
+#hand .card:is(.card-raised, :focus-visible) .card-foot {
   display: flex;
 }
 
 /* A raised card straightens. `--shift` is set from script to keep it inside the window. */
-#hand .card:hover,
-#hand .card:focus-visible {
+#hand .card:is(.card-raised, :focus-visible) {
   z-index: 2;
   transform: translate(var(--shift, 0px), -8px) scale(1);
+}
+
+@media (hover: hover) {
+  #hand .card:hover .card-foot {
+    display: flex;
+  }
+
+  #hand .card:hover {
+    z-index: 2;
+    transform: translate(var(--shift, 0px), -8px) scale(1);
+  }
 }
 
 /* When a card is raised, the cards before it slide aside so their names are not cut in half. */
@@ -803,9 +841,14 @@ kbd {
 }
 
 /* A card that is itself raised stays where it was put, so it cannot be pushed off screen. */
-#hand .card:has(~ .card:hover):not(:hover, :focus-visible),
-#hand .card:has(~ .card:focus-visible):not(:hover, :focus-visible) {
+#hand .card:has(~ .card:is(.card-raised, :focus-visible)):not(.card-raised, :focus-visible) {
   translate: -34px 0;
+}
+
+@media (hover: hover) {
+  #hand .card:has(~ .card:hover):not(:hover, .card-raised, :focus-visible) {
+    translate: -34px 0;
+  }
 }
 
 /* A card that cannot be played now looks faded, as if set aside; point at it to read it. */
@@ -814,9 +857,14 @@ kbd {
   cursor: not-allowed;
 }
 
-#hand .card-blocked:hover,
-#hand .card-blocked:focus-visible {
+#hand .card-blocked:is(.card-raised, :focus-visible) {
   filter: drop-shadow(-3px 2px 3px #00000059);
+}
+
+@media (hover: hover) {
+  #hand .card-blocked:hover {
+    filter: drop-shadow(-3px 2px 3px #00000059);
+  }
 }
 
 /* Said loudly, in the middle of the screen: nothing the player does will reach the server. */
@@ -966,6 +1014,109 @@ input {
   text-align: center;
 }
 
+#characters {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+
+#characters legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.character-options {
+  display: flex;
+  gap: 10px;
+}
+
+.character {
+  position: relative;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The radio button itself is invisible but still focusable; its medallion shows the state. */
+.character input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.character .portrait {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  opacity: 0.55;
+  transition:
+    opacity 0.12s,
+    box-shadow 0.12s;
+}
+
+.character input:checked + .portrait {
+  opacity: 1;
+  box-shadow: 0 0 0 3px #ffd24a;
+}
+
+.character input:focus-visible + .portrait {
+  outline: 2px solid #efe6d2;
+  outline-offset: 4px;
+}
+
+.motto {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+}
+
+/* The end of a game, said over the middle of the board, which stays visible behind it. */
+#gameover {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 22px 24px;
+  border: 1px solid #c9a56b;
+  border-radius: 14px;
+  background: #1c1612f2;
+  box-shadow: 0 14px 40px #000c;
+  text-align: center;
+  translate: -50% -50%;
+}
+
+#gameover[hidden] {
+  display: none;
+}
+
+#gameover h2,
+#gameover p {
+  margin: 0;
+}
+
+#gameover h2 {
+  font-size: 26px;
+}
+
+#score {
+  font-variant-numeric: tabular-nums;
+}
+
+#rematch {
+  padding: 10px 22px;
+  border-color: #ffd24a;
+  font-weight: 600;
+}
+
+#rematch-status {
+  min-height: 1.4em;
+}
+
 #lobby-error {
   min-height: 1.4em;
   margin: 12px 0 0;
@@ -1010,8 +1161,7 @@ input {
   }
 
   /* The hand already spans the screen, so there is no room for cards to slide aside. */
-  #hand .card:has(~ .card:hover):not(:hover, :focus-visible),
-  #hand .card:has(~ .card:focus-visible):not(:hover, :focus-visible) {
+  #hand .card:has(~ .card:is(:hover, .card-raised, :focus-visible)) {
     translate: none;
   }
 
