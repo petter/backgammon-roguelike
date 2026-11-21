@@ -1,0 +1,116 @@
+/* Looking for a stranger: the player's medallion faces an empty seat across the table. */
+.searching {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.searching .lede {
+  margin: -6px 0 0;
+}
+
+.face-off {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(14px, 5vw, 28px);
+  margin: 6px 0 0;
+}
+
+.face-off figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 112px;
+  margin: 0;
+}
+
+.face-off .medallion {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+}
+
+.seat-you .medallion {
+  box-shadow:
+    0 0 0 2px var(--wood-dark),
+    0 0 0 4px var(--metal),
+    0 0 22px color-mix(in srgb, var(--glow) 45%, transparent);
+}
+
+.seat-you .medallion svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The empty seat: a dark well, its rim a slow sweep of gold, waiting to be filled. */
+.seat-open .medallion {
+  background: radial-gradient(circle at 50% 35%, #2a1b0f, var(--well));
+  box-shadow: inset 0 3px 10px #000c;
+  color: color-mix(in srgb, var(--metal) 55%, transparent);
+  font: 700 28px / 1 var(--display);
+}
+
+.seat-open .ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 62%, var(--metal) 92%, transparent 100%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: search-sweep 2.4s linear infinite;
+}
+
+@keyframes search-sweep {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.face-off figcaption {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font: 700 13px / 1.2 var(--display);
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.seat-open figcaption {
+  color: var(--muted);
+}
+
+.versus {
+  margin-top: 26px;
+  color: var(--metal);
+  font: italic 18px / 1 var(--serif);
+}
+
+.searching .clock {
+  min-width: 3.2em;
+  color: var(--text);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.search-trouble {
+  margin: -6px 0 0;
+  color: var(--error);
+  font: italic 15px / 1.4 var(--serif);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-open .ring {
+    animation: none;
+    background: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--metal) 45%, transparent);
+  }
+}

@@ -65,6 +65,7 @@
 #lobby:is(
     [data-view="host"],
     [data-view="join"],
+    [data-view="seek"],
     [data-view="invited"],
     [data-view="expired"],
     [data-view="full"]

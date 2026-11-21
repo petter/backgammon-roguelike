@@ -4,6 +4,7 @@ import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
+import { findMatch, type Search } from "./net/matchmaking.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
@@ -25,6 +26,8 @@ const coach = createCoach();
 const deps = { stageEl, stage, board, hud, coach };
 
 let stopGame: (() => void) | null = null;
+/** The search for a stranger, while one is running. */
+let search: Search | null = null;
 
 /** Seat tokens live in sessionStorage: per tab, so two tabs can be two players. */
 const seats = {
@@ -100,6 +103,44 @@ function startLocal(): void {
   });
 }
 
+/** Takes a seat the server has handed out, and goes to its room. */
+function enterRoom(code: string, token: string): void {
+  seats.set(code, token);
+  history.pushState(null, "", `/g/${code}`);
+  startRemote(code, token);
+}
+
+/** Stops looking for a stranger, if a search is running. Resolves to a seat found meanwhile. */
+async function stopSearch(): Promise<SeatGrant | null> {
+  const running = search;
+  search = null;
+  return running ? running.cancel() : null;
+}
+
+function seek(player: PlayerChoice): void {
+  void stopSearch();
+  lobby.showSearching(player);
+  const mine = findMatch(player, {
+    onSeat: (seat) => {
+      if (search !== mine) return;
+      search = null;
+      enterRoom(seat.code, seat.token);
+    },
+    onTrouble: (problem) => {
+      if (search === mine) lobby.searchTrouble(problem);
+    },
+  });
+  search = mine;
+}
+
+async function cancelSeek(): Promise<void> {
+  if (!search) return;
+  const seat = await stopSearch();
+  // A stranger was found just before: they are already at the table, so join them.
+  if (seat) enterRoom(seat.code, seat.token);
+  else lobby.showMenu();
+}
+
 /** Refusals that are about the code itself: no game has it, or its game is full. */
 const CODE_ERRORS: Partial<Record<number, "missing" | "full">> = { 404: "missing", 409: "full" };
 
@@ -119,9 +160,7 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
       lobby.showMenu({ error: body.error ?? "Could not reach the game server", codeError });
       return;
     }
-    seats.set(body.code, body.token);
-    history.pushState(null, "", `/g/${body.code}`);
-    startRemote(body.code, body.token);
+    enterRoom(body.code, body.token);
   } catch {
     lobby.showMenu({ error: "Could not reach the game server" });
   } finally {
@@ -134,6 +173,8 @@ const lobby = createLobbyUi({
   onJoin: (code, player) => void takeSeat(`/api/rooms/${code}/join`, player),
   onLocal: startLocal,
   onCancel: toMenu,
+  onSeek: seek,
+  onCancelSeek: () => void cancelSeek(),
 });
 
 /** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
@@ -160,6 +201,7 @@ new MutationObserver(() => {
 }).observe(lobbyEl, { attributes: true, attributeFilter: ["hidden"] });
 
 function route(): void {
+  void stopSearch();
   leaveGame();
   const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;

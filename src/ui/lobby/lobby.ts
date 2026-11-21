@@ -6,6 +6,7 @@ import { el } from "../dom.ts";
 import "./lobby.css";
 import "./menu.css";
 import "./codes.css";
+import "./search.css";
 import {
   codeEntry,
   codeTiles,
@@ -16,6 +17,7 @@ import {
   touch,
   waitingRoom,
 } from "./parts.ts";
+import { searchRoom } from "./search.ts";
 
 export type { PlayerChoice } from "./parts.ts";
 
@@ -25,6 +27,10 @@ export interface LobbyActions {
   onLocal: () => void;
   /** The host gives up waiting and goes back to the start screen. */
   onCancel: () => void;
+  /** Starts looking for a stranger to play. */
+  onSeek: (player: PlayerChoice) => void;
+  /** Gives up looking for a stranger. */
+  onCancelSeek: () => void;
 }
 
 export interface MenuOptions {
@@ -41,11 +47,15 @@ export interface LobbyUi {
   showWaiting: (code: string, link: string) => void;
   /** The invite being shown leads nowhere: its game is gone or already has two players. */
   inviteClosed: (why: "missing" | "full") => void;
+  /** While a stranger is being found. */
+  showSearching: (player: PlayerChoice) => void;
+  /** Says the server cannot be reached while searching, or `null` once it can again. */
+  searchTrouble: (problem: string | null) => void;
   setBusy: (busy: boolean) => void;
   hide: () => void;
 }
 
-type Step = "host" | "join" | "invited" | "expired" | "full";
+type Step = "host" | "join" | "seek" | "invited" | "expired" | "full";
 type View = "home" | Step;
 
 const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l8.5 5.5-8.5 5.5z"/></svg>`;
@@ -53,6 +63,7 @@ const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><pa
 const ICONS = {
   join: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="16" r="6.5"/><path d="M17.5 16H29M24 16v5M28 16v4"/></svg>`,
   host: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 24h22M7 24l-2-13 6 5 5-9 5 9 6-5-2 13"/></svg>`,
+  seek: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11"/><ellipse cx="16" cy="16" rx="4.6" ry="11"/><path d="M5 16h22M7.5 10.5h17M7.5 21.5h17"/></svg>`,
   local: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="12" cy="12" r="7.5" class="dark"/><circle cx="12" cy="12" r="3.4" class="groove"/><circle cx="20" cy="20" r="7.5" class="light"/><circle cx="20" cy="20" r="3.4" class="groove"/></svg>`,
 };
 
@@ -80,6 +91,12 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
     title: "Table is full",
     lede: "Two players are already seated at this table. Ask your friend for a new link, or enter another code.",
     go: "Enter another code",
+    swap: "Host a game instead",
+  },
+  seek: {
+    title: "Find an opponent",
+    lede: "No one to play with? You'll be seated with the next player who is looking.",
+    go: "Find opponent",
     swap: "Host a game instead",
   },
   host: {
@@ -121,6 +138,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
             <span class="choice-icon">${ICONS.host}</span>
             <span class="choice-text"><b>Host a game</b><i>Invite a friend to play</i></span>${CHEVRON}
           </button>
+          <button type="button" class="choice" data-go="seek">
+            <span class="choice-icon">${ICONS.seek}</span>
+            <span class="choice-text"><b>Play online</b><i>Get matched with a stranger</i></span>${CHEVRON}
+          </button>
           <button type="button" class="choice quiet-choice" data-go="local">
             <span class="choice-icon">${ICONS.local}</span>
             <span class="choice-text"><b>Pass and play</b><i>Both sides on this device</i></span>${PLAY}
@@ -139,6 +160,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
           <button type="button" class="link swap"></button>
         </form>
         <div class="plaque waiting-plaque" hidden></div>
+        <div class="plaque searching-plaque" hidden></div>
         <p class="lobby-error" role="alert"></p>
       </div>
     `),
@@ -162,6 +184,9 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const waitingPlaque = part(root, ".waiting-plaque");
   const waiting = waitingRoom(actions.onCancel);
   waitingPlaque.append(waiting.element);
+  const searchingPlaque = part(root, ".searching-plaque");
+  const searching = searchRoom(actions.onCancelSeek);
+  searchingPlaque.append(searching.element);
   const buttons = [...home.querySelectorAll("button"), ...step.querySelectorAll("button")];
   let view: View = "home";
 
@@ -183,6 +208,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     home.hidden = next !== "home";
     step.hidden = next === "home";
     waitingPlaque.hidden = true;
+    searchingPlaque.hidden = true;
+    searching.stop();
     say("");
     code.set(code.value());
     if (next === "home") return;
@@ -193,7 +220,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     swap.textContent = text.swap;
     // Choosing Join was a choice: Back leads to hosting, and a link here would outshine Join.
     // From the menu, Back is the way across; a link here would only compete with the button.
-    swap.hidden = next === "join" || next === "host";
+    swap.hidden = next === "join" || next === "host" || next === "seek";
     go.removeAttribute("aria-disabled");
     // An invited guest came by link: there is no menu behind them to go back to.
     const dead = next === "expired" || next === "full";
@@ -225,7 +252,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     choice.addEventListener("click", () => {
       const target = choice.dataset.go;
       if (target === "local") actions.onLocal();
-      else navigate(target === "join" ? "join" : "host");
+      else if (target === "join" || target === "host" || target === "seek") navigate(target);
     });
   }
   back.addEventListener("click", () =>
@@ -254,6 +281,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       actions.onCreate(you.read());
       return;
     }
+    if (view === "seek") {
+      actions.onSeek(you.read());
+      return;
+    }
     const wanted = code.value();
     if (wanted.length !== CODE_LENGTH) {
       say(`Enter all ${CODE_LENGTH} letters of the code your friend sent`, true);
@@ -278,15 +309,32 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.dataset.view = "waiting";
       home.hidden = true;
       step.hidden = true;
+      searchingPlaque.hidden = true;
+      searching.stop();
       say("");
       waitingPlaque.hidden = false;
       waiting.show(roomCode, link);
     },
+    showSearching(player) {
+      glide(() => {
+        root.hidden = false;
+        root.dataset.view = "searching";
+        home.hidden = true;
+        step.hidden = true;
+        waitingPlaque.hidden = true;
+        say("");
+        searchingPlaque.hidden = false;
+        searching.show(player);
+        part(searching.element, ".cancel").focus({ focusVisible: false });
+      });
+    },
+    searchTrouble: (problem) => searching.trouble(problem),
     setBusy(busy) {
       for (const button of buttons) button.disabled = busy;
     },
     hide() {
       root.hidden = true;
+      searching.stop();
     },
   };
 

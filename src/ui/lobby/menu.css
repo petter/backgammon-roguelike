@@ -1,4 +1,7 @@
-/* The start menu and the form behind each choice. Codes and the waiting room: codes.css. */
+/*
+ * The start menu and the form behind each choice. Codes and the waiting room: codes.css;
+ * the search for a stranger: search.css.
+ */
 
 .home {
   display: flex;
@@ -166,7 +169,8 @@
 
 /* Wide screens: the form widens so name and emblem sit side by side, keeping it short. */
 @media (min-width: 700px) {
-  #lobby:is([data-view="host"], [data-view="join"], [data-view="invited"]) .lobby-shell {
+  #lobby:is([data-view="host"], [data-view="join"], [data-view="seek"], [data-view="invited"])
+    .lobby-shell {
     width: 600px;
   }
 
