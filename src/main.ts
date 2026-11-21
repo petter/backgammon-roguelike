@@ -110,15 +110,8 @@ function enterRoom(code: string, token: string): void {
   startRemote(code, token);
 }
 
-/** Stops looking for a stranger, if a search is running. Resolves to a seat found meanwhile. */
-async function stopSearch(): Promise<SeatGrant | null> {
-  const running = search;
-  search = null;
-  return running ? running.cancel() : null;
-}
-
 function seek(player: PlayerChoice): void {
-  void stopSearch();
+  if (search || cancelling) return;
   lobby.showSearching(player);
   const mine = findMatch(player, {
     onSeat: (seat) => {
@@ -133,16 +126,33 @@ function seek(player: PlayerChoice): void {
   search = mine;
 }
 
+/** Whether a cancelled search is still finding out if a stranger was found meanwhile. */
+let cancelling = false;
+/** What to show once that is known and no stranger was found. The latest request wins. */
+let afterCancel: () => void = () => {};
+
 /**
- * Gives up looking for a stranger. If one was found just before, they are already at the
- * table, so the player joins them rather than leave them waiting alone; `otherwise` runs
- * when there was no such stranger.
+ * Gives up looking for a stranger. Nothing else is shown until the server has answered:
+ * if a stranger was found just before, they are already at the table, so the player joins
+ * them rather than leave them waiting alone (and must not be free to start another search
+ * meanwhile). Otherwise `then` runs. Returns `false`, doing nothing, if there was no search.
  */
-async function cancelSeek(otherwise: () => void): Promise<void> {
-  if (!search) return;
-  const seat = await stopSearch();
+function cancelSeek(then: () => void): boolean {
+  if (!search && !cancelling) return false;
+  afterCancel = then;
+  if (cancelling) return true;
+  const running = search;
+  search = null;
+  cancelling = true;
+  void settle(running);
+  return true;
+}
+
+async function settle(running: Search | null): Promise<void> {
+  const seat = running ? await running.cancel() : null;
+  cancelling = false;
   if (seat) enterRoom(seat.code, seat.token);
-  else otherwise();
+  else afterCancel();
 }
 
 /** Refusals that are about the code itself: no game has it, or its game is full. */
@@ -178,7 +188,7 @@ const lobby = createLobbyUi({
   onLocal: startLocal,
   onCancel: toMenu,
   onSeek: seek,
-  onCancelSeek: () => void cancelSeek(() => lobby.showMenu()),
+  onCancelSeek: () => cancelSeek(() => lobby.showMenu()),
 });
 
 /** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
@@ -205,8 +215,13 @@ new MutationObserver(() => {
 }).observe(lobbyEl, { attributes: true, attributeFilter: ["hidden"] });
 
 function route(): void {
-  // The Back button during a search cancels it, just as Cancel does.
-  void cancelSeek(() => {});
+  // The Back button during a search cancels it, just as Cancel does; where it leads is
+  // shown once the cancel is settled.
+  if (!cancelSeek(show)) show();
+}
+
+/** Shows what the address bar points at: a game this tab has a seat in, or the start screen. */
+function show(): void {
   leaveGame();
   const code = codeFromPath(location.pathname);
   const token = code ? seats.get(code) : null;
