@@ -52,6 +52,11 @@ strongest cards turn up least often.
 
 You see your opponent's hand face down: how many cards they hold, never which.
 
+Cards are drawn in HTML, CSS and inline SVG as printed card stock (`src/ui/card.ts`,
+`src/ui/cardArt.ts`, the card section of `src/style.css`). Each rarity adds to the one below:
+a pinstripe, silver edging, violet foil, then gold leaf. The copy count sits on the name
+plate, and each card is a `Dice` or a `Tactic` card.
+
 Doubles play four times. That also holds when a card leaves you with exactly two matching dice.
 
 ## Layout
