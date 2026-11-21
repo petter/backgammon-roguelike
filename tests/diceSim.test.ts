@@ -1,4 +1,4 @@
-import { Quaternion } from "three";
+import { Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { initialBoard } from "../src/core/board.ts";
 import { createRng } from "../src/core/rng.ts";
@@ -100,6 +100,93 @@ describe("simulateThrow", () => {
     const b = simulateThrow([4, 4], -1, board, createRng(5).next);
     expect(a.steps).toBe(b.steps);
     expect([...a.dice[0].frames]).toEqual([...b.dice[0].frames]);
+  });
+});
+
+describe("simulateThrow contacts", () => {
+  const board = obstaclesOf(initialBoard());
+  const HALF_DIAGONAL = DIE_HALF * Math.SQRT2;
+
+  /** Every frame of every die, as position and orientation. */
+  function* poses(frames: Float32Array) {
+    for (let o = 0; o < frames.length; o += 7) {
+      yield {
+        x: frames[o],
+        y: frames[o + 1],
+        z: frames[o + 2],
+        q: new Quaternion(frames[o + 3], frames[o + 4], frames[o + 5], frames[o + 6]),
+      };
+    }
+  }
+
+  const cases: [string, number[], 1 | -1, () => () => number][] = [
+    ["five dice, constant 0", [5, 6, 1, 2, 3], -1, () => () => 0],
+    ["six dice, constant just under 1", [6, 1, 2, 3, 4, 5], 1, () => () => 0.999999],
+    ["six dice, constant one half", [1, 2, 3, 4, 5, 6], 1, () => () => 0.5],
+    ["six dice, seed 65", [6, 1, 2, 3, 4, 5], 1, () => createRng(65).next],
+  ];
+  for (let seed = 0; seed < 150; seed++) {
+    const count = 1 + (seed % 6);
+    cases.push([
+      `seed ${seed}`,
+      Array.from({ length: count }, (_, i) => 1 + ((seed + i) % 6)),
+      seed % 2 === 0 ? 1 : -1,
+      () => createRng(seed + 300).next,
+    ]);
+  }
+
+  it("keeps every corner of every die inside the rims and above the felt, in every frame", () => {
+    const corner = new Vector3();
+    for (const [name, values, side, random] of cases) {
+      for (const obstacles of [[], board]) {
+        const { dice } = simulateThrow(values, side, obstacles, random());
+        // The worst corner over the whole throw, checked once per throw.
+        let farX = 0;
+        let farZ = 0;
+        let low = Infinity;
+        for (const die of dice) {
+          for (const pose of poses(die.frames)) {
+            for (let c = 0; c < 8; c++) {
+              corner
+                .set(c & 1 ? 1 : -1, c & 2 ? 1 : -1, c & 4 ? 1 : -1)
+                .multiplyScalar(DIE_HALF)
+                .applyQuaternion(pose.q);
+              farX = Math.max(farX, Math.abs(corner.x + pose.x));
+              farZ = Math.max(farZ, Math.abs(corner.z + pose.z));
+              low = Math.min(low, corner.y + pose.y);
+            }
+          }
+        }
+        expect(farX, name).toBeLessThanOrEqual(FIELD_HALF_W + 1e-4);
+        expect(farZ, name).toBeLessThanOrEqual(FIELD_HALF_D + 1e-4);
+        expect(low, name).toBeGreaterThanOrEqual(-1e-4);
+      }
+    }
+  });
+
+  it("leaves no two resting dice close enough to overlap, however they are turned", () => {
+    for (const [name, values, side, random] of cases) {
+      for (const obstacles of [[], board]) {
+        const { dice } = simulateThrow(values, side, obstacles, random());
+        const ends = dice.map((die) => lastFrame(die.frames));
+        for (let i = 0; i < ends.length; i++) {
+          for (let j = i + 1; j < ends.length; j++) {
+            const gap = Math.hypot(ends[i].x - ends[j].x, ends[i].z - ends[j].z);
+            const stacked = Math.abs(ends[i].y - ends[j].y) > DIE_HALF;
+            if (!stacked) expect(gap, name).toBeGreaterThanOrEqual(2 * HALF_DIAGONAL - 1e-3);
+          }
+        }
+      }
+    }
+  });
+
+  it("still lands on the requested values in all of those cases", () => {
+    for (const [name, values, side, random] of cases) {
+      const { dice } = simulateThrow(values, side, board, random());
+      dice.forEach((die, i) => {
+        expect(shownValue(lastFrame(die.frames).q, die.faces), name).toBe(values[i]);
+      });
+    }
   });
 });
 

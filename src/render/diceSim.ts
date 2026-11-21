@@ -8,8 +8,15 @@ export const SIM_DT = 1 / 120;
 const GRAVITY = -30;
 const FLOOR_BOUNCE = 0.42;
 const WALL_BOUNCE = 0.55;
-/** Dice collide with each other and with checkers as spheres of this radius. */
-const BODY_R = 0.33;
+/**
+ * Closest two dice centres may come: a cube's footprint never reaches further than half its
+ * diagonal, so at this distance two dice cannot overlap however they are turned.
+ */
+const PAIR_REACH = DIE_HALF * 2 * Math.SQRT2 + 0.01;
+/** Closest a die's centre may come to a checker's axis while beside it. */
+const CHECKER_REACH = CHECKER_R + DIE_HALF * Math.SQRT2;
+/** Times per step the contact constraints are re-solved, so one fix cannot undo another. */
+const SOLVER_PASSES = 4;
 const SETTLE_TIME = 0.22;
 /** A die still moving this long after the throw is put to rest where it is. */
 const MAX_TIME = 3.2;
@@ -63,10 +70,17 @@ interface Body {
 }
 
 const matrix = new Matrix4();
-/** How high the centre of a cube sits above the surface it stands on, given its tilt. */
-function support(q: Quaternion): number {
+const reach = { x: 0, y: 0, z: 0 };
+/**
+ * How far a cube turned by `q` extends from its centre along each world axis. The y value
+ * is how high the centre sits above the surface it stands on.
+ */
+function extents(q: Quaternion): { x: number; y: number; z: number } {
   const e = matrix.makeRotationFromQuaternion(q).elements;
-  return DIE_HALF * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9]));
+  reach.x = DIE_HALF * (Math.abs(e[0]) + Math.abs(e[4]) + Math.abs(e[8]));
+  reach.y = DIE_HALF * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9]));
+  reach.z = DIE_HALF * (Math.abs(e[2]) + Math.abs(e[6]) + Math.abs(e[10]));
+  return reach;
 }
 
 /** The orientation nearest to `q` that lies flat, and the local axis it puts on top. */
@@ -129,10 +143,6 @@ export function simulateThrow(
   obstacles: Obstacle[],
   random: () => number,
 ): DiceThrow {
-  const minX = -FIELD_HALF_W + DIE_HALF;
-  const maxX = FIELD_HALF_W - DIE_HALF;
-  const minZ = -FIELD_HALF_D + DIE_HALF;
-  const maxZ = FIELD_HALF_D - DIE_HALF;
   const spread = (amount: number) => (random() - 0.5) * amount;
 
   const bodies: Body[] = values.map((_, i) => ({
@@ -140,7 +150,7 @@ export function simulateThrow(
     p: new Vector3(side * (1.6 + i * 0.85 + spread(0.3)), 1.5 + random() * 0.6, side * 5),
     v: new Vector3(spread(3.5), 1.5 + random() * 2, -side * (5.5 + random() * 3)),
     q: new Quaternion().setFromAxisAngle(
-      new Vector3(spread(2), spread(2), spread(2)).normalize(),
+      new Vector3(spread(2) || 1, spread(2), spread(2)).normalize(),
       random() * Math.PI * 2,
     ),
     w: new Vector3(spread(24), spread(24), spread(24)),
@@ -168,63 +178,119 @@ export function simulateThrow(
     b.w.set(0, 0, 0);
   };
 
+  /** Keeps a die inside the rims, whatever its tilt, and bounces it if it was heading out. */
+  const holdInside = (b: Body) => {
+    const e = extents(b.q);
+    const limitX = FIELD_HALF_W - e.x;
+    const limitZ = FIELD_HALF_D - e.z;
+    if (Math.abs(b.p.x) > limitX) {
+      const sign = Math.sign(b.p.x);
+      b.p.x = sign * limitX;
+      if (b.v.x * sign > 0) {
+        b.v.x *= -WALL_BOUNCE;
+        b.w.multiplyScalar(0.7);
+      }
+    }
+    if (Math.abs(b.p.z) > limitZ) {
+      const sign = Math.sign(b.p.z);
+      b.p.z = sign * limitZ;
+      if (b.v.z * sign > 0) {
+        b.v.z *= -WALL_BOUNCE;
+        b.w.multiplyScalar(0.7);
+      }
+    }
+  };
+
+  /** Pushes a die out of the side of any checker it is level with. */
+  const holdOffCheckers = (b: Body) => {
+    const bottom = b.p.y - extents(b.q).y;
+    for (const o of obstacles) {
+      if (bottom > o.top - 0.03) continue;
+      normal.set(b.p.x - o.x, 0, b.p.z - o.z);
+      let distance = normal.length();
+      if (distance >= CHECKER_REACH) continue;
+      if (distance < 1e-6) {
+        normal.set(1, 0, 0);
+        distance = 0;
+      } else normal.divideScalar(distance);
+      b.p.addScaledVector(normal, CHECKER_REACH - distance);
+      const into = b.v.dot(normal);
+      if (into < 0) b.v.addScaledVector(normal, -1.4 * into);
+    }
+  };
+
+  /** Pushes two dice apart. A die at rest stays put and the other takes the whole push. */
+  const holdApart = (a: Body, b: Body) => {
+    const aFree = a.state !== "rest";
+    const bFree = b.state !== "rest";
+    if (!aFree && !bFree) return;
+    normal.subVectors(b.p, a.p);
+    let distance = normal.length();
+    if (distance >= PAIR_REACH) return;
+    if (distance < 1e-6) {
+      normal.set(1, 0, 0);
+      distance = 0;
+    } else normal.divideScalar(distance);
+    const overlap = PAIR_REACH - distance;
+    const share = aFree && bFree ? 0.5 : 1;
+    if (aFree) a.p.addScaledVector(normal, -overlap * share);
+    if (bFree) b.p.addScaledVector(normal, overlap * share);
+    const closing = (bFree ? b.v.dot(normal) : 0) - (aFree ? a.v.dot(normal) : 0);
+    if (closing >= 0) return;
+    const impulse = (-1.5 * closing) / (aFree && bFree ? 2 : 1);
+    if (aFree) a.v.addScaledVector(normal, -impulse);
+    if (bFree) b.v.addScaledVector(normal, impulse);
+  };
+
   for (; steps < maxSteps; steps++) {
     const time = steps * SIM_DT;
-    for (const b of bodies) {
-      if (b.state === "rest") continue;
-      const ground = under(obstacles, b.p.x, b.p.z);
-      const floor = ground ? ground.top : 0;
 
-      if (b.state === "settling") {
+    // Motion.
+    for (const b of bodies) {
+      if (b.state === "moving") {
+        b.v.y += GRAVITY * SIM_DT;
+        b.p.addScaledVector(b.v, SIM_DT);
+        const speed = b.w.length();
+        if (speed > 1e-6) {
+          spin.setFromAxisAngle(axis.copy(b.w).divideScalar(speed), speed * SIM_DT);
+          b.q.premultiply(spin).normalize();
+        }
+      } else if (b.state === "settling") {
         b.settleT = Math.min(1, b.settleT + SIM_DT / SETTLE_TIME);
         b.q.slerpQuaternions(b.settleFrom, b.settleTo, b.settleT);
         b.v.multiplyScalar(0.9);
+        b.v.y = 0;
         b.p.x += b.v.x * SIM_DT;
         b.p.z += b.v.z * SIM_DT;
-        b.p.y = floor + support(b.q);
+      }
+    }
+
+    // Contacts. Solved several times over, because fixing one can break another; the rims
+    // go last so that they always win.
+    for (let pass = 0; pass < SOLVER_PASSES; pass++) {
+      for (let i = 0; i < bodies.length; i++) {
+        for (let j = i + 1; j < bodies.length; j++) holdApart(bodies[i], bodies[j]);
+      }
+      for (const b of bodies) {
+        if (b.state === "rest") continue;
+        holdOffCheckers(b);
+        holdInside(b);
+      }
+    }
+
+    // The felt, or the top of a checker. Last of all, so nothing ends a step below it.
+    for (const b of bodies) {
+      if (b.state === "rest") continue;
+      const ground = under(obstacles, b.p.x, b.p.z);
+      const rest = (ground ? ground.top : 0) + extents(b.q).y;
+      if (b.state === "settling") {
+        b.p.y = rest;
         if (b.settleT >= 1) {
           b.state = "rest";
           b.v.set(0, 0, 0);
         }
         continue;
       }
-
-      b.v.y += GRAVITY * SIM_DT;
-      b.p.addScaledVector(b.v, SIM_DT);
-      const speed = b.w.length();
-      if (speed > 1e-6) {
-        spin.setFromAxisAngle(axis.copy(b.w).divideScalar(speed), speed * SIM_DT);
-        b.q.premultiply(spin).normalize();
-      }
-
-      // Rims.
-      if (b.p.x < minX || b.p.x > maxX) {
-        b.p.x = Math.min(maxX, Math.max(minX, b.p.x));
-        b.v.x *= -WALL_BOUNCE;
-        b.w.multiplyScalar(0.7);
-      }
-      if (b.p.z < minZ || b.p.z > maxZ) {
-        b.p.z = Math.min(maxZ, Math.max(minZ, b.p.z));
-        b.v.z *= -WALL_BOUNCE;
-        b.w.multiplyScalar(0.7);
-      }
-
-      // The sides of checkers.
-      const bottom = b.p.y - DIE_HALF;
-      for (const o of obstacles) {
-        if (bottom > o.top - 0.03) continue;
-        normal.set(b.p.x - o.x, 0, b.p.z - o.z);
-        const distance = normal.length();
-        const reach = CHECKER_R + BODY_R * 0.8;
-        if (distance >= reach || distance < 1e-6) continue;
-        normal.divideScalar(distance);
-        b.p.addScaledVector(normal, reach - distance);
-        const into = b.v.dot(normal);
-        if (into < 0) b.v.addScaledVector(normal, -1.4 * into);
-      }
-
-      // The felt, or the top of a checker.
-      const rest = floor + support(b.q);
       if (b.p.y <= rest) {
         b.p.y = rest;
         if (b.v.y < 0) {
@@ -253,32 +319,6 @@ export function simulateThrow(
         }
       }
       if (time > MAX_TIME && b.state === "moving") settle(b);
-    }
-
-    // Dice against each other.
-    for (let i = 0; i < bodies.length; i++) {
-      for (let j = i + 1; j < bodies.length; j++) {
-        const a = bodies[i];
-        const b = bodies[j];
-        normal.subVectors(b.p, a.p);
-        const distance = normal.length();
-        const reach = BODY_R * 1.8;
-        if (distance >= reach || distance < 1e-6) continue;
-        normal.divideScalar(distance);
-        const overlap = reach - distance;
-        const aMoves = a.state === "moving";
-        const bMoves = b.state === "moving";
-        if (!aMoves && !bMoves) continue;
-        // A die at rest stays put; the moving one takes the whole correction.
-        const share = aMoves && bMoves ? 0.5 : 1;
-        if (aMoves) a.p.addScaledVector(normal, -overlap * share);
-        if (bMoves) b.p.addScaledVector(normal, overlap * share);
-        const closing = (bMoves ? b.v.dot(normal) : 0) - (aMoves ? a.v.dot(normal) : 0);
-        if (closing >= 0) continue;
-        const impulse = (-1.5 * closing) / (aMoves && bMoves ? 2 : 1);
-        if (aMoves) a.v.addScaledVector(normal, -impulse);
-        if (bMoves) b.v.addScaledVector(normal, impulse);
-      }
     }
 
     bodies.forEach((b, i) => {
