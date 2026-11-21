@@ -1,21 +1,42 @@
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
 
 import { must } from "../core/must.ts";
+import {
+  type Contact,
+  contact,
+  corners,
+  DIE_HALF,
+  extents,
+  reachAlong,
+  type Rigid,
+  solve,
+  type Surface,
+} from "./cube.ts";
 import { CHECKER_R, FIELD_HALF_D, FIELD_HALF_W } from "./layout.ts";
 
-/** Half the edge of a die. */
-export const DIE_HALF = 0.26;
+export { DIE_HALF } from "./cube.ts";
 export const SIM_DT = 1 / 120;
 
-const GRAVITY = -30;
-const FLOOR_BOUNCE = 0.42;
-const WALL_BOUNCE = 0.55;
+const GRAVITY = -32;
+/** The felt, and the tops of checkers. */
+const FLOOR: Surface = { bounce: 0.3, friction: 0.45 };
+const WALL_BOUNCE = 0.5;
+const RIM: Surface = { bounce: WALL_BOUNCE, friction: 0.25 };
+/** A corner this close to a surface already leans on it. */
+const SLOP = 0.01;
+/** A checker counts as ground for a corner no further than this below its top. */
+const STEP_UP = 0.1;
 /** The sliver of air left between two dice that touch. */
 const PAIR_GAP = 0.004;
 /** Closest a die's centre may come to a checker's axis while beside it. */
 const CHECKER_REACH = CHECKER_R + DIE_HALF * Math.SQRT2;
+/** Times per step the corner impulses are re-solved, so they settle on a shared answer. */
+const VELOCITY_PASSES = 8;
 /** Times per step the contact constraints are re-solved, so one fix cannot undo another. */
 const SOLVER_PASSES = 4;
+/** A die on the felt slower than this, and turning slower than `REST_SPIN`, is done rolling. */
+const REST_SPEED = 0.3;
+const REST_SPIN = 2;
 const SETTLE_TIME = 0.22;
 /** A die still moving this long after the throw is put to rest where it is. */
 const MAX_TIME = 3.2;
@@ -55,12 +76,12 @@ export interface DiceThrow {
   dice: DiePath[];
 }
 
-interface Body {
-  p: Vector3;
-  v: Vector3;
-  q: Quaternion;
-  w: Vector3;
+interface Body extends Rigid {
   state: "moving" | "settling" | "rest";
+  /** A corner rested on the felt during this step. */
+  onFelt: boolean;
+  /** The checker a corner rested on during this step, if any. */
+  perch: Obstacle | null;
   settleFrom: Quaternion;
   settleTo: Quaternion;
   settleT: number;
@@ -70,37 +91,6 @@ interface Body {
   value: number;
   /** Position and orientation at every step, seven numbers each. */
   frames: Float32Array;
-}
-
-const matrix = new Matrix4();
-const reach = { x: 0, y: 0, z: 0 };
-/**
- * How far a cube turned by `q` extends from its centre along each world axis. The y value
- * is how high the centre sits above the surface it stands on.
- */
-function extents(q: Quaternion): { x: number; y: number; z: number } {
-  const e = matrix.makeRotationFromQuaternion(q).elements;
-  reach.x = DIE_HALF * (Math.abs(e[0]) + Math.abs(e[4]) + Math.abs(e[8]));
-  reach.y = DIE_HALF * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9]));
-  reach.z = DIE_HALF * (Math.abs(e[2]) + Math.abs(e[6]) + Math.abs(e[10]));
-  return reach;
-}
-
-const along = new Matrix4();
-/**
- * How far a cube turned by `q` reaches from its centre in the direction `n` (a unit vector).
- * Two dice touch along the line between their centres exactly when the distance between
- * the centres equals the sum of their reaches along it, so they neither pass through each
- * other nor bounce off thin air.
- */
-function reachAlong(q: Quaternion, n: Vector3): number {
-  const e = along.makeRotationFromQuaternion(q).elements;
-  return (
-    DIE_HALF *
-    (Math.abs(n.x * e[0] + n.y * e[1] + n.z * e[2]) +
-      Math.abs(n.x * e[4] + n.y * e[5] + n.z * e[6]) +
-      Math.abs(n.x * e[8] + n.y * e[9] + n.z * e[10]))
-  );
 }
 
 /** The orientation nearest to `q` that lies flat, and the local axis it puts on top. */
@@ -138,17 +128,6 @@ export function facesFor(value: number, top: Vector3 = UP): Quaternion {
 }
 
 /** The checker the point is standing over, if any: the highest one. */
-/** A die meeting the ground on its way down: a hard landing bounces and loses speed, a soft one stops. */
-function land(v: Vector3): void {
-  if (v.y >= 0) return;
-  const hard = v.y < -1.2;
-  v.y = hard ? -v.y * FLOOR_BOUNCE : 0;
-  if (hard) {
-    v.x *= 0.82;
-    v.z *= 0.82;
-  }
-}
-
 function under(obstacles: Obstacle[], x: number, z: number): Obstacle | null {
   let found: Obstacle | null = null;
   for (const o of obstacles) {
@@ -158,13 +137,28 @@ function under(obstacles: Obstacle[], x: number, z: number): Obstacle | null {
 }
 
 /**
+ * The checker a corner at this height would stand on, if any: the highest one under it
+ * whose top the corner has not already sunk well below. A corner further down is beside
+ * the stack, not on it.
+ */
+function footing(obstacles: Obstacle[], x: number, y: number, z: number): Obstacle | null {
+  let found: Obstacle | null = null;
+  for (const o of obstacles) {
+    if (o.top > y + STEP_UP || (found && o.top <= found.top)) continue;
+    if (Math.hypot(x - o.x, z - o.z) < CHECKER_R) found = o;
+  }
+  return found;
+}
+
+/**
  * Throws dice across the board and records where each one is at every step.
  *
- * The motion is a small rigid-body approximation: gravity, bounces off the felt, the rims,
- * the checkers and the other dice, and spin that follows the roll. The outcome is not
- * decided by it. Each die is painted afterwards so that the face it happened to land on
- * shows the value asked for, which is how the result can come from the server while the
- * throw still looks free.
+ * Each die is a rigid cube: gravity pulls it, and its corners strike the felt, the rims and
+ * the tops of checkers with an impulse and friction each, so a die tumbles over its edges
+ * and skids to a stop the way a real one does. Checker sides and other dice push it away.
+ * The outcome is not decided by any of this. Each die is painted afterwards so that the
+ * face it happened to land on shows the value asked for, which is how the result can come
+ * from the server while the throw still looks free.
  *
  * `side` is +1 when thrown from the near edge (white) and -1 from the far edge (black).
  */
@@ -177,27 +171,36 @@ export function simulateThrow(
   const spread = (amount: number) => (random() - 0.5) * amount;
 
   const maxSteps = Math.ceil((MAX_TIME + SETTLE_TIME) / SIM_DT) + 2;
-  const bodies: Body[] = values.map((value, i) => ({
+  const bodies: Body[] = values.map((value, i) => {
     // From the thrower's edge, to their right of the bar, a hand's height above the rim.
-    p: new Vector3(side * (1.6 + i * 0.85 + spread(0.3)), 1.5 + random() * 0.6, side * 5),
-    v: new Vector3(spread(3.5), 1.5 + random() * 2, -side * (5.5 + random() * 3)),
-    q: new Quaternion().setFromAxisAngle(
-      new Vector3(spread(2) || 1, spread(2), spread(2)).normalize(),
-      random() * Math.PI * 2,
-    ),
-    w: new Vector3(spread(24), spread(24), spread(24)),
-    state: "moving",
-    settleFrom: new Quaternion(),
-    settleTo: new Quaternion(),
-    settleT: 0,
-    top: new Vector3(0, 1, 0),
-    value,
-    frames: new Float32Array(maxSteps * 7),
-  }));
+    const v = new Vector3(spread(3.5), 1.5 + random() * 2, -side * (5.5 + random() * 3));
+    // Thrown dice turn mostly end over end, the way they leave the fingers.
+    const roll = new Vector3(v.z, 0, -v.x).normalize().multiplyScalar(8 + random() * 10);
+    return {
+      p: new Vector3(side * (1.6 + i * 0.85 + spread(0.3)), 1.5 + random() * 0.6, side * 5),
+      v,
+      q: new Quaternion().setFromAxisAngle(
+        new Vector3(spread(2) || 1, spread(2), spread(2)).normalize(),
+        random() * Math.PI * 2,
+      ),
+      w: roll.add(new Vector3(spread(12), spread(12), spread(12))),
+      state: "moving",
+      onFelt: false,
+      perch: null,
+      settleFrom: new Quaternion(),
+      settleTo: new Quaternion(),
+      settleT: 0,
+      top: new Vector3(0, 1, 0),
+      value,
+      frames: new Float32Array(maxSteps * 7),
+    };
+  });
   const pairs = bodies.flatMap((a, i) => bodies.slice(i + 1).map((b) => [a, b] as const));
   const spin = new Quaternion();
   const axis = new Vector3();
   const normal = new Vector3();
+  const offsets: Vector3[] = [];
+  const contacts: Contact[] = [];
   let steps = 0;
 
   const settle = (b: Body) => {
@@ -210,7 +213,32 @@ export function simulateThrow(
     b.w.set(0, 0, 0);
   };
 
-  /** Keeps a die inside the rims, whatever its tilt, and bounces it if it was heading out. */
+  /** Finds every corner of a die that leans on the felt, a checker top or a rim. */
+  const touch = (b: Body) => {
+    b.onFelt = false;
+    b.perch = null;
+    for (const r of corners(b.q, offsets)) {
+      const x = b.p.x + r.x;
+      const y = b.p.y + r.y;
+      const z = b.p.z + r.z;
+      const stand = footing(obstacles, x, y, z);
+      if (y - (stand ? stand.top : 0) < SLOP) {
+        contacts.push(contact(b, r, UP, FLOOR));
+        if (stand) b.perch = stand;
+        else b.onFelt = true;
+      }
+      if (Math.abs(x) > FIELD_HALF_W - SLOP) {
+        normal.set(-Math.sign(x), 0, 0);
+        contacts.push(contact(b, r, normal, RIM));
+      }
+      if (Math.abs(z) > FIELD_HALF_D - SLOP) {
+        normal.set(0, 0, -Math.sign(z));
+        contacts.push(contact(b, r, normal, RIM));
+      }
+    }
+  };
+
+  /** Keeps a die inside the rims, whatever its tilt, and stops it if it was heading out. */
   const holdInside = (b: Body) => {
     const e = extents(b.q);
     const limitX = FIELD_HALF_W - e.x;
@@ -218,18 +246,12 @@ export function simulateThrow(
     if (Math.abs(b.p.x) > limitX) {
       const sign = Math.sign(b.p.x);
       b.p.x = sign * limitX;
-      if (b.v.x * sign > 0) {
-        b.v.x *= -WALL_BOUNCE;
-        b.w.multiplyScalar(0.7);
-      }
+      if (b.v.x * sign > 0) b.v.x *= -WALL_BOUNCE;
     }
     if (Math.abs(b.p.z) > limitZ) {
       const sign = Math.sign(b.p.z);
       b.p.z = sign * limitZ;
-      if (b.v.z * sign > 0) {
-        b.v.z *= -WALL_BOUNCE;
-        b.w.multiplyScalar(0.7);
-      }
+      if (b.v.z * sign > 0) b.v.z *= -WALL_BOUNCE;
     }
   };
 
@@ -277,33 +299,40 @@ export function simulateThrow(
     if (bFree) b.v.addScaledVector(normal, impulse);
   };
 
-  /** A die on the felt or a checker: friction, a spin that follows the roll, and no resting on a checker. */
-  const rollOn = (b: Body, ground: Obstacle | null) => {
-    const drag = Math.max(0, 1 - 2.6 * SIM_DT);
-    b.v.x *= drag;
-    b.v.z *= drag;
-    // On the ground the spin follows the roll.
-    const grip = Math.min(1, 14 * SIM_DT);
-    b.w.x += (b.v.z / DIE_HALF - b.w.x) * grip;
-    b.w.z += (-b.v.x / DIE_HALF - b.w.z) * grip;
-    b.w.y *= 1 - 3 * SIM_DT;
-    if (ground) {
-      // Never come to rest on a checker: slide off it.
-      normal.set(b.p.x - ground.x, 0, b.p.z - ground.z);
-      if (normal.lengthSq() < 1e-6) normal.set(1, 0, 0);
-      b.v.addScaledVector(normal.normalize(), 9 * SIM_DT);
-    } else if (Math.hypot(b.v.x, b.v.z) < 0.7 && Math.abs(b.v.y) < 0.2) {
-      settle(b);
+  /** Lifts a tumbling die so that no corner ends the step inside the felt or a checker. */
+  const standOn = (b: Body) => {
+    let lift = -Infinity;
+    for (const r of corners(b.q, offsets)) {
+      const stand = footing(obstacles, b.p.x + r.x, b.p.y + r.y, b.p.z + r.z);
+      lift = Math.max(lift, (stand ? stand.top : 0) - r.y);
     }
+    if (b.p.y < lift) b.p.y = lift;
   };
 
   for (; steps < maxSteps; steps++) {
     const time = steps * SIM_DT;
 
+    // Forces, then the corner impulses that answer them.
+    contacts.length = 0;
+    for (const b of bodies) {
+      if (b.state !== "moving") continue;
+      b.v.y += GRAVITY * SIM_DT;
+      touch(b);
+    }
+    for (let pass = 0; pass < VELOCITY_PASSES; pass++) {
+      for (const c of contacts) solve(c);
+    }
+    for (const b of bodies) {
+      // Never come to rest on a checker: slide off it.
+      if (b.state !== "moving" || !b.perch) continue;
+      normal.set(b.p.x - b.perch.x, 0, b.p.z - b.perch.z);
+      if (normal.lengthSq() < 1e-6) normal.set(1, 0, 0);
+      b.v.addScaledVector(normal.normalize(), 9 * SIM_DT);
+    }
+
     // Motion.
     for (const b of bodies) {
       if (b.state === "moving") {
-        b.v.y += GRAVITY * SIM_DT;
         b.p.addScaledVector(b.v, SIM_DT);
         const speed = b.w.length();
         if (speed > 1e-6) {
@@ -333,24 +362,18 @@ export function simulateThrow(
 
     // The felt, or the top of a checker. Last of all, so nothing ends a step below it.
     for (const b of bodies) {
-      if (b.state === "rest") continue;
-      const ground = under(obstacles, b.p.x, b.p.z);
-      const rest = (ground ? ground.top : 0) + extents(b.q).y;
       if (b.state === "settling") {
-        b.p.y = rest;
+        const ground = under(obstacles, b.p.x, b.p.z);
+        b.p.y = (ground ? ground.top : 0) + extents(b.q).y;
         if (b.settleT >= 1) {
           b.state = "rest";
           b.v.set(0, 0, 0);
         }
-        continue;
+      } else if (b.state === "moving") {
+        standOn(b);
+        const still = b.v.length() < REST_SPEED && b.w.length() < REST_SPIN;
+        if ((b.onFelt && !b.perch && still) || time > MAX_TIME) settle(b);
       }
-      if (b.p.y <= rest) {
-        b.p.y = rest;
-        land(b.v);
-        rollOn(b, ground);
-      }
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- rollOn() may have settled it.
-      if (time > MAX_TIME && b.state === "moving") settle(b);
     }
 
     for (const b of bodies) {
