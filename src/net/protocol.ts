@@ -55,7 +55,7 @@ export function normalizeCode(raw: string): string {
 /** The room code in an invite path such as `/g/abcde`, or `null` if there is none. */
 export function codeFromPath(pathname: string): string | null {
   const match = /^\/g\/([A-Za-z]+)\/?$/.exec(pathname);
-  const code = match ? normalizeCode(match[1]) : "";
+  const code = normalizeCode(match?.[1] ?? "");
   return isRoomCode(code) ? code : null;
 }
 

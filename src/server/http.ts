@@ -59,7 +59,7 @@ export async function handleApi(
       return { status: 201, body: await createRoom(store, name, undefined, character) };
     }
     if (parts.length === 4 && parts[3] === "join") {
-      const code = normalizeCode(parts[2]);
+      const code = normalizeCode(parts[2] ?? "");
       if (!isRoomCode(code)) throw new RoomError("not_found", "No game with that code");
       return { status: 200, body: await joinRoom(store, code, name, undefined, character) };
     }

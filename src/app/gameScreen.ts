@@ -1,6 +1,6 @@
 import { gsap } from "gsap";
 
-import type { Player } from "../core/board.ts";
+import { type Player, pointAt } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
@@ -106,7 +106,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     // A checker lands on top of its own colour, or on the felt of an empty point. When it
     // would hit, it takes the place of the checker that is there now.
     const landing = (point: number) => {
-      const there = state.points[point];
+      const there = pointAt(state, point);
       const mine = there.owner === current;
       return {
         point,
@@ -117,7 +117,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     const top = (from: number | "bar") =>
       from === "bar"
         ? slotPosition({ kind: "bar", player: current }, state.bar[current] - 1)
-        : slotPosition({ kind: "point", index: from }, state.points[from].count - 1);
+        : slotPosition({ kind: "point", index: from }, pointAt(state, from).count - 1);
     const reachable = [
       ...new Set(targets.flatMap((m) => (typeof m.to === "number" ? [m.to] : []))),
     ];

@@ -33,7 +33,10 @@ async function listen() {
   const { port } = server.address() as AddressInfo;
   const post = async (path: string, body: string) => {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", body });
-    return { status: response.status, body: (await response.json()) as Record<string, string> };
+    return {
+      status: response.status,
+      body: (await response.json()) as { code: string; token: string },
+    };
   };
   const socket = (code: string) => {
     const client = new WebSocket(`ws://127.0.0.1:${port}/api/rooms/${code}/ws`);

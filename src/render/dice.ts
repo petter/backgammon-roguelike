@@ -2,6 +2,7 @@ import { gsap } from "gsap";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
+import { must } from "../core/must.ts";
 import {
   DIE_HALF,
   type DiceThrow,
@@ -59,7 +60,7 @@ function faceTexture(value: number): THREE.CanvasTexture {
     context.fillStyle = "#f6efdc";
     context.fillRect(0, 0, size, size);
     context.fillStyle = "#1a1512";
-    for (const [column, row] of PIPS[value]) {
+    for (const [column, row] of must(PIPS[value], `pips for ${value}`)) {
       context.beginPath();
       context.arc(size * (0.26 + column * 0.24), size * (0.26 + row * 0.24), size * 0.085, 0, 7);
       context.fill();
@@ -184,10 +185,10 @@ export class DiceView {
 
   private pose(thrown: DiceThrow, step: number): void {
     this.dice.forEach(({ body }, i) => {
-      const f = thrown.dice[i].frames;
+      const f = must(thrown.dice[i], `die ${i}`).frames;
       const o = step * 7;
-      body.position.set(f[o], f[o + 1], f[o + 2]);
-      body.quaternion.set(f[o + 3], f[o + 4], f[o + 5], f[o + 6]);
+      body.position.fromArray(f, o);
+      body.quaternion.fromArray(f, o + 3);
     });
   }
 }

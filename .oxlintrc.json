@@ -90,7 +90,7 @@
     "typescript/no-unsafe-call": "error",
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
-    "typescript/no-unnecessary-condition": "off",
+    "typescript/no-unnecessary-condition": "error",
     "typescript/no-unnecessary-boolean-literal-compare": "error",
     "typescript/no-unnecessary-type-arguments": "error",
     "typescript/no-deprecated": "error",

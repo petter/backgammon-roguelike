@@ -12,7 +12,7 @@ const SOCKET_PATH = /^\/api\/rooms\/([A-Za-z]+)\/ws$/;
 
 /** The path of a request, without its query string. */
 export function pathOf(req: IncomingMessage): string {
-  return (req.url ?? "").split("?")[0];
+  return (req.url ?? "").split("?")[0] ?? "";
 }
 
 /**
@@ -63,7 +63,7 @@ export function createUpgradeHandler(
       // be thrown as an uncaught exception and take the whole process down.
       // `ws` closes the socket itself, with the matching close code.
       ws.on("error", (error) => console.error("Room socket error", error.message));
-      serveSocket(store, normalizeCode(match[1]), {
+      serveSocket(store, normalizeCode(match[1] ?? ""), {
         send: (text) => ws.send(text),
         close: () => ws.close(),
         // With the default binaryType, `ws` hands over each message as one Buffer.

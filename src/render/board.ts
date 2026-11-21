@@ -23,9 +23,8 @@ const BASE_H = 0.5;
 const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.7 });
 const darkWood = new THREE.MeshStandardMaterial({ color: 0x3d2616, roughness: 0.8 });
 const felt = new THREE.MeshStandardMaterial({ color: 0x1f4d3a, roughness: 1 });
-const pointColors = [0xc9a56b, 0x7a2e2e].map(
-  (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 }),
-);
+const pointMaterial = (color: number) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+const pointColors = [pointMaterial(0xc9a56b), pointMaterial(0x7a2e2e)] as const;
 /** Where a selected checker can go: bright mint, far from every colour on the board. */
 const TARGET_COLOR = 0x35ffb0;
 /** Which checkers can move: orange, which reads on both the cream and the black checkers. */
@@ -147,7 +146,7 @@ export function createBoard(): BoardView {
 
   const pointGlows: THREE.Mesh[] = [];
   for (let p = 0; p < POINT_COUNT; p++) {
-    group.add(triangle(p, 0.012, pointColors[p % 2]));
+    group.add(triangle(p, 0.012, pointColors[p % 2 === 0 ? 0 : 1]));
     const pointGlow = triangle(p, 0.016, targetFill);
     pointGlow.receiveShadow = false;
     pointGlow.visible = false;

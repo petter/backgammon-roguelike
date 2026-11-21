@@ -1,5 +1,6 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 
+import { must } from "../core/must.ts";
 import { CHECKER_R, FIELD_HALF_D, FIELD_HALF_W } from "./layout.ts";
 
 /** Half the edge of a die. */
@@ -65,6 +66,10 @@ interface Body {
   settleT: number;
   /** The local axis that ended up pointing up. */
   top: Vector3;
+  /** The value the die must show once it has landed. */
+  value: number;
+  /** Position and orientation at every step, seven numbers each. */
+  frames: Float32Array;
 }
 
 const matrix = new Matrix4();
@@ -100,7 +105,7 @@ function reachAlong(q: Quaternion, n: Vector3): number {
 
 /** The orientation nearest to `q` that lies flat, and the local axis it puts on top. */
 function flatten(q: Quaternion): { flat: Quaternion; top: Vector3 } {
-  let best = FACE_NORMALS[1];
+  let best = UP;
   let bestY = -Infinity;
   for (const normal of Object.values(FACE_NORMALS)) {
     const y = normal.clone().applyQuaternion(q).y;
@@ -129,7 +134,7 @@ export function shownValue(body: Quaternion, faces: Quaternion): number {
 
 /** Pip rotation that makes `value` show on the given local axis. */
 export function facesFor(value: number, top: Vector3 = UP): Quaternion {
-  return new Quaternion().setFromUnitVectors(FACE_NORMALS[value], top);
+  return new Quaternion().setFromUnitVectors(must(FACE_NORMALS[value], `face ${value}`), top);
 }
 
 /** The checker the point is standing over, if any: the highest one. */
@@ -171,7 +176,8 @@ export function simulateThrow(
 ): DiceThrow {
   const spread = (amount: number) => (random() - 0.5) * amount;
 
-  const bodies: Body[] = values.map((_, i) => ({
+  const maxSteps = Math.ceil((MAX_TIME + SETTLE_TIME) / SIM_DT) + 2;
+  const bodies: Body[] = values.map((value, i) => ({
     // From the thrower's edge, to their right of the bar, a hand's height above the rim.
     p: new Vector3(side * (1.6 + i * 0.85 + spread(0.3)), 1.5 + random() * 0.6, side * 5),
     v: new Vector3(spread(3.5), 1.5 + random() * 2, -side * (5.5 + random() * 3)),
@@ -185,10 +191,10 @@ export function simulateThrow(
     settleTo: new Quaternion(),
     settleT: 0,
     top: new Vector3(0, 1, 0),
+    value,
+    frames: new Float32Array(maxSteps * 7),
   }));
-
-  const maxSteps = Math.ceil((MAX_TIME + SETTLE_TIME) / SIM_DT) + 2;
-  const frames = bodies.map(() => new Float32Array(maxSteps * 7));
+  const pairs = bodies.flatMap((a, i) => bodies.slice(i + 1).map((b) => [a, b] as const));
   const spin = new Quaternion();
   const axis = new Vector3();
   const normal = new Vector3();
@@ -317,9 +323,7 @@ export function simulateThrow(
     // Contacts. Solved several times over, because fixing one can break another; the rims
     // go last so that they always win.
     for (let pass = 0; pass < SOLVER_PASSES; pass++) {
-      for (let i = 0; i < bodies.length; i++) {
-        for (let j = i + 1; j < bodies.length; j++) holdApart(bodies[i], bodies[j]);
-      }
+      for (const [a, b] of pairs) holdApart(a, b);
       for (const b of bodies) {
         if (b.state === "rest") continue;
         holdOffCheckers(b);
@@ -345,12 +349,13 @@ export function simulateThrow(
         land(b.v);
         rollOn(b, ground);
       }
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- rollOn() may have settled it.
       if (time > MAX_TIME && b.state === "moving") settle(b);
     }
 
-    bodies.forEach((b, i) => {
-      frames[i].set([b.p.x, b.p.y, b.p.z, b.q.x, b.q.y, b.q.z, b.q.w], steps * 7);
-    });
+    for (const b of bodies) {
+      b.frames.set([b.p.x, b.p.y, b.p.z, b.q.x, b.q.y, b.q.z, b.q.w], steps * 7);
+    }
     if (bodies.every((b) => b.state === "rest")) {
       steps++;
       break;
@@ -359,9 +364,9 @@ export function simulateThrow(
 
   return {
     steps,
-    dice: bodies.map((b, i) => ({
-      frames: frames[i].subarray(0, steps * 7),
-      faces: facesFor(values[i], b.top),
+    dice: bodies.map((b) => ({
+      frames: b.frames.subarray(0, steps * 7),
+      faces: facesFor(b.value, b.top),
     })),
   };
 }

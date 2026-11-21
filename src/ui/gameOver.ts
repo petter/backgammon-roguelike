@@ -36,7 +36,7 @@ export interface GameOverScreen {
 }
 
 export function prefersLessMotion(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**

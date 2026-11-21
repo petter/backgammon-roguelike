@@ -59,7 +59,7 @@ describe("serveSocket", () => {
     expect(white.sent).toHaveLength(1);
     expect(white.sent[0]).toMatchObject({ type: "state", lobby: { you: "white" } });
 
-    const first = white.sent[0].type === "state" && white.sent[0].view?.current === "white";
+    const first = white.sent[0]!.type === "state" && white.sent[0]!.view?.current === "white";
     const mover = first ? white : black;
     void mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
     await mover.say({ type: "command", command: { type: "roll" } });
@@ -78,7 +78,7 @@ describe("serveSocket", () => {
       [code, "wrong"],
       ["ZZZZZ", "wrong"],
       ["not a code", "wrong"],
-    ]) {
+    ] as const) {
       const socket = fakeSocket(store, room);
       await socket.say({ type: "hello", token });
       expect(socket.sent).toHaveLength(1);
@@ -117,7 +117,7 @@ describe("serveSocket", () => {
     const black = fakeSocket(store, code);
     await white.say({ type: "hello", token: host.token });
     await black.say({ type: "hello", token: guest.token });
-    const whiteFirst = white.sent[0].type === "state" && white.sent[0].view?.current === "white";
+    const whiteFirst = white.sent[0]!.type === "state" && white.sent[0]!.view?.current === "white";
     const [mover, other] = whiteFirst ? [white, black] : [black, white];
     other.hangUp();
     await mover.say({ type: "command", command: { type: "pickCard", index: 0 } });

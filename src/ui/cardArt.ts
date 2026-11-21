@@ -1,4 +1,5 @@
 import type { CardId } from "../core/cards.ts";
+import { must } from "../core/must.ts";
 
 /**
  * The card illustrations: small printed scenes on a 120 by 84 canvas. They share one
@@ -98,9 +99,10 @@ function die(
   const poly = (points: Point[], fill: string) =>
     `<polygon points="${points.map((p) => `${n(p[0])},${n(p[1])}`).join(" ")}" fill="${fill}" ${edge(look.edge)}/>`;
   const pips = (origin: Point, u: Point, v: Point, value: number) =>
-    `<g transform="matrix(${n(u[0])} ${n(u[1])} ${n(v[0])} ${n(v[1])} ${n(origin[0])} ${n(origin[1])})" fill="${look.pip}">${PIPS[
-      value
-    ]
+    `<g transform="matrix(${n(u[0])} ${n(u[1])} ${n(v[0])} ${n(v[1])} ${n(origin[0])} ${n(origin[1])})" fill="${look.pip}">${must(
+      PIPS[value],
+      `pips for ${value}`,
+    )
       .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="0.085"/>`)
       .join("")}</g>`;
   return `<g transform="rotate(${turn} ${cx} ${cy})">

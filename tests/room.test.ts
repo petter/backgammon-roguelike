@@ -897,7 +897,7 @@ describe("playing", () => {
       void guest;
       // One reseed for the command, then one seed per deck and one for play.
       expect(drawn).toHaveLength(4);
-      const [, w, b, play] = drawn;
+      const [, w = -1, b = -1, play = -1] = drawn;
       const started = (await store.load(host.code))?.game;
       expect(started?.cards).toEqual(newGame({ white: w, black: b, play }).state.cards);
     });

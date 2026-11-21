@@ -398,7 +398,7 @@ describe("using as many dice as possible", () => {
       [12, 10],
       [10, 8],
       [8, 6],
-    ]) {
+    ] as const) {
       after = applyCommand(after, "white", { type: "move", from, to, die: 2 }).state;
     }
     expect(after.dice).toEqual([]);
@@ -442,7 +442,7 @@ describe("using as many dice as possible", () => {
       const board = emptyBoard();
       for (let i = 0; i < 10; i++) {
         const point = rng.int(24);
-        if (board.points[point].count === 0) {
+        if (board.points[point]!.count === 0) {
           place(board, rng.int(2) ? "white" : "black", point, 1 + rng.int(3));
         }
       }
@@ -479,7 +479,7 @@ describe("using as many dice as possible", () => {
 
       let used = 0;
       for (let moves = legalMoves(state); moves.length > 0; moves = legalMoves(state)) {
-        const move = moves[rng.int(moves.length)];
+        const move = moves[rng.int(moves.length)]!;
         expect(possibleMoves(state)).toContainEqual(move);
         state = applyCommand(state, "white", { type: "move", ...move }).state;
         used++;
@@ -545,7 +545,7 @@ describe("dealing", () => {
         state = applyCommand(state, player, { type: "playCard", index }).state;
       }
       for (let moves = legalMoves(state); moves.length > 0; moves = legalMoves(state)) {
-        state = applyCommand(state, player, { type: "move", ...moves[0] }).state;
+        state = applyCommand(state, player, { type: "move", ...moves[0]! }).state;
         if (state.phase === "over") return;
       }
       state = applyCommand(state, player, { type: "endTurn" }).state;
@@ -729,8 +729,8 @@ describe("cards", () => {
     const { state, events } = play(game({ board, cards: hand("white", "quake") }));
     expect(state.board.bar.black).toBe(2);
     expect(state.board.points[2]).toEqual({ owner: null, count: 0 });
-    expect(state.board.points[4].count).toBe(2);
-    expect(state.board.points[6].count).toBe(1);
+    expect(state.board.points[4]!.count).toBe(2);
+    expect(state.board.points[6]!.count).toBe(1);
     expect(events.filter((e) => e.type === "hit")).toEqual([
       { type: "hit", player: "black", point: 2 },
       { type: "hit", player: "black", point: 5 },
@@ -742,7 +742,7 @@ describe("cards", () => {
     /** Tries the card, and checks it is refused with that reason and nothing changes. */
     const refused = (state: GameState, reason: string, index = 0) => {
       const before = structuredClone(state);
-      const card = state.cards[state.current].hand[index];
+      const card = state.cards[state.current].hand[index]!;
       expect(cardBlock(state, card)).toBe(reason);
       expect(canPlayCard(state, card)).toBe(false);
       expect(() => applyCommand(state, state.current, { type: "playCard", index })).toThrow(
@@ -833,7 +833,7 @@ describe("cards", () => {
         const board = emptyBoard();
         for (let i = 0; i < 8; i++) {
           const point = rng.int(24);
-          if (board.points[point].count === 0) {
+          if (board.points[point]!.count === 0) {
             place(board, rng.int(2) ? "white" : "black", point, 1 + rng.int(2));
           }
         }
@@ -863,6 +863,6 @@ describe("cards", () => {
     const state = game({ board, current: "black", cards: hand("black", "quake") });
     const result = applyCommand(state, "black", { type: "playCard", index: 0 });
     expect(result.state.board.bar.white).toBe(1);
-    expect(result.state.board.points[10].count).toBe(1);
+    expect(result.state.board.points[10]!.count).toBe(1);
   });
 });

@@ -14,8 +14,13 @@ import {
 import { FIELD_HALF_D, FIELD_HALF_W, obstaclesOf } from "../src/render/layout.ts";
 
 function lastFrame(frames: Float32Array) {
-  const f = frames.subarray(-7);
-  return { x: f[0], y: f[1], z: f[2], q: new Quaternion(f[3], f[4], f[5], f[6]) };
+  return pose(frames, frames.length - 7);
+}
+
+/** Position and orientation at one step, read from a die's recorded frames. */
+function pose(frames: Float32Array, offset: number) {
+  const [x = Number.NaN, y = Number.NaN, z = Number.NaN] = frames.subarray(offset, offset + 3);
+  return { x, y, z, q: new Quaternion().fromArray(frames, offset + 3) };
 }
 
 describe("simulateThrow", () => {
@@ -89,7 +94,7 @@ describe("simulateThrow", () => {
       const ends = dice.map((die) => lastFrame(die.frames));
       for (let i = 0; i < ends.length; i++) {
         for (let j = i + 1; j < ends.length; j++) {
-          const gap = Math.hypot(ends[i].x - ends[j].x, ends[i].z - ends[j].z);
+          const gap = Math.hypot(ends[i]!.x - ends[j]!.x, ends[i]!.z - ends[j]!.z);
           expect(gap, `seed ${seed}`).toBeGreaterThan(DIE_HALF * 1.6);
         }
       }
@@ -100,7 +105,7 @@ describe("simulateThrow", () => {
     const a = simulateThrow([4, 4], -1, board, createRng(5).next);
     const b = simulateThrow([4, 4], -1, board, createRng(5).next);
     expect(a.steps).toBe(b.steps);
-    expect([...a.dice[0].frames]).toEqual([...b.dice[0].frames]);
+    expect([...a.dice[0]!.frames]).toEqual([...b.dice[0]!.frames]);
   });
 });
 
@@ -110,12 +115,7 @@ describe("simulateThrow contacts", () => {
   /** Every frame of every die, as position and orientation. */
   function* poses(frames: Float32Array) {
     for (let o = 0; o < frames.length; o += 7) {
-      yield {
-        x: frames[o],
-        y: frames[o + 1],
-        z: frames[o + 2],
-        q: new Quaternion(frames[o + 3], frames[o + 4], frames[o + 5], frames[o + 6]),
-      };
+      yield pose(frames, o);
     }
   }
 
@@ -145,15 +145,15 @@ describe("simulateThrow contacts", () => {
         let farZ = 0;
         let low = Infinity;
         for (const die of dice) {
-          for (const pose of poses(die.frames)) {
+          for (const frame of poses(die.frames)) {
             for (let c = 0; c < 8; c++) {
               corner
                 .set(c & 1 ? 1 : -1, c & 2 ? 1 : -1, c & 4 ? 1 : -1)
                 .multiplyScalar(DIE_HALF)
-                .applyQuaternion(pose.q);
-              farX = Math.max(farX, Math.abs(corner.x + pose.x));
-              farZ = Math.max(farZ, Math.abs(corner.z + pose.z));
-              low = Math.min(low, corner.y + pose.y);
+                .applyQuaternion(frame.q);
+              farX = Math.max(farX, Math.abs(corner.x + frame.x));
+              farZ = Math.max(farZ, Math.abs(corner.z + frame.z));
+              low = Math.min(low, corner.y + frame.y);
             }
           }
         }
@@ -178,12 +178,12 @@ describe("simulateThrow contacts", () => {
         const ends = dice.map((die) => lastFrame(die.frames));
         for (let i = 0; i < ends.length; i++) {
           for (let j = i + 1; j < ends.length; j++) {
-            if (Math.abs(ends[i].y - ends[j].y) > DIE_HALF) continue;
-            const line = new Vector3(ends[j].x - ends[i].x, 0, ends[j].z - ends[i].z);
+            if (Math.abs(ends[i]!.y - ends[j]!.y) > DIE_HALF) continue;
+            const line = new Vector3(ends[j]!.x - ends[i]!.x, 0, ends[j]!.z - ends[i]!.z);
             const distance = line.length();
             line.normalize();
             // Projected onto the line between them, the two footprints do not overlap.
-            const air = distance - reach(ends[i].q, line) - reach(ends[j].q, line);
+            const air = distance - reach(ends[i]!.q, line) - reach(ends[j]!.q, line);
             expect(air, name).toBeGreaterThanOrEqual(-1e-3);
           }
         }
@@ -195,24 +195,24 @@ describe("simulateThrow contacts", () => {
     // Free flight, clear of the felt and the rims: the dice must not change course while
     // there is still air between them.
     const { dice } = simulateThrow([1, 2], 1, [], createRng(1821).next);
-    const a = [...poses(dice[0].frames)];
-    const b = [...poses(dice[1].frames)];
+    const a = [...poses(dice[0]!.frames)];
+    const b = [...poses(dice[1]!.frames)];
     const air = (f: number) => {
-      const line = new Vector3(b[f].x - a[f].x, b[f].y - a[f].y, b[f].z - a[f].z);
+      const line = new Vector3(b[f]!.x - a[f]!.x, b[f]!.y - a[f]!.y, b[f]!.z - a[f]!.z);
       const distance = line.length();
       line.normalize();
-      return distance - reach(a[f].q, line) - reach(b[f].q, line);
+      return distance - reach(a[f]!.q, line) - reach(b[f]!.q, line);
     };
     let checked = 0;
     for (let f = 1; f < 14; f++) {
       // Only steps that begin and end with air between the dice, well above the felt.
-      const airborne = [a, b].every((die) => die[f + 1].y > 0.7);
+      const airborne = [a, b].every((die) => die[f + 1]!.y > 0.7);
       if (!airborne || air(f) < 0.02 || air(f + 1) < 0.02) continue;
       checked++;
       // Then each die moves sideways as if the other were not there.
       for (const die of [a, b]) {
-        const stepBefore = die[f].x - die[f - 1].x;
-        const stepAfter = die[f + 1].x - die[f].x;
+        const stepBefore = die[f]!.x - die[f - 1]!.x;
+        const stepAfter = die[f + 1]!.x - die[f]!.x;
         expect(Math.abs(stepAfter - stepBefore), `frame ${f}`).toBeLessThan(1e-3);
       }
     }

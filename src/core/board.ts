@@ -1,3 +1,5 @@
+import { must } from "./must.ts";
+
 export type Player = "white" | "black";
 
 export const POINT_COUNT = 24;
@@ -26,6 +28,11 @@ export interface Move {
 export type BoardEvent =
   | { type: "hit"; player: Player; point: number }
   | { type: "pieceMoved"; player: Player; from: number | "bar"; to: number | "off" };
+
+/** The point at an index, which must be on the board. */
+export function pointAt(board: BoardState, index: number): PointState {
+  return must(board.points[index], `point ${index}`);
+}
 
 export function opponent(player: Player): Player {
   return player === "white" ? "black" : "white";
@@ -77,7 +84,7 @@ export function isHome(player: Player, point: number): boolean {
 
 /** A point is open unless the opponent holds it, or their lone checker there is shielded. */
 function isOpen(board: BoardState, player: Player, point: number, shielded: boolean): boolean {
-  const target = board.points[point];
+  const target = pointAt(board, point);
   if (target.owner !== opponent(player) || target.count === 0) return true;
   return target.count === 1 && !shielded;
 }
@@ -142,7 +149,7 @@ export function applyMove(
   if (from === "bar") {
     next.bar[player] -= 1;
   } else {
-    const source = next.points[from];
+    const source = pointAt(next, from);
     source.count -= 1;
     if (source.count === 0) source.owner = null;
   }
@@ -150,7 +157,7 @@ export function applyMove(
   if (to === "off") {
     next.off[player] += 1;
   } else {
-    const target = next.points[to];
+    const target = pointAt(next, to);
     if (target.owner === opponent(player) && target.count === 1) {
       next.bar[opponent(player)] += 1;
       target.count = 0;

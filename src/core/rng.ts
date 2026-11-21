@@ -35,7 +35,10 @@ export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
     const j = rng.int(i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
+    // Both indices are in range, so neither element is missing.
+    const swap = out[i] as T;
+    out[i] = out[j] as T;
+    out[j] = swap;
   }
   return out;
 }

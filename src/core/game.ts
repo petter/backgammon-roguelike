@@ -326,7 +326,7 @@ export function newGame(
  */
 function asDoubles(dice: number[]): number[] {
   const [a, b] = dice;
-  return dice.length === 2 && a === b ? [a, a, a, a] : dice;
+  return dice.length === 2 && a !== undefined && a === b ? [a, a, a, a] : dice;
 }
 
 function pickCard(state: GameState, index: number): Result {

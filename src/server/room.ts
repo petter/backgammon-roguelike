@@ -49,9 +49,9 @@ export const cryptoEntropy: Entropy = {
     // Rejection sampling, so every value is equally likely.
     const limit = Math.floor(0x1_0000_0000 / n) * n;
     const buffer = new Uint32Array(1);
-    do crypto.getRandomValues(buffer);
-    while (buffer[0] >= limit);
-    return buffer[0] % n;
+    let value = limit;
+    while (value >= limit) value = crypto.getRandomValues(buffer)[0] ?? limit;
+    return value % n;
   },
 };
 
@@ -80,7 +80,9 @@ function randomCode(entropy: Entropy): string {
  * A game saved before matches kept a score has none; give it one. If that game is already
  * won, the win is the one thing known about the match, so it is counted.
  */
-function upToDate(game: GameState): GameState {
+function upToDate(
+  game: Omit<GameState, "wins" | "rematch"> & Partial<Pick<GameState, "wins" | "rematch">>,
+): GameState {
   const none = { white: 0, black: 0, ...(game.winner ? { [game.winner]: 1 } : {}) };
   const no = { white: false, black: false };
   return { ...game, wins: game.wins ?? none, rematch: game.rematch ?? no };
@@ -267,6 +269,7 @@ export async function openConnection(
     // Subscribe before taking the snapshot, so no change can fall between the two.
     unsubscribe = await store.subscribe(code, (update) => deliver(update.room, update.events));
     deliver(await store.load(code), []);
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- deliver() may have closed it.
     if (closed) throw new RoomError("not_found", "That game no longer exists");
   } catch (error) {
     // No handle is returned on failure, so nobody else could ever remove the listener.
