@@ -45,6 +45,8 @@ export interface Hud {
   notify: (text: string) => void;
   /** Shows or hides the banner that says the connection to the server is lost. */
   setOffline: (offline: boolean) => void;
+  /** Where each die face in the HUD is on screen, in order; laid out even while hidden. */
+  diceFaces: () => DOMRect[];
   show: () => void;
   hide: () => void;
 }
@@ -145,9 +147,12 @@ export function createHud(): Hud {
     for (const card of hand.children) card.classList.remove("card-raised");
   };
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** What the dice faces show now, so they are only rebuilt (and pop) when that changes. */
+  let diceShown = "";
 
   const hud: Hud = {
     actions: null,
+    diceFaces: () => [...dice.children].map((face) => face.getBoundingClientRect()),
     render(model) {
       const { view, lobby, myTurn } = model;
       const name = (player: Player) => lobby.players[player]?.name ?? player;
@@ -155,9 +160,22 @@ export function createHud(): Hud {
 
       turn.textContent = turnText(model, name);
       // U+2680 is die face 1; the six faces are consecutive.
-      dice.textContent = model.rolling
-        ? ""
-        : view.dice.map((d) => String.fromCodePoint(0x267f + d)).join("");
+      const faces = view.dice.map((d) => String.fromCodePoint(0x267f + d));
+      const diceNow = `${model.rolling ? "rolling" : "shown"}:${faces.join("")}`;
+      if (diceNow !== diceShown) {
+        // Faces arrive with a pop when the thrown dice fly into them. While the dice are
+        // still in the air the faces are laid out but hidden, as somewhere for them to fly.
+        const state = model.rolling ? "pending" : diceShown.startsWith("rolling") && "arrived";
+        diceShown = diceNow;
+        dice.replaceChildren(
+          ...faces.map((face) => {
+            const span = document.createElement("span");
+            span.className = state ? `face ${state}` : "face";
+            span.textContent = face;
+            return span;
+          }),
+        );
+      }
       message.textContent = model.message;
       // Your own chip first; in hot-seat play the order stays fixed.
       const order: Player[] = model.local ? ["white", "black"] : [view.you, other];

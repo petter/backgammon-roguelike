@@ -72,6 +72,32 @@ body {
   letter-spacing: 4px;
 }
 
+#dice .face {
+  display: inline-block;
+}
+
+/* Laid out while the dice are thrown, so they have somewhere to fly to. */
+#dice .pending {
+  visibility: hidden;
+}
+
+#dice .arrived {
+  animation: die-arrive 0.28s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes die-arrive {
+  from {
+    transform: scale(0.6);
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #dice .arrived {
+    animation: none;
+  }
+}
+
 #message,
 #status,
 .quiet {

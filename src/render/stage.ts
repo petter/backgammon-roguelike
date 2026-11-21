@@ -7,6 +7,18 @@ const VIEW_TARGET = new THREE.Vector3((TRAY_X + TRAY_W / 2 - 7) / 2, 0, 0);
 const VIEW_HALF_W = 8.4;
 const VIEW_HALF_H = 7.2;
 
+/** What it takes to hold something up in front of the camera, at a spot on the screen. */
+export interface Lens {
+  /** The canvas, in client pixels. */
+  bounds: () => DOMRect;
+  /** The world point `depth` units in front of the camera, under a position in client pixels. */
+  point: (clientX: number, clientY: number, depth: number, out: THREE.Vector3) => THREE.Vector3;
+  /** How many world units one client pixel spans, `depth` units in front of the camera. */
+  pixel: (depth: number) => number;
+  /** The camera's orientation: something turned by it faces the viewer square on. */
+  facing: THREE.Quaternion;
+}
+
 export interface Stage {
   /** Everything that shakes together: board and checkers. */
   world: THREE.Group;
@@ -14,6 +26,7 @@ export interface Stage {
   setSeat: (player: Player) => void;
   /** What sits on the playfield under a pointer position, if anything. */
   pick: (clientX: number, clientY: number) => PickTarget | null;
+  lens: Lens;
 }
 
 export function createStage(container: HTMLElement): Stage {
@@ -63,6 +76,16 @@ export function createStage(container: HTMLElement): Stage {
   const raycaster = new THREE.Raycaster();
   const playfield = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hitPoint = new THREE.Vector3();
+  const forward = new THREE.Vector3();
+  const aim = (clientX: number, clientY: number) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(ndc, camera);
+    return raycaster.ray;
+  };
 
   return {
     world,
@@ -73,14 +96,21 @@ export function createStage(container: HTMLElement): Stage {
       resize();
     },
     pick(clientX, clientY) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
-        ((clientX - rect.left) / rect.width) * 2 - 1,
-        -((clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(ndc, camera);
-      if (!raycaster.ray.intersectPlane(playfield, hitPoint)) return null;
+      if (!aim(clientX, clientY).intersectPlane(playfield, hitPoint)) return null;
       return pickAt(hitPoint.x, hitPoint.z);
+    },
+    lens: {
+      bounds: () => renderer.domElement.getBoundingClientRect(),
+      point(clientX, clientY, depth, out) {
+        const { origin, direction } = aim(clientX, clientY);
+        const along = depth / direction.dot(camera.getWorldDirection(forward));
+        return out.copy(origin).addScaledVector(direction, along);
+      },
+      pixel(depth) {
+        const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        return (2 * depth * tan) / renderer.domElement.getBoundingClientRect().height;
+      },
+      facing: camera.quaternion,
     },
   };
 }
