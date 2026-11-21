@@ -11,6 +11,8 @@ export interface SearchHandlers {
    * for an answer. Keep it to settle before the next search, in case it was just matched.
    */
   onLeave?: (ticket: string) => void;
+  /** A ticket passed to `onLeave` has been settled with no seat: it need not be kept. */
+  onSettled?: (ticket: string) => void;
 }
 
 /** How a cancel turned out. */
@@ -130,6 +132,11 @@ export function findMatch(
   env: SearchEnvironment = browser,
 ): Search {
   let ticket = env.ticket();
+  /**
+   * A ticket given up as the page went away, until the server says how it ended. It may
+   * have been matched meanwhile, so the search does not go on until it is settled.
+   */
+  let left: string | null = null;
   /** Whether the server has acknowledged this ticket, so it can be waited on. */
   let known = false;
   let stopped = false;
@@ -192,16 +199,47 @@ export function findMatch(
     run++;
     request.abort();
   };
+  /**
+   * Back from the back-forward cache: settles the ticket given up on the way out before
+   * looking any further. If it was matched, that seat is taken; a new ticket is used only
+   * once the server has said there is none.
+   */
+  const resume = async (mine: number) => {
+    let failures = 0;
+    const wanted = () => mine === run;
+    while (left && wanted()) {
+      const outcome = await settleTicket(left, env);
+      if (mine !== run) return;
+      if (!outcome.settled) {
+        failures++;
+        if (failures === TROUBLE_AFTER) handlers.onTrouble(TROUBLE);
+        await env.delay(Math.min(500 * 2 ** failures, RETRY_MAX_MS));
+        continue;
+      }
+      if (failures >= TROUBLE_AFTER) handlers.onTrouble(null);
+      if (outcome.seat) {
+        finish();
+        handlers.onSeat(outcome.seat);
+        return;
+      }
+      handlers.onSettled?.(left);
+      left = null;
+    }
+    if (wanted()) start();
+  };
   const forget = env.onPage(
     () => {
       if (stopped) return;
       halt();
+      // Still settling the last one: the current ticket has not been used yet.
+      if (left) return;
+      left = ticket;
       handlers.onLeave?.(ticket);
       env.beacon(`/api/match/${ticket}/cancel`);
       renew();
     },
     () => {
-      if (!stopped) start();
+      if (!stopped) void resume(++run);
     },
   );
   const finish = () => {
@@ -211,12 +249,14 @@ export function findMatch(
   };
 
   start();
+  /** The ticket that matters: one given up and not yet settled, or else the one in use. */
+  const current = () => left ?? ticket;
   return {
-    ticket: () => ticket,
+    ticket: current,
     async cancel() {
-      if (stopped) return { ticket, seat: null, settled: true };
+      if (stopped) return { ticket: current(), seat: null, settled: true };
       finish();
-      return settleTicket(ticket, env);
+      return settleTicket(current(), env);
     },
   };
 }

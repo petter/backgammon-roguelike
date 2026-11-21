@@ -145,12 +145,17 @@ function seek(player: PlayerChoice): void {
     onSeat: (seat) => {
       if (search !== mine) return;
       search = null;
+      // Any ticket kept from this search has ended here; it must not lead back to this table.
+      unsettled.clear();
       enterRoom(seat.code, seat.token);
     },
     onTrouble: (problem) => {
       if (search === mine) lobby.searchTrouble(problem);
     },
     onLeave: (ticket) => unsettled.set(ticket),
+    onSettled: (ticket) => {
+      if (unsettled.get() === ticket) unsettled.clear();
+    },
   });
   search = mine;
 }

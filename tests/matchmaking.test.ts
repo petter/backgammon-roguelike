@@ -192,22 +192,73 @@ describe("findMatch", () => {
     expect(search.ticket()).toBe("t1");
   });
 
-  it("stops looking when the page goes away, and starts again with a new ticket", async () => {
+  it("stops looking when the page goes away, and settles that ticket before looking again", async () => {
     const server = fakeServer([{ ticket: "t1", seat: null }, "hang"]);
     const { seats, handlers } = recorder();
     const left: string[] = [];
-    const search = findMatch(player, { ...handlers, onLeave: (t) => left.push(t) }, server.env);
+    const settledTickets: string[] = [];
+    const search = findMatch(
+      player,
+      { ...handlers, onLeave: (t) => left.push(t), onSettled: (t) => settledTickets.push(t) },
+      server.env,
+    );
     await settled(server);
     server.page.hide();
     // Given up unanswered, so the caller keeps it to settle later.
     expect(left).toEqual(["t1"]);
-    expect(search.ticket()).toBe("t2");
+    expect(search.ticket()).toBe("t1");
     expect(server.beacons).toEqual(["/api/match/t1/cancel"]);
     expect(server.calls[1]?.aborted()).toBe(true);
     server.page.show();
     await settled(server);
-    expect(server.calls.at(-1)?.path).toBe("/api/match");
+    // No seat on the old ticket: only then does a new one go out.
+    expect(server.calls.slice(2).map((c) => c.path)).toEqual([
+      "/api/match/t1/cancel",
+      "/api/match",
+    ]);
     expect(ticketOf(server.calls.at(-1)?.body ?? "")).toBe("t2");
+    expect(settledTickets).toEqual(["t1"]);
+    expect(search.ticket()).toBe("t2");
+    expect(seats).toEqual([]);
+  });
+
+  it("takes a seat dealt to the ticket given up on the way out, instead of seeking again", async () => {
+    // Matched while the answer was on its way; then the page went into the cache and back.
+    const server = fakeServer(["hang"], { ticket: "t1", seat });
+    const { seats, handlers } = recorder();
+    findMatch(player, handlers, server.env);
+    await settled(server);
+    server.page.hide();
+    server.page.show();
+    await settled(server);
+    expect(seats).toEqual([seat]);
+    expect(server.calls.map((c) => c.path)).toEqual(["/api/match", "/api/match/t1/cancel"]);
+  });
+
+  it("keeps settling the old ticket while the server cannot be reached, and leaves again cleanly", async () => {
+    const server = fakeServer(["hang"]);
+    const fetchAll = server.env.fetch;
+    let reachable = false;
+    server.env.fetch = ((path: string, init?: RequestInit) =>
+      path.endsWith("/cancel") && !reachable
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : fetchAll(path, init)) as typeof fetch;
+    const left: string[] = [];
+    const { seats, handlers } = recorder();
+    findMatch(player, { ...handlers, onLeave: (t) => left.push(t) }, server.env);
+    await settled(server);
+    server.page.hide();
+    server.page.show();
+    await settled(server);
+    // Gone again before it was settled: the unused new ticket is not what is kept.
+    server.page.hide();
+    expect(left).toEqual(["t1"]);
+    expect(server.beacons).toEqual(["/api/match/t1/cancel"]);
+    reachable = true;
+    server.page.show();
+    await settled(server, 20);
+    expect(server.calls.filter((c) => c.path === "/api/match")).toHaveLength(2);
+    expect(ticketOf(server.calls.findLast((c) => c.path === "/api/match")?.body)).toBe("t2");
     expect(seats).toEqual([]);
   });
 });

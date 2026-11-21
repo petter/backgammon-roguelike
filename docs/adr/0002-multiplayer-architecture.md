@@ -144,7 +144,8 @@ Players without a friend can be paired with a stranger.
   ticket given up without an answer yet (a cancel in flight or unanswered, or the beacon as
   the page goes away) is kept in `sessionStorage` from the moment it is given up, so a reload
   does not lose it, and is cancelled again before the player's next search; a seat that
-  comes back then is taken.
+  comes back then is taken. A page restored from the back-forward cache settles the ticket
+  it gave up on the way out the same way before it looks any further.
 - Seekers live in Redis as one JSON value each, expiring ten minutes after they were last
   heard from, plus a sorted set of waiting tickets by when they started looking.
 - Not built: skill rating, regions, or anything for an opponent who leaves mid-game. Those
