@@ -176,7 +176,8 @@
 
   .step .identity {
     display: grid;
-    grid-template-columns: 1fr auto;
+    /* A fixed emblem column, so a longer motto never pushes the name field about. */
+    grid-template-columns: minmax(0, 1fr) 272px;
     align-items: start;
     gap: 4px 28px;
   }
@@ -196,20 +197,10 @@
     margin: 0;
   }
 
-  /* The label sits beside the tiles, as it does on an invite, so the row is filled. */
-  .code-slot {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .code-slot .field-label {
-    margin: 0;
-    white-space: nowrap;
-  }
-
-  .step .code-tiles {
-    grid-template-columns: repeat(5, 64px);
+  /* The code is the one thing this form needs, so its tiles take the whole row. */
+  .step .code-tiles span {
+    height: 68px;
+    font-size: 30px;
   }
 
   .field-label {
@@ -277,6 +268,15 @@
   border: 1px solid #6b5137;
   background: linear-gradient(180deg, #2b1d12, #1a110a);
   color: var(--text);
+}
+
+/* Outranks the plain link's hover, which would strip the button's fill. */
+@media (hover: hover) {
+  #lobby:is([data-view="expired"], [data-view="full"]) button.swap:hover:not(:disabled) {
+    border-color: var(--metal);
+    background: linear-gradient(180deg, #3a2716, #1f150c);
+    color: var(--metal-light);
+  }
 }
 
 /* Short screens and phones: the title steps down and the tagline gives way to the form. */
@@ -354,20 +354,18 @@
     0 0 0 3px color-mix(in srgb, var(--metal) 25%, transparent);
 }
 
-/* Empty slots carry a small dot; the one being typed into, a blinking underline. */
+/* Empty slots are lit a little, to be filled; the one being typed into has a blinking line. */
 .code-tiles span {
   position: relative;
 }
 
-.code-tiles span:not(.filled)::after {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #4a3826;
+.code-tiles span:not(.filled) {
+  border-color: #7a5a36;
+  background: linear-gradient(180deg, #2a1c11, #1a110a);
 }
 
 .code-input:focus + .code-tiles span.next:not(.filled)::after {
+  content: "";
   position: absolute;
   bottom: 12px;
   left: 50%;
@@ -409,9 +407,15 @@
 }
 
 /* After a wrong code, the code is selected: typing replaces all of it. */
-/* Selected to be typed over: the pieces blush, still plainly the wrong code. */
+/* Selected to be typed over: the pieces blush, framed in gold to show typing replaces them. */
 .code-entry.selected .code-tiles span {
   background: linear-gradient(180deg, #fff1ed, #efcfc6);
+}
+
+.code-entry.selected .code-tiles {
+  border-radius: 6px;
+  outline: 2px solid var(--metal);
+  outline-offset: 5px;
 }
 
 /* Joining waits on the code: the button lights once all five letters are in. */

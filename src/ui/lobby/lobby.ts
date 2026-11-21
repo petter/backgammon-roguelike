@@ -179,6 +179,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     lede.textContent = text.lede;
     go.textContent = text.go;
     swap.textContent = text.swap;
+    // Choosing Join was a choice: Back leads to hosting, and a link here would outshine Join.
+    swap.hidden = next === "join";
     // An invited guest came by link: there is no menu behind them to go back to.
     const dead = next === "expired" || next === "full";
     const byLink = next === "invited" || dead;

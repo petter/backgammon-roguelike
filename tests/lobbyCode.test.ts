@@ -12,7 +12,13 @@ describe("cleanCode", () => {
     expect(cleanCode("LIO12AB")).toBe("AB");
   });
 
-  it("keeps at most a code's length, so a pasted link tail still fits", () => {
+  it("keeps at most a code's length", () => {
     expect(cleanCode("ABCDEFG")).toBe("ABCDE");
+  });
+
+  it("takes the code out of a pasted invite link", () => {
+    expect(cleanCode("https://backgammon.example/g/kqrtw")).toBe("KQRTW");
+    expect(cleanCode("  http://localhost:5173/g/KQRTW/ ")).toBe("KQRTW");
+    expect(cleanCode("Join me: https://x.dev/g/abcde?ref=chat")).toBe("ABCDE");
   });
 });

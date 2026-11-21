@@ -2,10 +2,12 @@ import "./style.css";
 import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
+import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { createBoard } from "./render/board.ts";
+import { CheckersView } from "./render/checkers.ts";
 import { createStage } from "./render/stage.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
@@ -145,12 +147,15 @@ async function checkInvite(code: string): Promise<void> {
   }
 }
 
-// The board is scenery while the start screen is up, and the playing surface once it is not.
+// The board is scenery while the start screen is up, set for a game that has yet to start,
+// and the playing surface once it is not.
 const lobbyEl = el("lobby");
-new MutationObserver(() => stage.setBackdrop(!lobbyEl.hidden)).observe(lobbyEl, {
-  attributes: true,
-  attributeFilter: ["hidden"],
-});
+const scenery = new CheckersView(initialBoard());
+new MutationObserver(() => {
+  stage.setBackdrop(!lobbyEl.hidden);
+  if (lobbyEl.hidden) stage.world.remove(scenery.group);
+  else stage.world.add(scenery.group);
+}).observe(lobbyEl, { attributes: true, attributeFilter: ["hidden"] });
 
 function route(): void {
   leaveGame();

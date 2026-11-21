@@ -139,7 +139,7 @@ export function codeEntry(): {
   element.append(
     html(`
       <input id="code" class="code-input" autocomplete="off" autocapitalize="characters"
-        spellcheck="false" maxlength="${CODE_LENGTH}" aria-label="Game code" enterkeyhint="go" />
+        spellcheck="false" aria-label="Game code" enterkeyhint="go" />
       <div class="code-tiles" aria-hidden="true">${"<span></span>".repeat(CODE_LENGTH)}</div>
     `),
   );
