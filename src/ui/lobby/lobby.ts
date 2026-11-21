@@ -5,7 +5,16 @@ import { el } from "../dom.ts";
 
 import "./lobby.css";
 import "./menu.css";
-import { codeEntry, html, identity, part, type PlayerChoice, waitingRoom } from "./parts.ts";
+import {
+  codeEntry,
+  codeTiles,
+  html,
+  identity,
+  part,
+  type PlayerChoice,
+  touch,
+  waitingRoom,
+} from "./parts.ts";
 
 export type { PlayerChoice } from "./parts.ts";
 
@@ -33,7 +42,8 @@ export interface LobbyUi {
   hide: () => void;
 }
 
-type View = "home" | "host" | "join";
+type Step = "host" | "join" | "invited" | "expired";
+type View = "home" | Step;
 
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
 const ICONS = {
@@ -43,7 +53,7 @@ const ICONS = {
 };
 
 /** Text for each form: its heading, a line of what happens, its button, and the way across. */
-const STEPS = {
+const STEPS: Record<Step, { title: string; lede: string; go: string; swap: string }> = {
   join: {
     title: "Join a friend",
     lede: "Got a code from a friend? Enter it here.",
@@ -54,7 +64,13 @@ const STEPS = {
     title: "You're invited",
     lede: "A friend has set a table for you. Choose how you'll appear, then take your seat.",
     go: "Take your seat",
-    swap: "Host your own game instead",
+    swap: "Host a game instead",
+  },
+  expired: {
+    title: "This invite has expired",
+    lede: "The game behind this link is over or gone. Ask your friend for a new link, or start your own table.",
+    go: "Host a new game",
+    swap: "Enter a different code",
   },
   host: {
     title: "Host a game",
@@ -63,12 +79,6 @@ const STEPS = {
     swap: "Have a code? Join a friend",
   },
 };
-
-const EXPIRED =
-  "This invite link no longer works. Check the code with your friend, or host your own game.";
-
-/** Phones and tablets: focusing a field would throw up the keyboard over the button. */
-const touch = matchMedia("(pointer: coarse)");
 
 /**
  * The start screen. It first asks what the player wants to do, as a menu of three, and only
@@ -95,13 +105,13 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
             <span class="choice-text"><b>Pass and play</b><i>Both sides on this device</i></span>
           </button>
         </nav>
-        <form class="plaque step" novalidate hidden>
+        <form class="plaque step" novalidate hidden aria-labelledby="step-title">
           <button type="button" class="link back">‹ Back</button>
           <header>
             <h2 class="lobby-heading step-title" id="step-title"></h2>
             <p class="lede step-lede"></p>
           </header>
-          <p class="invite-code"><span class="field-label">Game code</span><b></b></p>
+          <div class="invite-code"><span class="field-label">Game code</span><div class="ivory-tiles small"></div></div>
           <div class="code-slot"><label class="field-label" for="code">Game code</label></div>
           <div class="you-slot"></div>
           <button type="submit" class="primary go"></button>
@@ -118,6 +128,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const title = part(root, ".step-title");
   const lede = part(root, ".step-lede");
   const inviteCode = part(root, ".invite-code");
+  const inviteTiles = part(inviteCode, ".ivory-tiles");
   const go = part(root, ".go", HTMLButtonElement);
   const swap = part(root, ".swap");
   const codeSlot = part(root, ".code-slot");
@@ -130,9 +141,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const waiting = waitingRoom(actions.onCancel);
   waitingPlaque.append(waiting.element);
   const buttons = [...home.querySelectorAll("button"), ...step.querySelectorAll("button")];
-  step.setAttribute("aria-labelledby", "step-title");
   let view: View = "home";
-  let invited = false;
 
   /** Shows the message next to what it is about: the code, the form, or the menu. */
   const say = (message: string, aboutCode = false) => {
@@ -146,7 +155,6 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
 
   const show = (next: View, focus = true) => {
     view = next;
-    if (next !== "join") invited = false;
     root.dataset.view = next;
     home.hidden = next !== "home";
     step.hidden = next === "home";
@@ -154,18 +162,20 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     say("");
     code.set(code.value());
     if (next === "home") return;
-    const text = STEPS[next === "join" && invited ? "invited" : next];
+    const text = STEPS[next];
     title.textContent = text.title;
     lede.textContent = text.lede;
     go.textContent = text.go;
     swap.textContent = text.swap;
-    back.hidden = invited;
-    inviteCode.hidden = !invited;
-    part(inviteCode, "b").textContent = invited ? code.value() : "";
-    codeSlot.hidden = next !== "join" || invited;
-    if (!focus) return;
-    if (next === "join" && !invited && code.value().length < CODE_LENGTH) code.input.focus();
-    else if (!touch.matches) you.focus();
+    // An invited guest came by link: there is no menu behind them to go back to.
+    const byLink = next === "invited" || next === "expired";
+    back.hidden = byLink;
+    inviteCode.hidden = !byLink;
+    if (byLink) codeTiles(inviteTiles, code.value());
+    codeSlot.hidden = next !== "join";
+    if (!focus || touch.matches) return;
+    if (next === "join" && code.value().length < CODE_LENGTH) code.input.focus();
+    else you.focus();
   };
 
   for (const choice of home.querySelectorAll<HTMLButtonElement>("[data-go]")) {
@@ -179,10 +189,15 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     show("home");
     part(home, "[data-go]").focus({ focusVisible: false });
   });
-  swap.addEventListener("click", () => show(view === "join" ? "host" : "join"));
+  swap.addEventListener("click", () => {
+    if (view === "expired") {
+      show("join", false);
+      code.selectAll();
+    } else show(view === "host" ? "join" : "host");
+  });
   step.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (view === "host") {
+    if (view === "host" || view === "expired") {
       actions.onCreate(you.read());
       return;
     }
@@ -198,22 +213,21 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   return {
     showMenu({ code: invite, error: problem, codeError = false } = {}) {
       root.hidden = false;
-      let message = problem;
       if (invite) {
-        invited = true;
         code.set(invite);
-        show("join");
+        show("invited");
+      } else if (codeError && view === "invited") {
+        // The link's game is gone. Stay with the invite and offer a table of their own.
+        show("expired", false);
       } else if (codeError) {
-        // The code was wrong or the game is gone: let them check it or type another.
-        if (invited && message) message = EXPIRED;
-        invited = false;
+        // The code was wrong or the game is full: let them check it or type another.
         show("join", false);
-        code.input.focus();
-        code.input.select();
+        if (problem) say(problem, true);
+        if (!touch.matches) code.selectAll();
       } else {
-        show(message ? view : "home", false);
+        show(problem ? view : "home", false);
+        if (problem) say(problem);
       }
-      if (message) say(message, codeError);
     },
     showWaiting(roomCode, link) {
       root.hidden = false;

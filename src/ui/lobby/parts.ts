@@ -65,10 +65,10 @@ export function identity(): {
           placeholder="Anonymous" enterkeyhint="go" />
       </label>
       <fieldset class="characters">
-        <legend class="field-label">Play as</legend>
+        <legend class="field-label">Your emblem</legend>
         <div class="character-options"></div>
-        <p class="character-motto" aria-live="polite"><b></b> <i></i></p>
       </fieldset>
+      <p class="character-motto" aria-live="polite"><b></b> <i></i></p>
     `),
   );
   const name = part(element, "input", HTMLInputElement);
@@ -126,6 +126,8 @@ export function codeEntry(): {
   set: (code: string) => void;
   /** Marks the code as the thing that went wrong, until it is edited. */
   flag: () => void;
+  /** Focuses the code with all of it selected, so typing starts over. */
+  selectAll: () => void;
 } {
   const element = document.createElement("div");
   element.className = "code-entry";
@@ -148,11 +150,15 @@ export function codeEntry(): {
     });
     element.classList.toggle("complete", cleaned.length === CODE_LENGTH);
   };
+  const settle = () => element.classList.remove("selected");
   input.addEventListener("input", () => {
     element.classList.remove("wrong");
     input.removeAttribute("aria-invalid");
+    settle();
     paint();
   });
+  input.addEventListener("blur", settle);
+  input.addEventListener("pointerdown", settle);
   paint();
   return {
     element,
@@ -168,11 +174,38 @@ export function codeEntry(): {
       element.classList.add("wrong");
       input.setAttribute("aria-invalid", "true");
     },
+    selectAll() {
+      input.focus();
+      input.select();
+      // The input itself is invisible, so the tiles show that typing replaces the code.
+      element.classList.add("selected");
+    },
   };
 }
 
+/** A room code set in ivory letter tiles, like the pieces on the board. */
+export function codeTiles(element: HTMLElement, code: string): void {
+  element.replaceChildren(
+    ...code.split("").map((letter) => {
+      const tile = document.createElement("span");
+      tile.textContent = letter;
+      return tile;
+    }),
+  );
+  element.setAttribute("role", "img");
+  element.setAttribute("aria-label", `Game code ${code.split("").join(" ")}`);
+}
+
+/** Phones and tablets: share sheets and on-screen keyboards. */
+export const touch = matchMedia("(pointer: coarse)");
+
+/** A phone's share sheet, where there is one; with a mouse, copying suits better. */
+const share = () => touch.matches && typeof navigator.share === "function";
+const label = () => (share() ? "Share invite link" : "Copy invite link");
+
 /**
  * The host's waiting room: the code, large, a way to send the invite link, and a way out.
+ * With a mouse the link is copied, ready to paste into a chat; on a phone it is shared.
  */
 export function waitingRoom(onCancel: () => void): {
   element: HTMLElement;
@@ -185,45 +218,53 @@ export function waitingRoom(onCancel: () => void): {
     html(`
       <h2 id="waiting-title" class="lobby-heading">Your table is set</h2>
       <p class="lede">Send your friend the invite link, or read them the code.</p>
-      <div class="share-code" role="img"></div>
-      <button type="button" class="primary send-link">Copy invite link</button>
+      <div class="share-code ivory-tiles"></div>
+      <button type="button" class="primary send-link"></button>
+      <input class="invite-link" readonly aria-label="Invite link" />
       <p class="waiting-status" role="status"><span class="pulse-dot"></span>Waiting for your friend to join</p>
       <button type="button" class="link cancel">Cancel</button>
     `),
   );
   const codeBox = part(element, ".share-code");
   const send = part(element, ".send-link", HTMLButtonElement);
-  const canShare = typeof navigator.share === "function";
-  const label = canShare ? "Share invite link" : "Copy invite link";
-  let link = "";
+  const linkField = part(element, ".invite-link", HTMLInputElement);
+  let restore = 0;
+  const copied = (text: string) => {
+    send.textContent = text;
+    clearTimeout(restore);
+    restore = window.setTimeout(() => (send.textContent = label()), 2000);
+  };
   const sendLink = async () => {
-    if (canShare) {
-      // Cancelling the share sheet rejects; there is nothing to do about that.
-      await navigator.share({ title: "Backgammon Roguelike", url: link }).catch(() => {});
-      return;
+    const link = linkField.value;
+    if (share()) {
+      try {
+        await navigator.share({ title: "Backgammon Roguelike", url: link });
+        return;
+      } catch (error) {
+        // Closing the share sheet is a choice, not a failure; anything else falls back to copying.
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
     }
     try {
       await navigator.clipboard.writeText(link);
-      send.textContent = "Link copied ✓";
+      copied("Link copied ✓");
     } catch {
-      send.textContent = link;
+      // No clipboard access: select the link so it can be copied by hand.
+      linkField.focus();
+      linkField.select();
+      copied("Copy the link below");
     }
   };
   send.addEventListener("click", () => void sendLink());
+  linkField.addEventListener("focus", () => linkField.select());
   part(element, ".cancel").addEventListener("click", onCancel);
   return {
     element,
     show(code, inviteLink) {
-      link = inviteLink;
-      codeBox.replaceChildren(
-        ...code.split("").map((letter) => {
-          const tile = document.createElement("span");
-          tile.textContent = letter;
-          return tile;
-        }),
-      );
-      codeBox.setAttribute("aria-label", `Game code ${code.split("").join(" ")}`);
-      send.textContent = label;
+      linkField.value = inviteLink;
+      codeTiles(codeBox, code);
+      clearTimeout(restore);
+      send.textContent = label();
     },
   };
 }

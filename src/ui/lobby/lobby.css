@@ -24,10 +24,11 @@
   z-index: 10;
   overflow-y: auto;
   padding: 0 16px;
+  /* Dark enough under the title and at the edges to read, light enough that the board shows. */
   background:
-    radial-gradient(ellipse 70% 60% at 50% 42%, #0a060333 0%, #0a0603a6 55%, #000000eb 100%),
-    #00000033;
-  backdrop-filter: blur(4px) saturate(0.85);
+    linear-gradient(180deg, #000000a6 0%, #0000 34%),
+    radial-gradient(ellipse 85% 75% at 50% 55%, #0a060314 0%, #0a060370 60%, #000000d9 100%);
+  backdrop-filter: blur(3px);
   color: var(--text);
 }
 
@@ -36,20 +37,27 @@
   display: none !important;
 }
 
-/* Pinned to the same height in every view, so the title never jumps between them. */
+/*
+ * Centred on the screen as if it were always as tall as the tallest form, so it sits in
+ * the middle without the title jumping when the view below it changes.
+ */
 .lobby-shell {
+  --block: 720px;
+
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: clamp(16px, 3.2vh, 30px);
   width: min(100%, 440px);
-  margin: clamp(20px, 8vh, 120px) auto max(24px, env(safe-area-inset-bottom));
+  margin: max(16px, calc((100dvh - var(--block)) / 2)) auto max(24px, env(safe-area-inset-bottom));
 }
 
 /* Big screens get a bigger menu, so it does not sit like a phone card in the middle. */
-@media (min-width: 1600px) and (min-height: 1200px) {
+@media (min-width: 1600px) and (min-height: 1000px) {
   .lobby-shell {
-    zoom: 1.2;
+    --block: 900px;
+
+    zoom: 1.12;
   }
 }
 
