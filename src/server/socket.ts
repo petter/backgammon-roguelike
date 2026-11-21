@@ -28,7 +28,6 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
   };
 
   const handle = async (text: string) => {
-    if (closed) return;
     const message = parseClientMessage(text);
     if (!message) return reject("Malformed message");
 
@@ -56,13 +55,20 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     queue = queue
       .then(() => handle(text))
       .catch((error) => {
+        // Not the client's doing and not a verdict on its seat: say so without `fatal`, and
+        // close, so that the client simply connects again.
         console.error("Room connection failed", error);
-        reject("Something went wrong on the server");
+        send({ type: "error", message: "Something went wrong on the server", fatal: false });
+        socket.close();
       });
   });
   socket.onClose(() => {
     closed = true;
-    connection?.close();
-    connection = null;
+    // Whatever was received before the close is still carried out, in order; the room is
+    // let go of only after that.
+    queue = queue.finally(() => {
+      connection?.close();
+      connection = null;
+    });
   });
 }

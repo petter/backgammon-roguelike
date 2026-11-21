@@ -197,8 +197,6 @@ export function createHud(): Hud {
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => {
         notice.hidden = true;
-        offlineBanner.hidden = true;
-        root.classList.remove("offline");
       }, 3500);
     },
     setOffline(offline) {

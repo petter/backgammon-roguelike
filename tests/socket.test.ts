@@ -141,6 +141,131 @@ describe("serveSocket", () => {
   });
 });
 
+describe("a socket that closes with work outstanding", () => {
+  /** A store whose reads can be held back, to catch a command in mid-flight. */
+  function slowStore() {
+    const inner = createMemoryStore();
+    let gate: Promise<void> | null = null;
+    let open: () => void = () => {};
+    const store: GameStore = {
+      ...inner,
+      load: async (code) => {
+        const room = await inner.load(code);
+        if (gate) await gate;
+        return room;
+      },
+    };
+    return {
+      inner,
+      store,
+      hold() {
+        gate = new Promise<void>((resolve) => {
+          open = resolve;
+        });
+      },
+      release() {
+        gate = null;
+        open();
+      },
+    };
+  }
+
+  it("still carries out a command it had received, and tells the other player", async () => {
+    const { inner, store, hold, release } = slowStore();
+    const host = await createRoom(inner, "Ada");
+    const guest = await joinRoom(inner, host.code, "Grace");
+    const first = (await inner.load(host.code))?.game?.current;
+    const mover = fakeSocket(store, host.code);
+    const watcher = fakeSocket(inner, host.code);
+    await mover.say({ type: "hello", token: first === "white" ? host.token : guest.token });
+    await watcher.say({ type: "hello", token: first === "white" ? guest.token : host.token });
+    const sentToMover = mover.sent.length;
+
+    hold();
+    const pending = mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
+    // The client moves to a replacement socket and this one goes away, mid-command.
+    mover.hangUp();
+    release();
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const game = (await inner.load(host.code))?.game;
+    expect((await inner.load(host.code))?.version).toBe(2);
+    expect(game?.phase).toBe("roll");
+    expect(watcher.sent.at(-1)).toMatchObject({ type: "state", version: 2 });
+    // Nothing more is sent to the socket that closed.
+    expect(mover.sent.length).toBe(sentToMover);
+  });
+
+  it("carries out commands that were queued behind it too, in order", async () => {
+    const { inner, store, hold, release } = slowStore();
+    const host = await createRoom(inner, "Ada");
+    const guest = await joinRoom(inner, host.code, "Grace");
+    const first = (await inner.load(host.code))?.game?.current;
+    const mover = fakeSocket(store, host.code);
+    await mover.say({ type: "hello", token: first === "white" ? host.token : guest.token });
+    hold();
+    mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
+    const last = mover.say({ type: "command", command: { type: "roll" } });
+    mover.hangUp();
+    release();
+    await last;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const game = (await inner.load(host.code))?.game;
+    expect(game?.phase).toBe("move");
+    expect(game?.dice.length).toBeGreaterThan(0);
+  });
+
+  it("leaves no listener behind once the outstanding work is done", async () => {
+    const { inner, store, hold, release } = slowStore();
+    const host = await createRoom(inner, "Ada");
+    const socket = fakeSocket(store, host.code);
+    await socket.say({ type: "hello", token: host.token });
+    hold();
+    const pending = socket.say({ type: "command", command: { type: "roll" } });
+    socket.hangUp();
+    release();
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const sent = socket.sent.length;
+    await joinRoom(inner, host.code, "Grace");
+    expect(socket.sent.length).toBe(sent);
+  });
+});
+
+describe("an unexpected server error", () => {
+  it("closes the socket without condemning the seat", async () => {
+    const inner = createMemoryStore();
+    const host = await createRoom(inner, "Ada");
+    let broken = false;
+    const store: GameStore = {
+      ...inner,
+      load: async (code) => {
+        if (broken) throw new Error("redis is down");
+        return inner.load(code);
+      },
+    };
+    const socket = fakeSocket(store, host.code);
+    await socket.say({ type: "hello", token: host.token });
+    broken = true;
+    await socket.say({ type: "command", command: { type: "roll" } });
+    expect(socket.sent.at(-1)).toEqual({
+      type: "error",
+      message: "Something went wrong on the server",
+      fatal: false,
+    });
+    expect(socket.isOpen()).toBe(false);
+
+    // Hello failing for the same reason is not fatal either.
+    const again = fakeSocket(store, host.code);
+    await again.say({ type: "hello", token: host.token });
+    expect(again.sent).toEqual([
+      { type: "error", message: "Something went wrong on the server", fatal: false },
+    ]);
+    expect(again.isOpen()).toBe(false);
+  });
+});
+
 describe("ping", () => {
   it("is answered with pong, before and after hello, without touching the room", async () => {
     const { store, host, code } = await started();

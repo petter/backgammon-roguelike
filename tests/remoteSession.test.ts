@@ -7,6 +7,7 @@ import {
   HANDOVER_MS,
   PING_MS,
   PONG_GRACE_MS,
+  RETIRE_MS,
   ROTATE_MS,
 } from "../src/net/remoteSession.ts";
 import type { SessionStatus, SessionUpdate } from "../src/net/session.ts";
@@ -20,6 +21,8 @@ class FakeSocket implements ClientSocket {
   open = true;
   /** A healthy server answers every ping; switch off to play a dead connection. */
   answersPings = true;
+  /** A half-dead connection: asked to close, it never reports that it has. */
+  lingers = false;
 
   send(text: string): void {
     if (!this.open) throw new Error("send on a closed socket");
@@ -28,7 +31,8 @@ class FakeSocket implements ClientSocket {
     if (message.type === "ping" && this.answersPings) this.deliver({ type: "pong" });
   }
   close(): void {
-    this.end();
+    if (this.lingers) this.open = false;
+    else this.end();
   }
   /** The connection goes away, whoever ended it. */
   end(): void {
@@ -119,10 +123,14 @@ describe("remote session", () => {
     sockets[1].accept();
     expect(sockets[0].open).toBe(true);
     sockets[1].deliver(state(4));
-    // Only now is the old one let go, and commands move to the new one.
-    expect(sockets[0].open).toBe(false);
+    // Commands move to the new one at once. The old one is kept a little longer, to hear
+    // the answers to what was sent on it, and only then let go.
     api.send({ type: "endTurn" });
     expect(sockets[1].commands()).toEqual([{ type: "endTurn" }]);
+    expect(sockets[0].commands()).toEqual([{ type: "roll" }]);
+    expect(sockets[0].open).toBe(true);
+    vi.advanceTimersByTime(RETIRE_MS);
+    expect(sockets[0].open).toBe(false);
     // Never offline, and the repeated state is not applied twice.
     expect(statuses.filter((s) => s === "reconnecting")).toEqual([]);
     expect(updates).toHaveLength(1);
@@ -135,8 +143,11 @@ describe("remote session", () => {
       vi.advanceTimersByTime(ROTATE_MS);
       expect(sockets).toHaveLength(i + 1);
       sockets[i].come(1);
-      expect(sockets[i - 1].open).toBe(false);
       expect(sockets[i].open).toBe(true);
+      vi.advanceTimersByTime(RETIRE_MS);
+      expect(sockets[i - 1].open).toBe(false);
+      // Never more than the one in use once the old one has been retired.
+      expect(sockets.filter((socket) => socket.open)).toHaveLength(1);
     }
     expect(statuses.filter((s) => s !== "connected")).toEqual(["connecting"]);
   });
@@ -165,8 +176,91 @@ describe("remote session", () => {
     vi.advanceTimersByTime(1);
     expect(sockets).toHaveLength(3);
     sockets[2].come(1);
+    vi.advanceTimersByTime(RETIRE_MS);
     expect(sockets[0].open).toBe(false);
     expect(statuses.filter((s) => s === "reconnecting")).toEqual([]);
+  });
+
+  it("is not ended by an error on a replacement while the socket in use works", () => {
+    const { api, sockets, statuses, errors } = session();
+    sockets[0].come(2);
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1].accept();
+    sockets[1].deliver({
+      type: "error",
+      message: "Something went wrong on the server",
+      fatal: true,
+    });
+    // The replacement is dropped; the game carries on and nothing is reported.
+    expect(sockets[1].open).toBe(false);
+    expect(sockets[0].open).toBe(true);
+    expect(errors).toEqual([]);
+    expect(statuses.at(-1)).toBe("connected");
+    api.send({ type: "roll" });
+    expect(sockets[0].commands()).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(sockets).toHaveLength(3);
+    sockets[2].come(2);
+    api.send({ type: "endTurn" });
+    expect(sockets[2].commands()).toHaveLength(1);
+  });
+
+  it("still hears the answer to a command sent just before a changeover", () => {
+    const { api, sockets, updates, errors } = session();
+    sockets[0].come(4);
+    vi.advanceTimersByTime(ROTATE_MS);
+    api.send({ type: "pickCard", index: 0 });
+    sockets[1].come(4);
+    // The server answers on the socket the command arrived on, after the changeover.
+    sockets[0].deliver({ type: "error", message: "No such card on offer", fatal: false });
+    expect(errors).toEqual([["No such card on offer", false]]);
+    sockets[0].deliver(state(5, WON));
+    expect(updates.at(-1)?.events).toHaveLength(1);
+    // The same update on the new socket is not applied a second time.
+    sockets[1].deliver(state(5, WON));
+    expect(updates).toHaveLength(2);
+  });
+
+  it("ignores a fatal error on a socket that has already been replaced", () => {
+    const { sockets, errors, statuses } = session();
+    sockets[0].come(1);
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1].come(1);
+    sockets[0].deliver({ type: "error", message: "Already connected", fatal: true });
+    expect(errors).toEqual([]);
+    expect(sockets[1].open).toBe(true);
+    expect(statuses.at(-1)).toBe("connected");
+  });
+
+  it("acts on a dead connection at once, even if the socket never reports closing", () => {
+    const { api, sockets, statuses, errors } = session();
+    sockets[0].come(1);
+    sockets[0].answersPings = false;
+    sockets[0].lingers = true;
+    vi.advanceTimersByTime(PING_MS + PONG_GRACE_MS);
+    // No close event ever comes, yet the player is told and a new socket is on its way.
+    expect(statuses.at(-1)).toBe("reconnecting");
+    api.send({ type: "roll" });
+    expect(errors).toEqual([["You are offline. Reconnecting…", false]]);
+    expect(sockets[0].commands()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(sockets).toHaveLength(2);
+    sockets[1].come(1);
+    expect(statuses.at(-1)).toBe("connected");
+  });
+
+  it("says it is reconnecting when the very first connection keeps failing", () => {
+    const { sockets, statuses } = session();
+    expect(statuses).toEqual(["connecting"]);
+    sockets[0].end();
+    expect(statuses.at(-1)).toBe("reconnecting");
+    vi.advanceTimersByTime(1);
+    sockets[1].end();
+    vi.advanceTimersByTime(5000);
+    expect(statuses.filter((s) => s === "connecting")).toHaveLength(1);
+    expect(statuses.at(-1)).toBe("reconnecting");
+    sockets.at(-1)?.come(0);
+    expect(statuses.at(-1)).toBe("connected");
   });
 
   it("abandons a replacement that never answers and tries another", () => {

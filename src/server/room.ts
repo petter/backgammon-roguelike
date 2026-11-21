@@ -258,7 +258,9 @@ export async function openConnection(
     async command(command) {
       for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
         const room = await store.load(code);
-        if (closed) return;
+        // A command the server has received is carried out even if its connection has since
+        // closed: the client may simply have moved to a replacement socket. Only the replies
+        // to a closed connection are dropped.
         if (!room || room.id !== roomId) return evict();
         if (!room.game) return complain("The game has not started yet", false);
         let result: ReturnType<typeof applyCommand>;
