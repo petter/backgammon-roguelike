@@ -1,6 +1,6 @@
 # Backgammon Rogue-like
 
-Backgammon with cards, played against a friend. Three.js + TypeScript + Vite.
+Backgammon with cards, played against a friend or a stranger. Three.js + TypeScript + Vite.
 
 - [ADR 0001](docs/adr/0001-engine-and-stack.md): engine and stack
 - [ADR 0002](docs/adr/0002-multiplayer-architecture.md): multiplayer architecture
@@ -28,6 +28,15 @@ replay the same shuffles and dice.
 
 Keys: `Space` rolls, `E` ends the turn. In development, `D` drops the connection to exercise
 reconnecting. Rooms live in memory and are lost when the dev server restarts.
+
+## Playing a stranger
+
+"Play online" on the start screen looks for anyone else who is looking. The first two
+seekers are seated together at once, in a new room, with whoever waited longer as White.
+There is no rating or region: it is first come, first served.
+
+To try it locally, choose "Play online" in two tabs. A seeker who cancels, closes the tab,
+or whose browser stops asking for about five seconds is never matched.
 
 ## How a turn works
 
