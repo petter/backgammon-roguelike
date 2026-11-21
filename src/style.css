@@ -602,8 +602,8 @@ kbd {
 }
 
 .kind-ward {
-  --kind-ink: #e6edf4;
-  color: #f0f4f8;
+  --kind-ink: #a9c4e0;
+  color: #cfe0f2;
 }
 
 .kind-trap {
@@ -681,7 +681,11 @@ kbd {
   display: flex;
 }
 
-/* Rare: silver. The gem is set in a silver bezel. */
+/* Rare: silver. The gem is set in a silver bezel, which needs a little more room. */
+.rarity-rare .card-rarity {
+  gap: 0.86em;
+}
+
 .rarity-rare .card-gem {
   box-shadow: 0 0 0 1.5px #dfe4ea;
 }

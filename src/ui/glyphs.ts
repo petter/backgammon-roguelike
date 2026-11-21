@@ -12,7 +12,7 @@ export const GLYPHS = {
   // A heater shield with a raised boss.
   ward: `<path d="M6 .9l4.4 1.7V6c0 2.7-1.9 4.3-4.4 5.1C3.5 10.3 1.6 8.7 1.6 6V2.6z"/><circle cx="6" cy="5.6" r="1.5" class="cut"/>`,
   // A card back lying tilted, its lattice showing: something set face down.
-  trap: `<g transform="rotate(-12 6 6)"><rect x="1.6" y="1.2" width="8.8" height="9.6" rx="1.2"/><rect x="3" y="2.6" width="6" height="6.8" rx="0.6" class="cut-line" fill="none" stroke-width="0.8"/><path d="M6 4.6l1.2 1.4L6 7.4 4.8 6z" class="cut"/></g>`,
+  trap: `<g transform="rotate(-12 6 6)"><rect x="2.4" y="0.4" width="7.2" height="11.2" rx="1.2"/><rect x="3.6" y="1.7" width="4.8" height="8.6" rx="0.5" class="cut-line" fill="none" stroke-width="0.7"/><path d="M6 3.2l1.9 2.8L6 8.8 4.1 6z" class="cut"/></g>`,
   // A four-pointed spark.
   boon: `<path d="M6 .8l1.2 3.9 3.9 1.3-3.9 1.2L6 11.2 4.8 7.2.9 6l3.9-1.3z"/>`,
   // A die face showing three.
