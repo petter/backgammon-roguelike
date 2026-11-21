@@ -5,6 +5,7 @@ import { el } from "../dom.ts";
 
 import "./lobby.css";
 import "./menu.css";
+import "./codes.css";
 import {
   codeEntry,
   codeTiles,
