@@ -68,8 +68,9 @@ async function pairUp(
   const freshAfter = now - freshMs;
   for (let attempt = 0; attempt < PAIR_ATTEMPTS; attempt++) {
     const waiting = await store.waitingSeekers(LOOK_AHEAD);
+    // Checked again as each is pruned: one may have been heard from since this list was read.
     for (const stale of waiting.filter((s) => s.seen < freshAfter && s.id !== me.id)) {
-      await store.removeSeeker(stale.id);
+      await store.pruneSeeker(stale.id, freshAfter);
     }
     // The longest waiting of those who are still there. If that is me, a newer seeker will
     // come to me.

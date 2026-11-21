@@ -42,6 +42,7 @@ function isolated(store: RedisStore, prefix: string): RedisStore {
     touchSeeker: (id, now) => store.touchSeeker(id, now),
     waitingSeekers: (limit) => store.waitingSeekers(limit),
     pairSeekers: (a, b, freshAfter) => store.pairSeekers(a, b, freshAfter),
+    pruneSeeker: (id, seenBefore) => store.pruneSeeker(id, seenBefore),
     removeSeeker: (id) => store.removeSeeker(id),
     close: () => store.close(),
   };
@@ -60,6 +61,21 @@ describe.skipIf(!url)("redis", () => {
   storeContract("redis", () => {
     const prefix = `t${Date.now()}-${run++}-`;
     return settled(isolated(open(undefined, `${prefix}:`), prefix));
+  });
+
+  it("keeps a seeker who keeps asking in the queue, however long nobody else arrives", async () => {
+    const prefix = `q${Date.now()}:`;
+    const store = open(undefined, prefix);
+    const admin = new Redis(url ?? "");
+    const now = Date.now();
+    await store.addSeeker({ id: "a", name: "A", character: "gambler", since: now, seen: now });
+    // The queue is an index that must not run out while its seekers are still there.
+    expect(await admin.pttl(`${prefix}seekers`)).toBe(-1);
+    // Even if the index lost the entry, the next touch puts it back.
+    await admin.del(`${prefix}seekers`);
+    await store.touchSeeker("a", now + 1000);
+    expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["a"]);
+    await admin.quit();
   });
 
   it("expires a room after its time to live", async () => {

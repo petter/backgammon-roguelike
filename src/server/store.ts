@@ -80,6 +80,11 @@ export interface GameStore {
     freshAfter: number,
   ) => Promise<boolean>;
   /**
+   * Forgets a seeker who has gone quiet: only if they are still waiting and were last seen
+   * before `seenBefore`, checked in the same step. Returns whether they were forgotten.
+   */
+  pruneSeeker: (id: string, seenBefore: number) => Promise<boolean>;
+  /**
    * Stops a seeker waiting and forgets them, unless they were already matched: then their
    * record stays, so their seat can still be collected. Returns the record as it was.
    */

@@ -198,3 +198,26 @@ describe("matchmaking", () => {
     expect((await awaitMatch(store, ada.ticket, options)).seat?.code).toBe(seats[0]?.code);
   });
 });
+
+describe("matchmaking under races", () => {
+  it("never drops a seeker who was heard from after being listed as stale", async () => {
+    const { time, store, options } = setup();
+    const patient = await seekMatch(store, "Patient", undefined, options);
+    time.advance(FRESH_MS + 1);
+    // Patient's own wait renews them just after the newcomer's look at the queue.
+    const racing: GameStore = {
+      ...store,
+      waitingSeekers: async (limit) => {
+        const listed = await store.waitingSeekers(limit);
+        await store.touchSeeker(patient.ticket, time.now());
+        return listed;
+      },
+    };
+    const newcomer = await seekMatch(racing, "Newcomer", undefined, options);
+    expect(newcomer.seat).toBeNull();
+    // Still known, and matched with the newcomer on the next look.
+    const waited = await awaitMatch(store, patient.ticket, options);
+    const matched = waited.seat ?? (await awaitMatch(store, newcomer.ticket, options)).seat;
+    expect(matched).not.toBeNull();
+  });
+});

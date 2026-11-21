@@ -21,7 +21,10 @@ redis.call('SET', KEYS[1], ARGV[3], 'EX', ARGV[4])
 return 1
 `;
 
-/** Moves a waiting seeker's `seen` forward. Returns the record, or nothing if it is gone. */
+/**
+ * Moves a waiting seeker's `seen` forward, and makes sure they are still in the queue.
+ * Returns the record, or nothing if it is gone.
+ */
 const TOUCH_SEEKER = `
 local text = redis.call('GET', KEYS[1])
 if not text then return false end
@@ -30,8 +33,23 @@ if seeker.grant == nil then
   seeker.seen = tonumber(ARGV[1])
   text = cjson.encode(seeker)
   redis.call('SET', KEYS[1], text, 'EX', ARGV[2])
+  redis.call('ZADD', KEYS[2], 'NX', seeker.since, seeker.id)
 end
 return text
+`;
+
+/** Forgets a seeker only if they are still waiting and were last seen before ARGV[2]. */
+const PRUNE_SEEKER = `
+local text = redis.call('GET', KEYS[1])
+if not text then
+  redis.call('ZREM', KEYS[2], ARGV[1])
+  return 1
+end
+local seeker = cjson.decode(text)
+if seeker.grant ~= nil or seeker.seen >= tonumber(ARGV[2]) then return 0 end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[2], ARGV[1])
+return 1
 `;
 
 /** Matches two seekers if both are still waiting and were seen lately; all or nothing. */
@@ -64,7 +82,10 @@ return text
 
 const key = (code: string) => `room:${code}`;
 const seekerKey = (id: string) => `seeker:${id}`;
-/** Waiting seekers' ids, scored by when they started looking. */
+/**
+ * Waiting seekers' ids, scored by when they started looking. It never expires: an id whose
+ * record has run out is dropped when the queue is next read.
+ */
 const QUEUE = "seekers";
 
 export interface RedisStoreOptions {
@@ -180,12 +201,10 @@ export function createRedisStore(
         .multi()
         .set(seekerKey(seeker.id), JSON.stringify(seeker), "EX", SEEKER_TTL_SECONDS)
         .zadd(QUEUE, seeker.since, seeker.id)
-        // The queue outlives any one seeker only while someone keeps looking.
-        .expire(QUEUE, SEEKER_TTL_SECONDS)
         .exec();
     },
     async touchSeeker(id, now) {
-      const text = await redis.eval(TOUCH_SEEKER, 1, seekerKey(id), now, SEEKER_TTL_SECONDS);
+      const text = await redis.eval(TOUCH_SEEKER, 2, seekerKey(id), QUEUE, now, SEEKER_TTL_SECONDS);
       return typeof text === "string" ? (JSON.parse(text) as Seeker) : null;
     },
     async waitingSeekers(limit) {
@@ -212,6 +231,9 @@ export function createRedisStore(
         SEEKER_TTL_SECONDS,
       );
       return paired === 1;
+    },
+    async pruneSeeker(id, seenBefore) {
+      return (await redis.eval(PRUNE_SEEKER, 2, seekerKey(id), QUEUE, id, seenBefore)) === 1;
     },
     async removeSeeker(id) {
       const text = await redis.eval(REMOVE_SEEKER, 2, seekerKey(id), QUEUE, id);

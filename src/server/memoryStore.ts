@@ -89,6 +89,12 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       keep({ ...second, grant: b.grant });
       return true;
     },
+    async pruneSeeker(id, seenBefore) {
+      const found = waiting(id);
+      if (!found || found.seen >= seenBefore) return false;
+      seekers.delete(id);
+      return true;
+    },
     async removeSeeker(id) {
       const found = seeker(id);
       if (found && !found.grant) seekers.delete(id);

@@ -181,6 +181,23 @@ export function storeContract(name: string, makeStore: () => GameStore): void {
       expect(await store.waitingSeekers(10)).toEqual([]);
     });
 
+    it("prunes a seeker only while they are still waiting and quiet", async () => {
+      const store = makeStore();
+      await store.addSeeker(seeker("quiet", 1000));
+      await store.addSeeker(seeker("renewed", 1000));
+      await store.addSeeker(seeker("a", 2000));
+      await store.addSeeker(seeker("b", 2000));
+      // Heard from after the list that called them stale was read.
+      await store.touchSeeker("renewed", 6000);
+      expect(await store.pruneSeeker("renewed", 5000)).toBe(false);
+      expect(await store.pruneSeeker("quiet", 5000)).toBe(true);
+      expect(await store.touchSeeker("quiet", 7000)).toBeNull();
+      await store.pairSeekers({ id: "a", grant: grant("a") }, { id: "b", grant: grant("b") }, 0);
+      expect(await store.pruneSeeker("a", 5000)).toBe(false);
+      expect((await store.touchSeeker("a", 7000))?.grant).toEqual(grant("a"));
+      expect((await store.waitingSeekers(10)).map((s) => s.id)).toEqual(["renewed"]);
+    });
+
     it("hands out copies of seekers, never shared references", async () => {
       const store = makeStore();
       const original = seeker("a", 1000);
