@@ -32,6 +32,8 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     const message = parseClientMessage(text);
     if (!message) return reject("Malformed message");
 
+    if (message.type === "ping") return send({ type: "pong" });
+
     if (message.type === "hello") {
       if (connection) return reject("Already connected");
       if (!isRoomCode(code)) return reject("That game no longer exists");

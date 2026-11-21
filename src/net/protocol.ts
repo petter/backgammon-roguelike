@@ -16,7 +16,9 @@ export interface LobbyView {
 
 export type ClientMessage =
   | { type: "hello"; token: string }
-  | { type: "command"; command: Command };
+  | { type: "command"; command: Command }
+  /** "Are you there?" Answered with `pong`. Allowed at any time, before hello too. */
+  | { type: "ping" };
 
 export type ServerMessage =
   | {
@@ -29,6 +31,7 @@ export type ServerMessage =
       /** What led to this version; empty for a plain snapshot. */
       events: GameEvent[];
     }
+  | { type: "pong" }
   /** `fatal` means the seat is unusable and reconnecting will not help. */
   | { type: "error"; message: string; fatal: boolean };
 
@@ -94,6 +97,7 @@ export function parseClientMessage(text: string): ClientMessage | null {
       ? { type: "hello", token: m.token }
       : null;
   }
+  if (m.type === "ping") return { type: "ping" };
   if (m.type === "command") {
     const command = parseCommand(m.command);
     return command ? { type: "command", command } : null;

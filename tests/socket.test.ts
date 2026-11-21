@@ -63,7 +63,9 @@ describe("serveSocket", () => {
     mover.say({ type: "command", command: { type: "pickCard", index: 0 } });
     await mover.say({ type: "command", command: { type: "roll" } });
     await mover.say({ type: "command", command: { type: "roll" } });
-    const kinds = mover.sent.map((m) => (m.type === "state" ? m.view?.phase : m.message));
+    const kinds = mover.sent.map((m) =>
+      m.type === "state" ? m.view?.phase : m.type === "error" ? m.message : m.type,
+    );
     expect(kinds).toEqual(["pick", "roll", "move", "You cannot roll right now"]);
     expect(white.sent.filter((m) => m.type === "state")).toHaveLength(3);
     expect(black.sent.filter((m) => m.type === "state")).toHaveLength(3);
@@ -136,6 +138,21 @@ describe("serveSocket", () => {
       events: [],
     });
     expect(ghost.sent).toEqual([]);
+  });
+});
+
+describe("ping", () => {
+  it("is answered with pong, before and after hello, without touching the room", async () => {
+    const { store, host, code } = await started();
+    const before = (await store.load(code))?.version;
+    const socket = fakeSocket(store, code);
+    await socket.say({ type: "ping" });
+    expect(socket.sent).toEqual([{ type: "pong" }]);
+    await socket.say({ type: "hello", token: host.token });
+    await socket.say({ type: "ping", extra: "ignored" });
+    expect(socket.sent.map((m) => m.type)).toEqual(["pong", "state", "pong"]);
+    expect(socket.isOpen()).toBe(true);
+    expect((await store.load(code))?.version).toBe(before);
   });
 });
 

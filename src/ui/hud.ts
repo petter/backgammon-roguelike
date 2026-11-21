@@ -26,7 +26,6 @@ export interface HudModel {
   /** Both seats share this screen, so name the player instead of saying "you". */
   local: boolean;
   message: string;
-  status: string;
 }
 
 export interface Hud {
@@ -35,6 +34,8 @@ export interface Hud {
   render(model: HudModel): void;
   /** Tells the player something briefly, without redrawing anything. */
   notify(text: string): void;
+  /** Shows or hides the banner that says the connection to the server is lost. */
+  setOffline(offline: boolean): void;
   show(): void;
   hide(): void;
 }
@@ -100,7 +101,7 @@ export function createHud(): Hud {
   const message = el("message");
   const players = el("players");
   const opponentHand = el("opponent-hand");
-  const status = el("status");
+  const offlineBanner = el("offline");
   const roll = el<HTMLButtonElement>("roll");
   const end = el<HTMLButtonElement>("end");
   const hand = el("hand");
@@ -122,7 +123,6 @@ export function createHud(): Hud {
         ? ""
         : view.dice.map((d) => String.fromCodePoint(0x267f + d)).join("");
       message.textContent = model.message;
-      status.textContent = model.status;
       // Your own chip first; in hot-seat play the order stays fixed.
       const order: Player[] = model.local ? ["white", "black"] : [view.you, other];
       players.replaceChildren(
@@ -197,7 +197,13 @@ export function createHud(): Hud {
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => {
         notice.hidden = true;
+        offlineBanner.hidden = true;
+        root.classList.remove("offline");
       }, 3500);
+    },
+    setOffline(offline) {
+      offlineBanner.hidden = !offline;
+      root.classList.toggle("offline", offline);
     },
     show() {
       root.hidden = false;
@@ -206,6 +212,8 @@ export function createHud(): Hud {
       root.hidden = true;
       offer.hidden = true;
       notice.hidden = true;
+      offlineBanner.hidden = true;
+      root.classList.remove("offline");
     },
   };
   roll.addEventListener("click", () => hud.actions?.onRoll());

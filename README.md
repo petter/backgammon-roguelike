@@ -82,6 +82,10 @@ Function. `vercel.json` routes every `/api/*` request to it and serves the app f
 - Rooms live in Redis (`REDIS_URL`, from a Redis integration on the Vercel project). Without
   it the server falls back to memory, which is only reliable while one instance is running.
 - `GET /api/health` reports the store in use and the deployed commit.
+- Vercel ends every connection when its function reaches its maximum duration (300 s, set in
+  `vercel.json`). The client replaces its socket after 240 s, before that happens, and takes
+  over the new one only once it has the current state, so play is not interrupted. It also
+  pings every 20 s to notice a dead connection, and shows a banner while it is reconnecting.
 - `REDIS_URL=redis://localhost:6379 pnpm test` also runs the Redis store tests.
 
 ## Not built yet

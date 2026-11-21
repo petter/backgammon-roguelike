@@ -49,7 +49,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let checkers: CheckersView | null = null;
   let selected: number | "bar" | null = null;
   let message = "";
-  let status = "";
+  let offline = false;
 
   const dice = new DiceView();
   stage.world.add(dice.group);
@@ -128,7 +128,6 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       rolling,
       local: options.local,
       message,
-      status,
     });
   };
 
@@ -210,8 +209,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       hud.notify(text);
     },
     onStatus(next) {
-      status = next === "reconnecting" ? "Reconnecting…" : "";
-      refresh();
+      // Losing the server is said loudly and at once; so is getting it back.
+      const lost = next === "reconnecting";
+      if (lost === offline) return;
+      offline = lost;
+      hud.setOffline(offline);
+      if (!offline) hud.notify("Back online");
     },
   });
 
@@ -283,6 +286,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     session.close();
     listeners.abort();
     hud.actions = null;
+    hud.setOffline(false);
     board.setHints();
     if (checkers) stage.world.remove(checkers.group);
     settleDice(null, "white");

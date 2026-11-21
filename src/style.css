@@ -819,12 +819,59 @@ kbd {
   filter: drop-shadow(-3px 2px 3px #00000059);
 }
 
+/* Said loudly, in the middle of the screen: nothing the player does will reach the server. */
+#offline {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border: 1px solid #ffcf7a;
+  border-radius: 10px;
+  background: #7a3d08;
+  box-shadow: 0 8px 24px #000c;
+  color: #fff3dc;
+  font-weight: 600;
+  translate: -50% 0;
+}
+
+#offline[hidden] {
+  display: none;
+}
+
+#offline .pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffcf7a;
+  animation: offline-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes offline-pulse {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* While offline the controls are visibly out of reach. */
+#hud.offline .buttons,
+#hud.offline #hand {
+  opacity: 0.45;
+}
+
 /* A short word to the player, just above the hand: why a card cannot be played, and the like. */
 #notice {
-  position: absolute;
+  /* Fixed and above the overlays, so it is never dimmed by the pick screen. */
+  position: fixed;
   right: 18px;
   bottom: 236px;
-  z-index: 3;
+  z-index: 20;
   max-width: min(360px, calc(100vw - 36px));
   padding: 8px 14px;
   border: 1px solid #c9a56b;

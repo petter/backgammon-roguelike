@@ -21,11 +21,15 @@
         <div class="buttons">
           <button id="roll" type="button">Roll <kbd>Space</kbd></button>
           <button id="end" type="button">End turn <kbd>E</kbd></button>
-          <span id="status"></span>
         </div>
         <div id="hand"></div>
         <div id="notice" role="status" aria-live="polite" hidden></div>
       </div>
+    </div>
+
+    <div id="offline" role="alert" hidden>
+      <span class="pulse"></span>
+      <span>Connection lost. Reconnecting…</span>
     </div>
 
     <div id="offer" class="overlay" hidden>
