@@ -1,4 +1,5 @@
 import "./style.css";
+import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { createLocalSession } from "./net/localSession.ts";
@@ -9,6 +10,8 @@ import { createStage } from "./render/stage.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
 import { createLobbyUi } from "./ui/lobby.ts";
+
+startAnalytics();
 
 const stageEl = el("stage");
 const stage = createStage(stageEl);
