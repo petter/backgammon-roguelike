@@ -80,15 +80,99 @@ export class GameError extends Error {}
 export type TurnInfo = Pick<GameState, "board" | "current" | "dice" | "phase" | "shielded">;
 
 /**
- * Legal moves for the remaining dice, one die at a time.
- * Not yet enforced: the rule that a roll must be played so as to use as many dice as possible.
+ * Every single-checker move one of the remaining dice allows, with no regard for what it
+ * leaves playable afterwards. `legalMoves` is the one the rules go by.
  */
-export function legalMoves(turn: TurnInfo): Move[] {
+export function possibleMoves(turn: TurnInfo): Move[] {
   if (turn.phase !== "move") return [];
   const shielded = turn.shielded[opponent(turn.current)];
   return [...new Set(turn.dice)].flatMap((die) =>
     legalMovesForDie(turn.board, turn.current, die, shielded),
   );
+}
+
+/** How much of a roll can be played: how many dice, and how many pips they add up to. */
+interface Play {
+  count: number;
+  pips: number;
+}
+
+const better = (a: Play, b: Play) => a.count > b.count || (a.count === b.count && a.pips > b.pips);
+
+/** Positions examined before the search gives up and leaves the roll unrestricted. */
+const SEARCH_LIMIT = 50_000;
+
+class SearchTooLarge extends Error {}
+
+/**
+ * The most that can be played from a position with the given dice: as many dice as
+ * possible, and among equally long plays the one worth the most pips.
+ */
+function bestPlay(
+  board: BoardState,
+  player: Player,
+  dice: number[],
+  shielded: boolean,
+  seen: Map<string, Play>,
+  budget: { left: number },
+): Play {
+  if (dice.length === 0) return { count: 0, pips: 0 };
+  const key = `${JSON.stringify(board)}|${[...dice].sort().join("")}`;
+  const known = seen.get(key);
+  if (known) return known;
+  if (--budget.left < 0) throw new SearchTooLarge();
+
+  const everything: Play = { count: dice.length, pips: dice.reduce((sum, die) => sum + die, 0) };
+  let best: Play = { count: 0, pips: 0 };
+  search: for (const die of new Set(dice)) {
+    const rest = [...dice];
+    rest.splice(rest.indexOf(die), 1);
+    for (const move of legalMovesForDie(board, player, die, shielded)) {
+      const after = bestPlay(applyMove(board, move).board, player, rest, shielded, seen, budget);
+      const play = { count: 1 + after.count, pips: die + after.pips };
+      if (better(play, best)) best = play;
+      // Nothing can beat using every die.
+      if (best.count === everything.count && best.pips === everything.pips) break search;
+    }
+  }
+  seen.set(key, best);
+  return best;
+}
+
+/**
+ * The moves the rules allow now. A roll must be played so as to use as many dice as
+ * possible, and when they cannot all be used, the highest of them: so a move is legal only
+ * if it can begin such a play. This is the backgammon rule for two dice, carried over
+ * unchanged to turns where cards have left more.
+ */
+export function legalMoves(turn: TurnInfo): Move[] {
+  const moves = possibleMoves(turn);
+  if (moves.length === 0) return moves;
+  const player = turn.current;
+  const shielded = turn.shielded[opponent(player)];
+  const seen = new Map<string, Play>();
+  const budget = { left: SEARCH_LIMIT };
+  try {
+    const most = bestPlay(turn.board, player, turn.dice, shielded, seen, budget);
+    return moves.filter((move) => {
+      const rest = [...turn.dice];
+      rest.splice(rest.indexOf(move.die), 1);
+      const after = bestPlay(
+        applyMove(turn.board, move).board,
+        player,
+        rest,
+        shielded,
+        seen,
+        budget,
+      );
+      return 1 + after.count === most.count && move.die + after.pips === most.pips;
+    });
+  } catch (error) {
+    // A position too tangled to search fully (many dice, many choices): leave it open
+    // rather than stall. Client and server reach the same verdict, since both run this.
+    if (error instanceof SearchTooLarge) return moves;
+    throw error;
+  }
 }
 
 /**

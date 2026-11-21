@@ -1,6 +1,6 @@
 import type { Player } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
-import { type GameEvent, legalMoves } from "../core/game.ts";
+import { type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
@@ -256,6 +256,19 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         }
       }
       selected = target?.kind === "point" ? target.index : null;
+      // A move a die allows but the rules do not: say why, or it just looks broken.
+      const from = selected ?? (view.board.bar[view.current] > 0 ? "bar" : null);
+      if (
+        from !== null &&
+        !moves.some((m) => m.from === from) &&
+        possibleMoves(view).some((m) => m.from === from)
+      ) {
+        hud.notify(
+          moves.length === 1 && view.dice.length > 1
+            ? "You must play the higher die when only one can be played"
+            : "You must use as many dice as you can; moving that checker first would waste one",
+        );
+      }
       refresh();
     },
     { signal: listeners.signal },

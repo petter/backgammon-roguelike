@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyBoard, initialBoard, place } from "../src/core/board.ts";
+import { applyMove, emptyBoard, initialBoard, place } from "../src/core/board.ts";
 import {
   CARD_IDS,
   CARDS,
@@ -18,6 +18,7 @@ import {
   legalMoves,
   newGame,
   OFFER_SIZE,
+  possibleMoves,
 } from "../src/core/game.ts";
 import { createRng, type Rng, shuffle } from "../src/core/rng.ts";
 import { cards, checkersOf, game, hand } from "./helpers.ts";
@@ -197,11 +198,192 @@ describe("turn flow", () => {
     board.off.white = 14;
     board.off.black = 14;
     const state = game({ board, dice: [1, 4] });
-    const result = applyCommand(state, "white", { type: "move", from: 0, to: "off", die: 1 });
+    // Only one die can be used, so it must be the higher one.
+    expect(() =>
+      applyCommand(state, "white", { type: "move", from: 0, to: "off", die: 1 }),
+    ).toThrow(GameError);
+    const result = applyCommand(state, "white", { type: "move", from: 0, to: "off", die: 4 });
     expect(result.state.phase).toBe("over");
     expect(result.state.winner).toBe("white");
     expect(result.events.at(-1)).toEqual({ type: "gameWon", winner: "white" });
     expect(() => applyCommand(result.state, "black", { type: "roll" })).toThrow(GameError);
+  });
+});
+
+describe("using as many dice as possible", () => {
+  const pairs = (moves: { from: number | "bar"; to: number | "off"; die: number }[]) =>
+    moves.map((m) => `${m.from}>${m.to} (${m.die})`).sort();
+
+  it("leaves a roll unrestricted when every die can be played whatever comes first", () => {
+    const state = game({ board: initialBoard(), dice: [3, 1] });
+    expect(pairs(legalMoves(state))).toEqual(pairs(possibleMoves(state)));
+  });
+
+  it("allows a single die when no order can use the other", () => {
+    // White's one checker is on 10. The 6 is blocked at once (10>4). The 3 can be played
+    // (10>7), after which the 6 is blocked too (7>1). One die is all there is.
+    const board = emptyBoard();
+    place(board, "white", 10, 1);
+    place(board, "black", 4, 2);
+    place(board, "black", 1, 2);
+    const state = game({ board, dice: [6, 3] });
+    expect(pairs(legalMoves(state))).toEqual(["10>7 (3)"]);
+    const after = applyCommand(state, "white", { type: "move", from: 10, to: 7, die: 3 }).state;
+    expect(legalMoves(after)).toEqual([]);
+    expect(applyCommand(after, "white", { type: "endTurn" }).state.current).toBe("black");
+  });
+
+  it("requires the order that lets both dice be played", () => {
+    const board = emptyBoard();
+    place(board, "white", 12, 1);
+    place(board, "white", 3, 1);
+    // Black blocks 12>10 (the 2 first), 3>1 (the 2 for the other checker) and nothing else.
+    place(board, "black", 10, 2);
+    place(board, "black", 1, 2);
+    const state = game({ board, dice: [5, 2] });
+    // 12>7 with the 5, then 7>5 with the 2: both dice. Starting with the 2 is impossible
+    // from 12, and 3>1 is blocked. The 5 from 3 would bear off: not allowed, 12 is outside.
+    expect(pairs(possibleMoves(state))).toEqual(["12>7 (5)"]);
+    expect(pairs(legalMoves(state))).toEqual(["12>7 (5)"]);
+    const after = applyCommand(state, "white", { type: "move", from: 12, to: 7, die: 5 }).state;
+    expect(pairs(legalMoves(after))).toEqual(["7>5 (2)"]);
+  });
+
+  it("forbids the move that strands a die when another order uses both", () => {
+    const board = emptyBoard();
+    place(board, "white", 8, 1);
+    place(board, "white", 20, 1);
+    // From 8: the 4 goes to 4 (open), the 2 goes to 6 (open). From 20: 16 blocked, 18 open.
+    // After 20>18 (2), the 4 can be played 8>4 or 18>14. After 8>6 (2): 6>2 blocked, 20>16
+    // blocked: the 4 is stranded. So 8>6 with the 2 is forbidden.
+    place(board, "black", 16, 2);
+    place(board, "black", 2, 2);
+    const state = game({ board, dice: [4, 2] });
+    expect(pairs(possibleMoves(state))).toContain("8>6 (2)");
+    expect(pairs(legalMoves(state))).not.toContain("8>6 (2)");
+    expect(pairs(legalMoves(state))).toContain("20>18 (2)");
+    expect(pairs(legalMoves(state))).toContain("8>4 (4)");
+    expect(() => applyCommand(state, "white", { type: "move", from: 8, to: 6, die: 2 })).toThrow(
+      GameError,
+    );
+  });
+
+  it("requires the higher die when either can be played but not both", () => {
+    const board = emptyBoard();
+    place(board, "white", 9, 1);
+    // 9>4 (5) and 9>6 (3) are both open, but after either the other die is blocked.
+    place(board, "black", 1, 2);
+    place(board, "black", 3, 2);
+    place(board, "black", 0, 2);
+    const state = game({ board, dice: [5, 3] });
+    expect(pairs(possibleMoves(state))).toEqual(["9>4 (5)", "9>6 (3)"]);
+    // After 9>4: the 3 would go to 1, blocked. After 9>6: the 5 would go to 1, blocked.
+    expect(pairs(legalMoves(state))).toEqual(["9>4 (5)"]);
+  });
+
+  it("allows the lower die when it is the only one that can be played", () => {
+    const board = emptyBoard();
+    place(board, "white", 9, 1);
+    place(board, "black", 4, 2);
+    place(board, "black", 1, 2);
+    const state = game({ board, dice: [5, 3] });
+    expect(pairs(legalMoves(state))).toEqual(["9>6 (3)"]);
+  });
+
+  it("makes doubles play as many of the four as can be played", () => {
+    const board = emptyBoard();
+    place(board, "white", 12, 1);
+    place(board, "white", 6, 1);
+    // Twos: from 12 the road is open (10, 8, 6, 4...). From 6: 4, then 2 is blocked.
+    place(board, "black", 2, 2);
+    const state = game({ board, dice: [2, 2, 2, 2] });
+    // Every first move here still allows four dice in total, so nothing is forbidden yet.
+    expect(pairs(legalMoves(state))).toEqual(pairs(possibleMoves(state)));
+    // Play 6>4, then 12>10, 10>8, 8>6: four dice.
+    let after = state;
+    for (const [from, to] of [
+      [6, 4],
+      [12, 10],
+      [10, 8],
+      [8, 6],
+    ]) {
+      after = applyCommand(after, "white", { type: "move", from, to, die: 2 }).state;
+    }
+    expect(after.dice).toEqual([]);
+  });
+
+  it("takes an opponent's Bulwark into account", () => {
+    const board = emptyBoard();
+    place(board, "white", 9, 1);
+    place(board, "black", 4, 1);
+    place(board, "black", 6, 2);
+    place(board, "black", 1, 2);
+    // Unshielded, the 5 hits on 4 and is the only move (the 3 is blocked on 6).
+    expect(pairs(legalMoves(game({ board, dice: [5, 3] })))).toEqual(["9>4 (5)"]);
+    // Shielded, that blot cannot be hit: nothing can be played and the turn may end.
+    const shielded = game({ board, dice: [5, 3], shielded: { white: false, black: true } });
+    expect(legalMoves(shielded)).toEqual([]);
+    expect(applyCommand(shielded, "white", { type: "endTurn" }).state.current).toBe("black");
+  });
+
+  it("follows the dice as cards change them", () => {
+    const board = emptyBoard();
+    place(board, "white", 9, 1);
+    place(board, "black", 1, 2);
+    place(board, "black", 3, 2);
+    place(board, "black", 0, 2);
+    // With 5 and 3 only the 5 may be played (see above). A Loaded Die turns the 3 into a 6.
+    const state = game({ board, dice: [5, 3], cards: hand("white", "loaded") });
+    const loaded = applyCommand(state, "white", { type: "playCard", index: 0 }).state;
+    expect(loaded.dice).toEqual([5, 6]);
+    // 9>3 (6) is blocked; 9>4 (5) then 4>... the 6 would bear off, but 4 is home and alone,
+    // so it may: both dice can now be played, in that order only.
+    expect(pairs(legalMoves(loaded))).toEqual(["9>4 (5)"]);
+  });
+
+  it("always lets a legal play run to the full count it promised", () => {
+    // Follow legal moves at random from many positions: the dice used always equal the
+    // most that could be used from the start, and never is a legal move absent while a
+    // possible one exists.
+    for (let seed = 0; seed < 400; seed++) {
+      const rng = createRng(seed);
+      const board = emptyBoard();
+      for (let i = 0; i < 10; i++) {
+        const point = rng.int(24);
+        if (board.points[point].count === 0) {
+          place(board, rng.int(2) ? "white" : "black", point, 1 + rng.int(3));
+        }
+      }
+      const count = 1 + rng.int(4);
+      const doubles = rng.int(4) === 0;
+      const first = 1 + rng.int(6);
+      const dice = Array.from({ length: doubles ? 4 : count }, () =>
+        doubles ? first : 1 + rng.int(6),
+      );
+      let state = game({ board, dice });
+
+      // The best any order of possible moves can do, by brute force.
+      const most = (turn: GameState): number => {
+        let best = 0;
+        for (const move of possibleMoves(turn)) {
+          const next = { ...turn, board: applyMove(turn.board, move).board, dice: [...turn.dice] };
+          next.dice.splice(next.dice.indexOf(move.die), 1);
+          best = Math.max(best, 1 + most(next));
+        }
+        return best;
+      };
+      const promised = most(state);
+      expect(legalMoves(state).length > 0, `seed ${seed}`).toBe(possibleMoves(state).length > 0);
+
+      let used = 0;
+      for (let moves = legalMoves(state); moves.length > 0; moves = legalMoves(state)) {
+        const move = moves[rng.int(moves.length)];
+        expect(possibleMoves(state)).toContainEqual(move);
+        state = applyCommand(state, "white", { type: "move", ...move }).state;
+        used++;
+      }
+      expect(used, `seed ${seed}`).toBe(promised);
+    }
   });
 });
 
