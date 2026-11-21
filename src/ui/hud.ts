@@ -1,5 +1,5 @@
 import type { Player } from "../core/board.ts";
-import { canPlayCard } from "../core/game.ts";
+import { cardBlock } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import { createCard, fanCard } from "./card.ts";
@@ -9,6 +9,8 @@ export interface HudActions {
   onRoll(): void;
   onEnd(): void;
   onPlay(handIndex: number): void;
+  /** The player tried a card that cannot be played now; `reason` says why. */
+  onBlocked(reason: string): void;
   onPick(offerIndex: number): void;
 }
 
@@ -31,6 +33,8 @@ export interface Hud {
   /** Swapped out when a new game starts. */
   actions: HudActions | null;
   render(model: HudModel): void;
+  /** Tells the player something briefly, without redrawing anything. */
+  notify(text: string): void;
   show(): void;
   hide(): void;
 }
@@ -102,6 +106,8 @@ export function createHud(): Hud {
   const hand = el("hand");
   const offer = el("offer");
   const offerCards = el("offer-cards");
+  const notice = el("notice");
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const hud: Hud = {
     actions: null,
@@ -151,11 +157,27 @@ export function createHud(): Hud {
 
       hand.replaceChildren(
         ...view.hand.map((card, index) => {
-          const button = createCard(card, () => hud.actions?.onPlay(index));
+          // Why this card cannot be played now, if it cannot. Such a card still takes
+          // clicks and key presses, so that trying it says why instead of doing nothing.
+          const turnName = name(view.current);
+          const blocked = !myTurn
+            ? view.phase === "over"
+              ? "The game is over"
+              : `It is ${turnName}'s turn`
+            : model.rolling
+              ? "Wait for the dice to land"
+              : cardBlock(view, card);
+          const button = createCard(card, () =>
+            blocked ? hud.actions?.onBlocked(blocked) : hud.actions?.onPlay(index),
+          );
           fanCard(button, index, view.hand.length);
           button.addEventListener("pointerenter", () => keepOnScreen(button));
           button.addEventListener("focus", () => keepOnScreen(button));
-          button.disabled = !(myTurn && !model.rolling && canPlayCard(view, card));
+          if (blocked) {
+            button.classList.add("card-blocked");
+            button.setAttribute("aria-disabled", "true");
+            button.title = blocked;
+          }
           return button;
         }),
       );
@@ -169,12 +191,21 @@ export function createHud(): Hud {
           : []),
       );
     },
+    notify(text) {
+      notice.textContent = text;
+      notice.hidden = false;
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => {
+        notice.hidden = true;
+      }, 3500);
+    },
     show() {
       root.hidden = false;
     },
     hide() {
       root.hidden = true;
       offer.hidden = true;
+      notice.hidden = true;
     },
   };
   roll.addEventListener("click", () => hud.actions?.onRoll());

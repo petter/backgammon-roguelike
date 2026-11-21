@@ -809,12 +809,33 @@ kbd {
 }
 
 /* A card that cannot be played now looks faded, as if set aside; point at it to read it. */
-#hand .card:disabled {
+#hand .card-blocked {
   filter: saturate(0.35) brightness(0.72) drop-shadow(-3px 2px 3px #00000059);
+  cursor: not-allowed;
 }
 
-#hand .card:disabled:hover {
+#hand .card-blocked:hover,
+#hand .card-blocked:focus-visible {
   filter: drop-shadow(-3px 2px 3px #00000059);
+}
+
+/* A short word to the player, just above the hand: why a card cannot be played, and the like. */
+#notice {
+  position: absolute;
+  right: 18px;
+  bottom: 236px;
+  z-index: 3;
+  max-width: min(360px, calc(100vw - 36px));
+  padding: 8px 14px;
+  border: 1px solid #c9a56b;
+  border-radius: 8px;
+  background: #1c1612f2;
+  box-shadow: 0 6px 18px #000a;
+  color: #efe6d2;
+}
+
+#notice[hidden] {
+  display: none;
 }
 
 /* The pick is the moment to look at a card properly, so it is shown larger. */
@@ -932,6 +953,13 @@ input {
   #players {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  #notice {
+    right: 50%;
+    bottom: 204px;
+    translate: 50% 0;
+    text-align: center;
   }
 
   /* The hand already spans the screen, so there is no room for cards to slide aside. */

@@ -52,6 +52,10 @@ strongest cards turn up least often.
 
 You see your opponent's hand face down: how many cards they hold, never which.
 
+A card that would change nothing cannot be played: a second Bulwark while one is up, Quake
+with no lone enemy checker in your home board or against a Bulwark, a dice card with no dice
+to act on. Trying one keeps it in your hand and tells you why.
+
 Cards are drawn in HTML, CSS and inline SVG as printed card stock (`src/ui/card.ts`,
 `src/ui/cardArt.ts`, the card section of `src/style.css`). Each rarity adds to the one below:
 a pinstripe, silver edging, violet foil, then gold leaf. Each card is a `Dice` or a `Tactic`

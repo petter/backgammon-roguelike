@@ -206,8 +206,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     onUpdate,
     onError(text, fatal) {
       if (fatal) return options.onFatal(text);
-      message = text;
-      refresh();
+      // The server said no. Shown as a notice, so it is seen whatever else is on screen.
+      hud.notify(text);
     },
     onStatus(next) {
       status = next === "reconnecting" ? "Reconnecting…" : "";
@@ -227,6 +227,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     onPlay: (index) => {
       if (!rolling) session.send({ type: "playCard", index });
     },
+    onBlocked: (reason) => hud.notify(reason),
     onPick: (index) => session.send({ type: "pickCard", index }),
   };
 

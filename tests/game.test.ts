@@ -10,6 +10,8 @@ import {
 } from "../src/core/cards.ts";
 import {
   applyCommand,
+  canPlayCard,
+  cardBlock,
   GameError,
   type GameState,
   HAND_LIMIT,
@@ -249,7 +251,8 @@ describe("dealing", () => {
       }
       state = applyCommand(state, player, { type: "roll" }).state;
       while (state.cards[player].hand.length > 2) {
-        const index = state.cards[player].hand.findIndex((c) => c !== "reroll" && c !== "loaded");
+        const turn = state;
+        const index = turn.cards[player].hand.findIndex((c) => canPlayCard(turn, c));
         if (index < 0) break;
         state = applyCommand(state, player, { type: "playCard", index }).state;
       }
@@ -273,10 +276,10 @@ describe("cards", () => {
     applyCommand(state, "white", { type: "playCard", index });
 
   it("moves a played card from hand to discard and announces it", () => {
-    const { state, events } = play(game({ cards: hand("white", "charm", "quake") }), 1);
+    const { state, events } = play(game({ cards: hand("white", "charm", "shield") }), 1);
     expect(state.cards.white.hand).toEqual(["charm"]);
-    expect(state.cards.white.discard).toEqual(["quake"]);
-    expect(events[0]).toEqual({ type: "cardPlayed", player: "white", card: "quake" });
+    expect(state.cards.white.discard).toEqual(["shield"]);
+    expect(events[0]).toEqual({ type: "cardPlayed", player: "white", card: "shield" });
   });
 
   it("cannot be played before rolling, or from an empty slot", () => {
@@ -447,15 +450,122 @@ describe("cards", () => {
     expect(checkersOf(state.board, "black")).toBe(5);
   });
 
-  it("Quake does nothing against a shielded opponent", () => {
-    const board = emptyBoard();
-    place(board, "black", 2, 1);
-    const state = game({
-      board,
-      cards: hand("white", "quake"),
-      shielded: { white: false, black: true },
+  describe("a card that would change nothing cannot be played", () => {
+    /** Tries the card, and checks it is refused with that reason and nothing changes. */
+    const refused = (state: GameState, reason: string, index = 0) => {
+      const before = structuredClone(state);
+      const card = state.cards[state.current].hand[index];
+      expect(cardBlock(state, card)).toBe(reason);
+      expect(canPlayCard(state, card)).toBe(false);
+      expect(() => applyCommand(state, state.current, { type: "playCard", index })).toThrowError(
+        new GameError(reason),
+      );
+      // The card stays in hand and nothing else moved.
+      expect(state).toEqual(before);
+    };
+
+    it("Bulwark cannot be played twice in one turn", () => {
+      const first = play(game({ cards: hand("white", "shield", "shield") }));
+      expect(first.state.shielded.white).toBe(true);
+      expect(first.state.cards.white.hand).toEqual(["shield"]);
+      refused(first.state, "Bulwark is already protecting your checkers");
     });
-    expect(play(state).state.board).toEqual(board);
+
+    it("Bulwark can be played again on a later turn, once the first has worn off", () => {
+      let state = play(game({ cards: hand("white", "shield", "shield") })).state;
+      state = applyCommand(state, "white", { type: "endTurn" }).state;
+      // White's shield lasts through black's turn.
+      expect(state.shielded.white).toBe(true);
+      state = applyCommand(state, "black", { type: "roll" }).state;
+      state = { ...state, dice: [] };
+      state = applyCommand(state, "black", { type: "endTurn" }).state;
+      expect(state.shielded.white).toBe(false);
+      state = { ...state, phase: "move" };
+      expect(cardBlock(state, "shield")).toBeNull();
+      expect(play(state).state.shielded.white).toBe(true);
+    });
+
+    it("Bulwark is allowed even with no lone checker yet, since one may be left later", () => {
+      expect(cardBlock(game(), "shield")).toBeNull();
+    });
+
+    it("Quake needs a lone enemy checker in your home board", () => {
+      const board = emptyBoard();
+      place(board, "black", 4, 2);
+      place(board, "black", 6, 1);
+      place(board, "white", 2, 1);
+      refused(
+        game({ board, cards: hand("white", "quake") }),
+        "Quake would do nothing: no lone enemy checker is in your home board",
+      );
+    });
+
+    it("Quake is refused against a shielded opponent", () => {
+      const board = emptyBoard();
+      place(board, "black", 2, 1);
+      refused(
+        game({ board, cards: hand("white", "quake"), shielded: { white: false, black: true } }),
+        "Their Bulwark protects their checkers from Quake",
+      );
+    });
+
+    it("Quake counts targets from the side of whoever plays it", () => {
+      const board = emptyBoard();
+      place(board, "white", 20, 1);
+      expect(cardBlock(game({ board, current: "black" }), "quake")).toBeNull();
+      expect(cardBlock(game({ board, current: "white" }), "quake")).not.toBeNull();
+    });
+
+    it("dice cards explain what they are missing", () => {
+      refused(
+        game({ dice: [], cards: hand("white", "reroll") }),
+        "Second Wind needs dice left to reroll",
+      );
+      refused(
+        game({ dice: [], cards: hand("white", "loaded") }),
+        "Loaded Die needs a die left to change",
+      );
+      refused(
+        game({ dice: [6, 6], cards: hand("white", "loaded") }),
+        "Every die you have left is already a 6",
+      );
+      expect(cardBlock(game({ dice: [] }), "charm")).toBeNull();
+    });
+
+    it("nothing can be played before rolling", () => {
+      for (const card of CARD_IDS) {
+        expect(cardBlock(game({ phase: "roll" }), card)).toBe("Roll before playing a card");
+      }
+    });
+
+    it("every card the rules allow does change something", () => {
+      // For every card the rules allow, playing it changes more than the hand and discard.
+      for (let seed = 0; seed < 300; seed++) {
+        const rng = createRng(seed);
+        const board = emptyBoard();
+        for (let i = 0; i < 8; i++) {
+          const point = rng.int(24);
+          if (board.points[point].count === 0) {
+            place(board, rng.int(2) ? "white" : "black", point, 1 + rng.int(2));
+          }
+        }
+        const dice = Array.from({ length: rng.int(4) }, () => 1 + rng.int(6));
+        const shielded = { white: rng.int(3) === 0, black: rng.int(3) === 0 };
+        for (const card of CARD_IDS) {
+          const state = game({ board, dice, shielded, rng: seed, cards: hand("white", card) });
+          if (!canPlayCard(state, card)) continue;
+          const after = play(state).state;
+          const changed =
+            JSON.stringify([after.board, after.shielded]) !==
+              JSON.stringify([state.board, state.shielded]) || after.dice.length !== dice.length;
+          // Second Wind and Loaded Die keep the count but must have had dice to change.
+          expect(
+            changed || ((card === "reroll" || card === "loaded") && dice.length > 0),
+            card,
+          ).toBe(true);
+        }
+      }
+    });
   });
 
   it("Quake works from black's side too", () => {

@@ -5,12 +5,13 @@ import {
   CHECKERS_PER_PLAYER,
   initialBoard,
   legalMovesForDie,
+  loneEnemiesAtHome,
   type Move,
   opponent,
   type Player,
   sweepHome,
 } from "./board.ts";
-import { CARDS, type CardId, starterDeck } from "./cards.ts";
+import { type CardId, starterDeck } from "./cards.ts";
 import { createRng, type Rng, rollDie, shuffle } from "./rng.ts";
 
 export const OFFER_SIZE = 3;
@@ -90,11 +91,34 @@ export function legalMoves(turn: TurnInfo): Move[] {
   );
 }
 
-export function canPlayCard(turn: Pick<GameState, "phase" | "dice">, card: CardId): boolean {
-  if (turn.phase !== "move") return false;
-  if (card === "reroll") return turn.dice.length > 0;
-  if (card === "loaded") return turn.dice.some((die) => die < 6);
-  return true;
+/**
+ * Why a card cannot be played right now, in words for the player, or `null` if it can.
+ * A card that would change nothing is not playable: it would be thrown away for no effect.
+ * Everything this looks at is public, so a client can ask the same question as the server.
+ */
+export function cardBlock(turn: TurnInfo, card: CardId): string | null {
+  if (turn.phase !== "move") return "Roll before playing a card";
+  const them = opponent(turn.current);
+  switch (card) {
+    case "reroll":
+      return turn.dice.length > 0 ? null : "Second Wind needs dice left to reroll";
+    case "loaded":
+      if (turn.dice.length === 0) return "Loaded Die needs a die left to change";
+      return turn.dice.some((die) => die < 6) ? null : "Every die you have left is already a 6";
+    case "charm":
+      return null;
+    case "shield":
+      return turn.shielded[turn.current] ? "Bulwark is already protecting your checkers" : null;
+    case "quake":
+      if (turn.shielded[them]) return "Their Bulwark protects their checkers from Quake";
+      return loneEnemiesAtHome(turn.board, turn.current).length > 0
+        ? null
+        : "Quake would do nothing: no lone enemy checker is in your home board";
+  }
+}
+
+export function canPlayCard(turn: TurnInfo, card: CardId): boolean {
+  return cardBlock(turn, card) === null;
 }
 
 function withCards(state: GameState, player: Player, cards: PlayerCards): GameState["cards"] {
@@ -249,14 +273,12 @@ function move(state: GameState, wanted: Omit<Move, "player">): Result {
 }
 
 function playCard(state: GameState, index: number): Result {
-  if (state.phase !== "move") throw new GameError("Roll before playing a card");
   const player = state.current;
   const mine = cloneCards(state.cards[player]);
   const card = mine.hand[index];
   if (card === undefined) throw new GameError("No such card in hand");
-  if (!canPlayCard(state, card)) {
-    throw new GameError(`${CARDS[card].name} cannot be played right now`);
-  }
+  const blocked = cardBlock(state, card);
+  if (blocked) throw new GameError(blocked);
   mine.hand.splice(index, 1);
   mine.discard.push(card);
 
@@ -274,7 +296,7 @@ function playCard(state: GameState, index: number): Result {
   } else if (card === "shield") {
     next.shielded = { ...state.shielded, [player]: true };
     events.push({ type: "shieldRaised", player });
-  } else if (!state.shielded[opponent(player)]) {
+  } else {
     const swept = sweepHome(state.board, player);
     next.board = swept.board;
     events.push(...swept.events);

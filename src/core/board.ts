@@ -164,20 +164,25 @@ export function applyMove(
   return { board: next, events };
 }
 
+/** The points in the player's home board that hold a single opposing checker. */
+export function loneEnemiesAtHome(board: BoardState, player: Player): number[] {
+  const victim = opponent(player);
+  return board.points.flatMap((point, index) =>
+    point.owner === victim && point.count === 1 && isHome(player, index) ? [index] : [],
+  );
+}
+
 /** Sends every lone opposing checker in the player's home board to the bar. */
 export function sweepHome(
   board: BoardState,
   player: Player,
 ): { board: BoardState; events: BoardEvent[] } {
   const next = cloneBoard(board);
-  const events: BoardEvent[] = [];
   const victim = opponent(player);
-  next.points.forEach((point, index) => {
-    if (point.owner !== victim || point.count !== 1 || !isHome(player, index)) return;
-    point.owner = null;
-    point.count = 0;
+  const events: BoardEvent[] = loneEnemiesAtHome(board, player).map((index) => {
+    next.points[index] = { owner: null, count: 0 };
     next.bar[victim] += 1;
-    events.push({ type: "hit", player: victim, point: index });
+    return { type: "hit", player: victim, point: index };
   });
   return { board: next, events };
 }
