@@ -9,7 +9,7 @@ import { createBoard } from "./render/board.ts";
 import { createStage } from "./render/stage.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
-import { createLobbyUi, type PlayerChoice } from "./ui/lobby.ts";
+import { createLobbyUi, type PlayerChoice } from "./ui/lobby/lobby.ts";
 
 startAnalytics();
 
@@ -107,7 +107,9 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
     });
     const body = (await response.json()) as Partial<SeatGrant> & { error?: string };
     if (!response.ok || !body.code || !body.token) {
-      lobby.showMenu({ error: body.error ?? "Could not reach the game server" });
+      // No such game, or it is full: the code is what to look at again.
+      const codeError = response.status === 404 || response.status === 409;
+      lobby.showMenu({ error: body.error ?? "Could not reach the game server", codeError });
       return;
     }
     seats.set(body.code, body.token);
@@ -124,6 +126,7 @@ const lobby = createLobbyUi({
   onCreate: (player) => void takeSeat("/api/rooms", player),
   onJoin: (code, player) => void takeSeat(`/api/rooms/${code}/join`, player),
   onLocal: startLocal,
+  onCancel: toMenu,
 });
 
 function route(): void {

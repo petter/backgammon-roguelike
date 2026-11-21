@@ -72,41 +72,7 @@
       </div>
     </div>
 
-    <div id="lobby" class="overlay" hidden>
-      <div class="panel">
-        <h1>Backgammon Roguelike</h1>
-        <form id="menu">
-          <label>
-            Your name
-            <input id="name" maxlength="20" autocomplete="nickname" />
-          </label>
-          <fieldset id="characters">
-            <legend>Your character</legend>
-          </fieldset>
-          <button id="create" type="button">Start a game</button>
-          <p class="or">or join a friend</p>
-          <label>
-            Game code
-            <input
-              id="code"
-              maxlength="5"
-              autocomplete="off"
-              autocapitalize="characters"
-              spellcheck="false"
-            />
-          </label>
-          <button id="join" type="submit">Join game</button>
-          <button id="local" type="button" class="quiet">Play both sides on this device</button>
-        </form>
-        <div id="waiting" hidden>
-          <p>Share this code with your friend</p>
-          <div id="share-code"></div>
-          <button id="copy-link" type="button">Copy invite link</button>
-          <p class="quiet">Waiting for them to join…</p>
-        </div>
-        <p id="lobby-error" role="alert"></p>
-      </div>
-    </div>
+    <div id="lobby" hidden></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
