@@ -93,20 +93,29 @@ export class DiceView {
   readonly group = new THREE.Group();
   private dice: Die[] = [];
   private playback: gsap.core.Tween | null = null;
+  private shown: number[] = [];
 
-  /** How many dice are on the board. */
-  get count(): number {
-    return this.dice.length;
+  /** The values the dice on the board show, in order. Empty when there are none. */
+  get values(): number[] {
+    return this.shown;
   }
 
   /**
-   * Throws dice that come to rest showing `values`, in that order. Returns how long the
-   * throw takes, in seconds.
+   * Throws dice that come to rest showing `values`, in that order. `onLanded` is called
+   * once the animation has actually finished; not at all if the dice are cleared, shown or
+   * thrown again first.
    */
-  throw(values: number[], side: 1 | -1, obstacles: Obstacle[], random: () => number): number {
+  throw(
+    values: number[],
+    side: 1 | -1,
+    obstacles: Obstacle[],
+    random: () => number,
+    onLanded: () => void,
+  ): void {
     this.clear();
     const thrown = simulateThrow(values, side, obstacles, random);
     this.dice = thrown.dice.map((path) => this.spawn(path.faces));
+    this.shown = [...values];
     const clock = { step: 0 };
     const place = () => this.pose(thrown, Math.round(clock.step));
     place();
@@ -115,13 +124,17 @@ export class DiceView {
       duration: thrown.steps * SIM_DT,
       ease: "none",
       onUpdate: place,
+      onComplete: () => {
+        this.playback = null;
+        onLanded();
+      },
     });
-    return thrown.steps * SIM_DT;
   }
 
   /** Sets dice down at rest showing `values`, without a throw: for a game joined mid-turn. */
   show(values: number[], side: 1 | -1): void {
     this.clear();
+    this.shown = [...values];
     this.dice = values.map((value, i) => {
       const die = this.spawn(facesFor(value));
       die.body.position.set(side * (1.7 + i * 0.75), DIE_HALF, 0);
@@ -145,6 +158,7 @@ export class DiceView {
       });
     }
     this.dice = [];
+    this.shown = [];
   }
 
   private spawn(faces: THREE.Quaternion): Die {

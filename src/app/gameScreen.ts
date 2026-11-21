@@ -12,6 +12,11 @@ import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
 import type { Hud } from "../ui/hud.ts";
 
+/** Whether two sets of dice hold the same values, in any order. */
+function sameDice(a: number[], b: number[]): boolean {
+  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
+}
+
 const COLOR_NAMES = { white: "White", black: "Black" } as const;
 
 export interface GameScreenDeps {
@@ -48,9 +53,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
 
   const dice = new DiceView();
   stage.world.add(dice.group);
-  /** When the dice now in the air will have landed, on the `performance.now()` clock. */
-  let landsAt = 0;
-  let landing: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Whether dice are in the air. Set by the throw itself and cleared when its animation
+   * reports that it has finished, so the result can never show before the dice have landed,
+   * however the animation was delayed.
+   */
+  let rolling = false;
 
   const sideOf = (player: Player) => (player === "white" ? 1 : -1);
   /** Doubles are four moves but two dice on the table. */
@@ -60,10 +68,17 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       : values;
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
-    const seconds = dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random);
-    landsAt = performance.now() + seconds * 1000;
-    clearTimeout(landing);
-    landing = setTimeout(refresh, seconds * 1000 + 30);
+    rolling = true;
+    dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
+      rolling = false;
+      refresh();
+    });
+  };
+  /** Takes the dice away, or sets them down at rest. Either way nothing is in the air. */
+  const settleDice = (values: number[] | null, player: Player) => {
+    rolling = false;
+    if (values && values.length > 0) dice.show(physical(values), sideOf(player));
+    else dice.clear();
   };
 
   const myTurn = () => view !== null && view.phase !== "over" && view.current === view.you;
@@ -73,7 +88,6 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   const refresh = () => {
     if (!view || !lobby || !checkers) return;
     // Nothing can be done with a roll until the dice have come to rest.
-    const rolling = performance.now() < landsAt;
     const moves = myTurn() && !rolling ? legalMoves(view) : [];
     if (moves.length > 0 && view.board.bar[view.current] > 0) selected = "bar";
     if (!moves.some((m) => m.from === selected)) selected = null;
@@ -144,7 +158,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         throwDice(event.dice, event.player, next.board);
         if (event.doubled && text) text += ": doubles!";
       } else if (event.type === "turnEnded") {
-        dice.clear();
+        settleDice(null, event.player);
       } else if (event.type === "cardPicked" && event.player !== you) {
         text = `${name(event.player)} picked a card`;
       }
@@ -170,11 +184,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     } else {
       message = play(update.events, checkers, update.view);
     }
-    // Dice belong to the move phase. Joining or resyncing mid-turn, set them down as rolled.
+    // Dice belong to the move phase. An update without events is a snapshot: a reload, a
+    // reconnect or a resync after something was missed. The dice on the board may then be
+    // missing or out of date, so they are set down to match what the snapshot says is left.
     const { phase, dice: remaining, current } = update.view;
-    if (phase !== "move") dice.clear();
-    else if (dice.count === 0 && remaining.length > 0) {
-      dice.show(physical(remaining), sideOf(current));
+    const snapshot = update.events.length === 0;
+    if (phase !== "move") settleDice(null, current);
+    else if (snapshot && !sameDice(dice.values, physical(remaining))) {
+      settleDice(remaining, current);
     }
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
@@ -201,12 +218,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (myTurn() && view?.phase === "roll") session.send({ type: "roll" });
   };
   const end = () => {
-    if (myTurn() && view?.phase === "move") session.send({ type: "endTurn" });
+    if (myTurn() && !rolling && view?.phase === "move") session.send({ type: "endTurn" });
   };
   hud.actions = {
     onRoll: roll,
     onEnd: end,
-    onPlay: (index) => session.send({ type: "playCard", index }),
+    onPlay: (index) => {
+      if (!rolling) session.send({ type: "playCard", index });
+    },
     onPick: (index) => session.send({ type: "pickCard", index }),
   };
 
@@ -214,7 +233,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     "pointerdown",
     (event) => {
       if (!view || !myTurn() || view.phase !== "move") return;
-      if (performance.now() < landsAt) return;
+      if (rolling) return;
       const target = stage.pick(event.clientX, event.clientY);
       const moves = legalMoves(view);
 
@@ -260,8 +279,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     hud.actions = null;
     board.setHints();
     if (checkers) stage.world.remove(checkers.group);
-    clearTimeout(landing);
-    dice.clear();
+    settleDice(null, "white");
     stage.world.remove(dice.group);
     stage.setSeat("white");
   };
