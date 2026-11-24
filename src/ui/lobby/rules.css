@@ -1,0 +1,204 @@
+/*
+ * "How to play": one long walnut plaque that scrolls with the lobby. Headings in Cinzel,
+ * reading text in the serif, every card as a ruled row under its kind's glyph.
+ */
+
+/* Wide screens: a reading column, wider than the menu. */
+@media (min-width: 700px) {
+  #lobby[data-view="rules"] .lobby-shell {
+    width: 600px;
+  }
+}
+
+/* The page is long: it starts near the top rather than centred, and scrolls from there. */
+#lobby[data-view="rules"] .lobby-shell {
+  margin: 0 auto;
+}
+
+/* The title gives way to the page on short screens and phones, as on the forms. */
+@media (max-height: 820px), (max-width: 699px) {
+  #lobby[data-view="rules"] .lobby-title {
+    font-size: clamp(26px, min(7.4vw, 5.6vh), 46px);
+  }
+
+  #lobby[data-view="rules"] .lobby-title small {
+    display: none;
+  }
+}
+
+/* The quiet way in, under the menu: a text link, so the menu keeps its one gold plate. */
+#lobby .rules-link {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+  text-shadow: 0 1px 3px #000;
+}
+
+.rules-link svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  color: var(--text);
+  font: 16px / 1.5 var(--serif);
+}
+
+.rules p,
+.rules ul {
+  margin: 0;
+}
+
+.rules ul {
+  padding-left: 1.2em;
+}
+
+.rules li + li {
+  margin-top: 4px;
+}
+
+.rules li::marker {
+  color: var(--metal);
+}
+
+.rules-part {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 20px;
+  border-top: 1px solid color-mix(in srgb, var(--metal) 30%, transparent);
+}
+
+.rules-part-title {
+  margin: 0;
+  color: var(--metal);
+  font: 900 clamp(18px, 2.6vw, 22px) / 1.2 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rules-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rules-section-title,
+.rules-kind-title {
+  margin: 0;
+  color: var(--metal-light);
+  font: 700 14px / 1.3 var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Each kind is headed by the glyph its cards print on their type line. */
+.rules-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rules-kind-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--kind-ink, var(--metal-light));
+}
+
+.rules-kind-title .card-kind-glyph {
+  width: 22px;
+  height: 22px;
+}
+
+.rules-kind-line {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.rules-card-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0 !important;
+  list-style: none;
+}
+
+/* Each card is a row in a dark recessed strip, like the text plate on the card itself. */
+.rules-card {
+  margin: 0 !important;
+  padding: 10px 12px;
+  border: 1px solid #3a2a1a;
+  background: color-mix(in srgb, var(--well) 70%, transparent);
+}
+
+.rules-card + .rules-card {
+  border-top: 0;
+}
+
+.rules-card:first-child {
+  border-radius: 4px 4px 0 0;
+}
+
+.rules-card:last-child {
+  border-radius: 0 0 4px 4px;
+}
+
+.rules-card:only-child {
+  border-radius: 4px;
+}
+
+.rules-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.rules-card-name {
+  margin-right: auto;
+  color: var(--text);
+  font: 700 14px / 1.3 var(--display);
+  letter-spacing: 0.06em;
+}
+
+.rules-rarity,
+.rules-copies {
+  color: var(--muted);
+  font: italic 14px / 1.3 var(--serif);
+}
+
+.rules-rarity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The same faceted stone the card prints beside its rarity. */
+.rules-gem {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, #ffffffb3 0 28%, #fff0 29% 62%, #00000059 63%), var(--rarity);
+  box-shadow: 0 0 0 1px #000a;
+}
+
+.rules-card-text {
+  margin-top: 4px !important;
+  color: var(--muted);
+}
+
+#lobby .rules-done {
+  width: 100%;
+  margin-top: 4px;
+}

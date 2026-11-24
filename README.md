@@ -38,6 +38,12 @@ There is no rating or region: it is first come, first served.
 To try it locally, choose "Play online" in two tabs. A seeker who cancels, closes the tab,
 or whose browser stops asking for about five seconds is never matched.
 
+## How to play page
+
+"How to play" under the start menu explains plain backgammon, what the cards add, and lists
+every card grouped by kind. Its words live in `src/ui/lobby/rulesCopy.ts`; each card's line
+is its own rules text from `src/core/cards.ts`, so a card change shows up there by itself.
+
 ## How a turn works
 
 1. Pick one of three cards offered from your deck (skipped when your hand holds five).
