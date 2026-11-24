@@ -17,6 +17,7 @@ import {
   touch,
   waitingRoom,
 } from "./parts.ts";
+import { rulesPage } from "./rules.ts";
 import { searchRoom } from "./search.ts";
 
 export type { PlayerChoice } from "./parts.ts";
@@ -58,7 +59,7 @@ export interface LobbyUi {
 }
 
 type Step = "host" | "join" | "seek" | "invited" | "expired" | "full";
-type View = "home" | Step;
+type View = "home" | "rules" | Step;
 
 const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l8.5 5.5-8.5 5.5z"/></svg>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
@@ -66,6 +67,7 @@ const ICONS = {
   join: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="16" r="6.5"/><path d="M17.5 16H29M24 16v5M28 16v4"/></svg>`,
   host: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 24h22M7 24l-2-13 6 5 5-9 5 9 6-5-2 13"/></svg>`,
   seek: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11"/><ellipse cx="16" cy="16" rx="4.6" ry="11"/><path d="M5 16h22M7.5 10.5h17M7.5 21.5h17"/></svg>`,
+  rules: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5c3-1.4 6-1.4 9 .8v13c-3-2.2-6-2.2-9-.8zM21 5.5c-3-1.4-6-1.4-9 .8v13c3-2.2 6-2.2 9-.8z"/></svg>`,
   local: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="12" cy="12" r="7.5" class="dark"/><circle cx="12" cy="12" r="3.4" class="groove"/><circle cx="20" cy="20" r="7.5" class="light"/><circle cx="20" cy="20" r="3.4" class="groove"/></svg>`,
 };
 
@@ -148,6 +150,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
             <span class="choice-icon">${ICONS.local}</span>
             <span class="choice-text"><b>Pass and play</b><i>Both sides on this device</i></span>${PLAY}
           </button>
+          <button type="button" class="link rules-link" data-go="rules">${ICONS.rules}How to play</button>
         </nav>
         <form class="plaque step" novalidate hidden aria-labelledby="step-title">
           <button type="button" class="link back">‹ Back</button>
@@ -186,6 +189,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const waitingPlaque = part(root, ".waiting-plaque");
   const waiting = waitingRoom(actions.onCancel);
   waitingPlaque.append(waiting.element);
+  const rulesLink = part(root, ".rules-link");
+  const rules = rulesPage(() => navigate("home", () => rulesLink.focus({ focusVisible: false })));
+  rules.element.hidden = true;
+  error.before(rules.element);
   const searchingPlaque = part(root, ".searching-plaque");
   const searching = searchRoom(actions.onCancelSeek);
   searchingPlaque.append(searching.element);
@@ -211,13 +218,19 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     view = next;
     root.dataset.view = next;
     home.hidden = next !== "home";
-    step.hidden = next === "home";
+    rules.element.hidden = next !== "rules";
+    step.hidden = next === "home" || next === "rules";
     waitingPlaque.hidden = true;
     searchingPlaque.hidden = true;
     searching.stop();
     say("");
     code.set(code.value());
     if (next === "home") return;
+    if (next === "rules") {
+      root.scrollTop = 0;
+      if (focus) rules.back.focus({ focusVisible: false });
+      return;
+    }
     const text = STEPS[next];
     title.textContent = text.title;
     lede.textContent = text.lede;
@@ -257,6 +270,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     choice.addEventListener("click", () => {
       const target = choice.dataset.go;
       if (target === "local") actions.onLocal();
+      else if (target === "rules") navigate("rules");
       else if (target === "join" || target === "host" || target === "seek") navigate(target);
     });
   }
@@ -315,6 +329,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.dataset.view = "waiting";
       home.hidden = true;
       step.hidden = true;
+      rules.element.hidden = true;
       searchingPlaque.hidden = true;
       searching.stop();
       say("");
@@ -330,6 +345,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         root.dataset.view = "searching";
         home.hidden = true;
         step.hidden = true;
+        rules.element.hidden = true;
         waitingPlaque.hidden = true;
         say("");
         searchingPlaque.hidden = false;
@@ -363,7 +379,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       if (problem) say(`${problem}. Check the code with your friend.`, true);
       if (!touch.matches) code.selectAll();
     } else {
-      show(problem ? view : "home", false);
+      // The rules page has no place for an error: it is said on the menu instead.
+      show(problem && view !== "rules" ? view : "home", false);
       if (problem) say(problem);
     }
   }
