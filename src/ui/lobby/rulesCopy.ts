@@ -43,13 +43,13 @@ export const BACKGAMMON_RULES: readonly RulesSection[] = [
     title: "Hitting and the bar",
     body: [
       "Landing on a lone enemy checker sends it to the bar. Any checker on the bar must re-enter in your opponent's home board before you move elsewhere.",
-      "If no entry point is open for a die, that die is lost.",
+      "Each die enters on its matching point there, if that point is open. Until every checker is back in, you can play only dice that bring one in.",
     ],
   },
   {
     title: "Bearing off",
     body: [
-      "Once all 15 of your checkers stand inside your home board, you may bear them off the board to win.",
+      "Once all your remaining checkers stand inside your home board, you may bear them off. A die that matches a checker's distance bears it off; a higher die may bear off your rearmost checker. Bear off all 15 to win.",
     ],
   },
   {
@@ -72,7 +72,7 @@ export const ROGUELIKE_RULES: readonly RulesSection[] = [
     body: [
       "Cards fold straight into your turn, which runs in four steps:",
       [
-        "Pick one of three cards from your deck (skipped at five cards).",
+        "Pick one card from those offered, usually three (skipped when your hand holds five).",
         "Roll the dice.",
         "Move checkers and play cards from your hand, in any order.",
         "End your turn once no checker move is left.",
@@ -126,7 +126,7 @@ export const ROGUELIKE_RULES: readonly RulesSection[] = [
   {
     title: "Matches and rematches",
     body: [
-      "When a game ends, both players are offered a rematch. Once both accept, a fresh game starts with the same seats and colours, reshuffled decks, and a random first player.",
+      "When a game ends, you are offered a rematch. Online it starts once both players accept; in pass and play, one press of Play again is enough. Seats and colours stay, decks are reshuffled, and the first player is random.",
       "Match scores sit beside each name, and character emblems are cosmetic only. If your opponent leaves and stays away, you may claim the win.",
     ],
   },
