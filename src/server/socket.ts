@@ -98,9 +98,12 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     queue = queue.finally(() => {
       connection?.close();
       connection = null;
-      // It may still be opening; then it is closed as soon as it is open.
-      void chat?.then((link) => link?.close());
+      // Chat lines received before the close are kept too, so chat is let go of once its
+      // own queue has drained; by now every one of them is on it. It may still be opening:
+      // then it is closed as soon as it is open.
+      const opening = chat;
       chat = null;
+      void chatQueue.then(async () => (await opening)?.close());
     });
   });
 }

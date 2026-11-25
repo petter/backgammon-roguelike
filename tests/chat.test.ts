@@ -155,6 +155,27 @@ describe("chat over a room socket", () => {
     expect(white.sent).toContainEqual({ type: "done", id: 7 });
   });
 
+  it("keeps every line received before a close, even behind a slow one", async () => {
+    const { store, host, black } = await seated();
+    let release = () => {};
+    const slow: GameStore = {
+      ...store,
+      appendChat: async (...args) => {
+        await new Promise<void>((resolve) => (release = resolve));
+        slow.appendChat = store.appendChat;
+        return store.appendChat(...args);
+      },
+    };
+    const white = fakeSocket(slow, host.code);
+    await white.say({ type: "hello", token: host.token, chat: true });
+    await white.say({ type: "chat", text: "first" });
+    await white.say({ type: "chat", text: "second" });
+    await white.hangUp();
+    release();
+    await settle();
+    expect(black.lines().map((l) => l.text)).toEqual(["first", "second"]);
+  });
+
   it("refuses chat before hello, like any other message", async () => {
     const { store, host } = await seated();
     const early = fakeSocket(store, host.code);
