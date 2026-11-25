@@ -104,8 +104,10 @@
   font-size: 11.54em;
 }
 
+/* Seen, not touched: a card face is a button, which would otherwise take the board's taps. */
 .reveal-face {
   transform: rotateY(180deg);
+  pointer-events: none;
 }
 
 .reveal-caption {

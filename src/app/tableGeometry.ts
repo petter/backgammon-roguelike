@@ -1,5 +1,5 @@
 import type { Player } from "../core/board.ts";
-import { FIELD_HALF_W, OUTER_D, RIM, TRAY_W, TRAY_X } from "../render/layout.ts";
+import { FIELD_HALF_D, FIELD_HALF_W, OUTER_D, RIM, TRAY_W, TRAY_X } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
 import type { TableGeometry } from "../ui/table.ts";
 
@@ -23,6 +23,7 @@ export function tableGeometry(stage: Stage): TableGeometry | null {
   ];
   const xs = corners.map((p) => p.x);
   const ys = corners.map((p) => p.y);
+  const feltYs = [stage.toScreen(0, -FIELD_HALF_D).y, stage.toScreen(0, FIELD_HALF_D).y];
   // White's edge lies along +z; it is the near one when it is drawn lower down the screen.
   const near: Player = stage.toScreen(0, EDGE).y > stage.toScreen(0, -EDGE).y ? "white" : "black";
   return {
@@ -31,6 +32,12 @@ export function tableGeometry(stage: Stage): TableGeometry | null {
       right: Math.max(...xs),
       top: Math.min(...ys),
       bottom: Math.max(...ys),
+    },
+    play: {
+      left: Math.min(...xs),
+      right: Math.max(...xs),
+      top: Math.min(...feltYs),
+      bottom: Math.max(...feltYs),
     },
     field: { left: field.left, right: field.right, top: field.top, bottom: field.bottom },
     near,

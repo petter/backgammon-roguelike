@@ -44,9 +44,9 @@
   animation: table-land 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 
-/* A face-up card at a size that sits on the table: 52px wide, 40px on a phone. */
+/* A face-up card at the size that sits on the table, set from table.ts: 52px wide, 40px on a phone. */
 .table-card.card {
-  font-size: 4.5px;
+  font-size: calc(var(--table-w, 52px) / 11.54);
   padding: 0.44em;
   box-shadow:
     0 0 0 1px #000a,
@@ -72,7 +72,7 @@
 .table-back .card-back {
   display: block;
   margin: 0;
-  font-size: 52px;
+  font-size: var(--table-w, 52px);
 }
 
 .table-hex {
@@ -137,14 +137,6 @@
 @media (max-width: 640px), (max-height: 500px) {
   .table-side {
     gap: 6px;
-  }
-
-  .table-card.card {
-    font-size: 3.47px;
-  }
-
-  .table-back .card-back {
-    font-size: 40px;
   }
 }
 

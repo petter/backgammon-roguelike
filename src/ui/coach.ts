@@ -28,11 +28,6 @@ export interface CoachOptions {
   onNever?: () => void;
   /** Called after the card has been laid out again for a new window size. */
   onResize?: () => void;
-  /**
-   * Whether any press or key sends the card away. A card that comes mid-turn says so only
-   * when it has done its job, as a press on the board may be part of play.
-   */
-  pressDismisses: boolean;
 }
 
 /** Where things are on screen, in client pixels. */
@@ -382,14 +377,16 @@ export function createCoach(): Coach {
       const press = (event: Event) => {
         // "Don't show again" is a press too, but it must reach its button: it says more.
         if (event.target instanceof Node && never.contains(event.target)) return;
+        // Tab moves to the card's buttons, so a keyboard can reach "Don't show again".
+        if (event instanceof KeyboardEvent && (event.key === "Tab" || event.key === "Shift"))
+          return;
         if (performance.now() - shownAt >= GRACE_MS) dismiss();
       };
-      if (options.pressDismisses) {
-        window.addEventListener("pointerdown", press, { capture: true, signal });
-        window.addEventListener("keydown", press, { capture: true, signal });
-        // A click with no press before it, as assistive tools send.
-        window.addEventListener("click", press, { capture: true, signal });
-      }
+      // Any press or key sends the card away; a press on the board still plays.
+      window.addEventListener("pointerdown", press, { capture: true, signal });
+      window.addEventListener("keydown", press, { capture: true, signal });
+      // A click with no press before it, as assistive tools send.
+      window.addEventListener("click", press, { capture: true, signal });
       // The button means it at once, grace or no grace.
       begin.addEventListener("click", dismiss, { signal });
       window.addEventListener(

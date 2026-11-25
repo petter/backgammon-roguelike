@@ -289,8 +289,6 @@ export function createCoaching(
       }),
       {
         hold: HOLD[next.kind],
-        // Any press sends a guide away. One on the board still plays: it is not swallowed.
-        pressDismisses: true,
         onNever: () => prefs.setOff(true),
         // A narrower window draws the board smaller: the route's marks grow to match.
         onResize: () => {

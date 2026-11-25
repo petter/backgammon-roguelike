@@ -14,6 +14,8 @@ export interface Rect {
 /** Where the board is drawn, in client pixels, and whose edge of it is nearest the viewer. */
 export interface TableGeometry {
   board: Rect;
+  /** The felt the checkers stand on, inside the rails: cards never lie over it. */
+  play: Rect;
   /** The part of the window the board is drawn in, clear of the HUD. */
   field: Rect;
   near: Player;
@@ -30,6 +32,8 @@ export interface TableView {
   render: (sides: TableSide[]) => void;
   /** Puts each side's cards in place again, as after the board has moved or resized. */
   layout: () => void;
+  /** Puts away a card shown up close, as when a pass-and-play turn hands the device over. */
+  dismiss: () => void;
   clear: () => void;
 }
 
@@ -42,14 +46,18 @@ function cardSize(): { w: number; h: number } {
   return { w, h: Math.round(w * 1.413) };
 }
 
+/** The smallest a card may shrink to where room is short, as on a short phone: still a target. */
+const MIN_H = 36;
+
 /**
  * Where one side's cards lie: above or below the board where the window leaves room
- * there, as on a phone held upright; else in the space to the board's left; else just
- * inside its corner.
+ * there, as on a phone held upright; else in the space to the board's left; else at the
+ * board's edge, over its rail but never its felt, shrunk to fit; else, failing all that,
+ * just inside its corner.
  */
 function placeSide(row: HTMLElement, at: TableGeometry, near: boolean): void {
-  const { board, field } = at;
-  const { w, h } = cardSize();
+  const { board, play, field } = at;
+  let { w, h } = cardSize();
   const style = row.style;
   style.removeProperty("top");
   style.removeProperty("bottom");
@@ -57,7 +65,10 @@ function placeSide(row: HTMLElement, at: TableGeometry, near: boolean): void {
   const roomAbove = board.top - field.top;
   const roomBelow = field.bottom - board.bottom;
   const roomLeft = board.left - field.left;
+  // Out to the felt's edge, the rail included, less a little gap on either side.
+  const railRoom = Math.min(play.top - field.top, field.bottom - play.bottom) - 8;
   const across = Math.max(w, Math.min(board.right, window.innerWidth - GAP) - board.left);
+  style.setProperty("--table-w", `${w}px`);
   if (Math.min(roomAbove, roomBelow) >= h + GAP * 2) {
     row.dataset.place = "edge";
     style.left = `${Math.max(GAP, board.left)}px`;
@@ -71,6 +82,15 @@ function placeSide(row: HTMLElement, at: TableGeometry, near: boolean): void {
     style.width = `${width}px`;
     if (near) style.bottom = `${window.innerHeight - board.bottom}px`;
     else style.top = `${board.top}px`;
+  } else if (railRoom >= MIN_H) {
+    row.dataset.place = "rail";
+    h = Math.min(h, railRoom);
+    w = Math.round(h / 1.413);
+    style.setProperty("--table-w", `${w}px`);
+    style.left = `${Math.max(GAP, board.left)}px`;
+    style.width = `${across}px`;
+    if (near) style.top = `${play.bottom + 4}px`;
+    else style.bottom = `${window.innerHeight - play.top + 4}px`;
   } else {
     row.dataset.place = "inside";
     style.left = `${board.left + GAP}px`;
@@ -140,8 +160,7 @@ export function createTable(locate: () => TableGeometry | null): TableView {
   return {
     render(sides) {
       // Only redrawn when something changed, so a card being pointed at is not replaced.
-      const key = JSON.stringify(sides);
-      if (key === JSON.stringify(shown)) {
+      if (JSON.stringify(sides) === JSON.stringify(shown)) {
         layout();
         return;
       }
@@ -160,9 +179,12 @@ export function createTable(locate: () => TableGeometry | null): TableView {
             const id = `${mark.kind}:${mark.card ?? "hidden"}`;
             const nth = (seen.get(id) ?? 0) + 1;
             seen.set(id, nth);
-            const card = tableCard(mark, () => zoom.open(mark, side.owner));
-            card.dataset.key = `${id}:${nth}`;
-            if (!before.has(card.dataset.key)) card.classList.add("table-new");
+            const key = `${id}:${nth}`;
+            // Focus goes back to this card after the close-up, even if the row was redrawn.
+            const find = () => row.querySelector<HTMLElement>(`[data-key="${key}"]`);
+            const card = tableCard(mark, () => zoom.open(mark, side.owner, find));
+            card.dataset.key = key;
+            if (!before.has(key)) card.classList.add("table-new");
             return card;
           }),
         );
@@ -170,6 +192,7 @@ export function createTable(locate: () => TableGeometry | null): TableView {
       layout();
     },
     layout,
+    dismiss: () => zoom.close(),
     clear() {
       shown = [];
       zoom.close();
@@ -179,7 +202,10 @@ export function createTable(locate: () => TableGeometry | null): TableView {
 }
 
 /** A table card shown up close, with what it does. Any press or Escape puts it back. */
-function createZoom(): { open: (mark: Mark, owner: string) => void; close: () => void } {
+function createZoom(): {
+  open: (mark: Mark, owner: string, returnTo: () => HTMLElement | null) => void;
+  close: () => void;
+} {
   const root = document.createElement("div");
   root.id = "table-zoom";
   root.setAttribute("role", "dialog");
@@ -203,22 +229,33 @@ function createZoom(): { open: (mark: Mark, owner: string) => void; close: () =>
   root.append(holder, caption);
   document.body.append(root);
 
-  let returnTo: Element | null = null;
+  let returnTo: (() => HTMLElement | null) | null = null;
   const hide = () => {
     if (root.hidden) return;
     root.hidden = true;
+    // Nothing of the card is left behind, even hidden: it may be a secret trap.
     holder.replaceChildren();
-    if (returnTo instanceof HTMLElement && returnTo.isConnected) returnTo.focus();
+    kicker.textContent = "";
+    title.textContent = "";
+    detail.textContent = "";
+    returnTo?.()?.focus();
     returnTo = null;
   };
   root.addEventListener("click", hide);
   root.addEventListener("keydown", (event) => {
+    // While it is open, keys belong to it: E must not end the turn behind it.
+    event.stopPropagation();
     if (event.key === "Escape") hide();
+    // Close is the one thing to reach; Tab stays on it.
+    if (event.key === "Tab") {
+      event.preventDefault();
+      close.focus();
+    }
   });
 
   return {
-    open(mark, owner) {
-      returnTo = document.activeElement;
+    open(mark, owner, from) {
+      returnTo = from;
       root.className = `table-zoom-${mark.kind}`;
       let card: HTMLElement;
       if (mark.card) {
