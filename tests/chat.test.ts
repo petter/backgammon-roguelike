@@ -143,6 +143,18 @@ describe("chat over a room socket", () => {
     expect(white.chatFrames()).toEqual([]);
   });
 
+  it("never holds up the game while a chat line is slow to keep", async () => {
+    const { store, host } = await seated();
+    const stalled: GameStore = { ...store, appendChat: () => new Promise(() => {}) };
+    const white = fakeSocket(stalled, host.code);
+    await white.say({ type: "hello", token: host.token, chat: true });
+    await white.say({ type: "chat", text: "hello?" });
+    await white.say({ type: "ping" });
+    await white.say({ type: "command", command: { type: "pickCard", index: 0 }, id: 7 });
+    expect(white.sent.map((m) => m.type)).toContain("pong");
+    expect(white.sent).toContainEqual({ type: "done", id: 7 });
+  });
+
   it("refuses chat before hello, like any other message", async () => {
     const { store, host } = await seated();
     const early = fakeSocket(store, host.code);

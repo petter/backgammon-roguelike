@@ -7,6 +7,8 @@ import { el } from "./dom.ts";
 
 /** How long a line from the opponent is previewed while the chat is shut. */
 const PREVIEW_MS = 6000;
+/** How long a sent line waits for its echo before pressing Send again sends it again. */
+const RESEND_MS = 1000;
 
 const BUBBLE = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
   stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
@@ -55,6 +57,12 @@ export function createChat(): ChatView {
   let primed = false;
   let unread = 0;
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The line last sent, kept in the field until the server echoes it back as kept. One the
+   * server turned down (too fast, or not stored) is still there to send again.
+   */
+  let sending: string | null = null;
+  let sentAt = 0;
 
   const isOpen = () => !panel.hidden;
   const nameOf = (player: Player) =>
@@ -149,9 +157,13 @@ export function createChat(): ChatView {
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!say || cleanChat(input.value) === null) return;
-    // A line that could not go out stays in the field, to be sent again.
-    if (say(input.value)) input.value = "";
+    const text = cleanChat(input.value);
+    if (!say || text === null) return;
+    // Pressed again before the server has answered: the line is on its way already.
+    if (text === sending && performance.now() - sentAt < RESEND_MS) return;
+    if (!say(input.value)) return;
+    sending = text;
+    sentAt = performance.now();
   });
   // The same count as the server's: characters, not UTF-16 units, so emoji are not halved.
   input.addEventListener("input", () => {
@@ -186,6 +198,12 @@ export function createChat(): ChatView {
       const stick = atBottom() || merged.added.some((line) => line.from === lobby?.you);
       lines = merged.log;
       renderLog(stick);
+      // The server has kept the line in the field: it is said, so the field is cleared,
+      // unless the player has started on something else meanwhile.
+      if (merged.added.some((line) => line.from === lobby?.you && line.text === sending)) {
+        if (cleanChat(input.value) === sending) input.value = "";
+        sending = null;
+      }
       const announce = primed;
       primed = true;
       if (!announce) return;
@@ -204,6 +222,7 @@ export function createChat(): ChatView {
       lines = [];
       primed = false;
       unread = 0;
+      sending = null;
       input.value = "";
       setOpen(false);
       hidePreview();

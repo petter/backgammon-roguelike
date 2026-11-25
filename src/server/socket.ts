@@ -21,6 +21,8 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
   let chat: Promise<ChatLink | null> | null = null;
   let closed = false;
   let queue: Promise<void> = Promise.resolve();
+  /** Chat lines, in order, on their own queue: a slow chat store never holds up the game. */
+  let chatQueue: Promise<void> = Promise.resolve();
 
   const send = (message: ServerMessage) => {
     if (!closed) socket.send(JSON.stringify(message));
@@ -64,9 +66,15 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     }
 
     if (!connection) return reject("Say hello first");
-    // A client sends chat only once it has had the first chat frame, which goes out just
-    // before the chat is ready, so this is not a real wait.
-    if (message.type === "chat") return (await chat)?.say(message.text);
+    if (message.type === "chat") {
+      // A client sends chat only once it has had the first chat frame, which goes out just
+      // before the chat is ready, so waiting for it is not a real wait.
+      const opening = chat;
+      chatQueue = chatQueue
+        .then(async () => (await opening)?.say(message.text))
+        .catch((error) => console.error("Could not handle a chat line", error));
+      return;
+    }
     await connection.command(message.command);
     // After the outcome, never before it: a client may stop listening once it has this.
     if (message.id !== undefined) send({ type: "done", id: message.id });

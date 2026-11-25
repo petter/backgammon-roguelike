@@ -222,7 +222,8 @@ The two seats of an online game can send each other short text messages.
   its log; a new log then numbers on from the current time in ms, so an id is never reused
   and a client that remembers old ids never drops a new line as a repeat.
 - **Never in the game's way.** The server opens chat beside the game connection without
-  waiting for it, so a slow chat store cannot hold up commands.
+  waiting for it, and handles chat lines on their own queue, so a slow chat store cannot
+  hold up commands.
 - **Opt-in both ways.** A client says `chat: true` in `hello`; only then does the server
   send `chat` frames (older clients would mistake one for a state). The server's first
   frame on a socket is the kept log, even empty, which is also how the client learns the
@@ -230,8 +231,8 @@ The two seats of an online game can send each other short text messages.
   frame, because a server from before chat refuses it as malformed, and that ends the seat.
 - **At-least-once.** The server announces each line best-effort and also checks the log on
   its 10 s resync; clients merge lines by id, so a repeat does no harm. A line appears for
-  its sender once the server echoes it back; a line that could not be sent stays in the
-  field.
+  its sender once the server echoes it back, and only then is the field cleared, so a line
+  the server turned down (too fast, not stored) or that never went out can be sent again.
 - **Plain text, bounded.** The server keeps one line of at most 200 characters, with
   control and bidirectional-override characters removed; blank lines are dropped quietly.
   Each connection may send 5 lines at once, then one every 2 s; past that it gets a
