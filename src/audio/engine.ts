@@ -18,6 +18,12 @@ let dry: AudioNode | null = null;
 let room: AudioNode | null = null;
 let noise: AudioBuffer | null = null;
 let muted = readMuted();
+/**
+ * A press has asked the context to start and it has yet to answer. Sounds asked for
+ * meanwhile are kept: they play as soon as it runs, like the cue of a game that the same
+ * press began.
+ */
+let starting = false;
 const listeners = new Set<(muted: boolean) => void>();
 
 function readMuted(): boolean {
@@ -84,7 +90,11 @@ function build(): AudioContext | null {
 
 function unlock(): void {
   const context = build();
-  if (context && context.state !== "running") void context.resume();
+  if (!context || context.state === "running" || starting) return;
+  starting = true;
+  void context.resume().finally(() => {
+    starting = false;
+  });
 }
 
 /** Lets the page make sound from the first press or key on, as browsers require. */
@@ -129,7 +139,8 @@ export interface Voice {
  * not yet allowed to play, or no Web Audio at all. `roomy` scales the room send.
  */
 export function voice(delay = 0, roomy = 1): Voice | null {
-  if (muted || ctx?.state !== "running" || !dry || !room) return null;
+  if (muted || !ctx || !dry || !room) return null;
+  if (ctx.state !== "running" && !starting) return null;
   const out = ctx.createGain();
   out.connect(dry);
   if (roomy > 0) {

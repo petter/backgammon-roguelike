@@ -16,10 +16,10 @@ function icon(muted: boolean): string {
 export function createSoundToggle(button: HTMLButtonElement): void {
   const show = (muted: boolean) => {
     button.innerHTML = `${icon(muted)}<kbd>M</kbd>`;
+    // A steady name: being pressed is what says the sound is off.
     button.setAttribute("aria-pressed", String(muted));
-    const label = muted ? "Sound off" : "Sound on";
-    button.setAttribute("aria-label", `${label} (M)`);
-    button.title = `${label} (M)`;
+    button.setAttribute("aria-label", "Mute sound");
+    button.title = `${muted ? "Sound off" : "Sound on"} (M)`;
   };
   show(isMuted());
   onMuteChange(show);
