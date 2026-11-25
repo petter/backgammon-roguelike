@@ -140,7 +140,11 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let finale: gsap.core.Tween | null = null;
   /** The throw about to be made for the player, and whether this roll has been asked for. */
   let autoTimer: ReturnType<typeof setTimeout> | undefined;
-  let autoAsked = false;
+  let rollAsked = false;
+  const cancelAutoRoll = () => {
+    clearTimeout(autoTimer);
+    autoTimer = undefined;
+  };
 
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
@@ -362,7 +366,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     // A pass-and-play handover: a card the last player was studying up close goes away.
     if (options.local && view && view.current !== update.view.current) table.dismiss();
     // A roll that has come and gone may be thrown for the player again next time.
-    if (update.view.phase !== "roll") autoAsked = false;
+    if (update.view.phase !== "roll") rollAsked = false;
     coaching.update(view, update.view, starting || rematched);
     view = update.view;
     selected = null;
@@ -379,6 +383,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     onError(text, fatal) {
       if (fatal) return options.onFatal(text);
       away.onClaimError();
+      // Whatever was asked was refused: the roll may be asked for again, by hand.
+      rollAsked = false;
       // The server said no. Shown as a notice, so it is seen whatever else is on screen.
       hud.notify(text);
     },
@@ -389,23 +395,30 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       offline = lost;
       hud.setOffline(offline);
       if (!offline) hud.notify("Back online");
+      // No throw is made into a dead connection; once back, the roll is looked at afresh,
+      // as a reconnect that missed nothing brings no update to do it.
+      if (offline) cancelAutoRoll();
+      else autoRoll();
     },
   });
 
+  /** Asks for the roll once, whether by hand or by itself, until the server answers. */
   const roll = () => {
-    if (myTurn() && view?.phase === "roll") session.send({ type: "roll" });
+    if (rollAsked || !myTurn() || view?.phase !== "roll") return;
+    rollAsked = true;
+    cancelAutoRoll();
+    session.send({ type: "roll" });
   };
   /**
    * Nothing is decided before the roll unless a card can be played first, so the dice are
    * thrown for the player a moment after their roll comes up. Not while a guide is up.
    */
   function autoRoll() {
-    if (autoTimer !== undefined || autoAsked || !view || coaching.active()) return;
+    if (autoTimer !== undefined || rollAsked || offline || !view || coaching.active()) return;
     if (!rollsByItself(view)) return;
     autoTimer = setTimeout(() => {
       autoTimer = undefined;
-      if (autoAsked || !view || coaching.active() || !rollsByItself(view)) return;
-      autoAsked = true;
+      if (offline || !view || coaching.active() || !rollsByItself(view)) return;
       roll();
     }, AUTO_ROLL_MS);
   }
@@ -493,7 +506,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
-    clearTimeout(autoTimer);
+    cancelAutoRoll();
     away.stop();
     coaching.stop();
     finale?.kill();

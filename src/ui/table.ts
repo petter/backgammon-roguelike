@@ -46,14 +46,13 @@ function cardSize(): { w: number; h: number } {
   return { w, h: Math.round(w * 1.413) };
 }
 
-/** The smallest a card may shrink to where room is short, as on a short phone: still a target. */
-const MIN_H = 36;
+/** The smallest a card shrinks to where room is short, as on a short phone. */
+const MIN_H = 20;
 
 /**
  * Where one side's cards lie: above or below the board where the window leaves room
  * there, as on a phone held upright; else in the space to the board's left; else at the
- * board's edge, over its rail but never its felt, shrunk to fit; else, failing all that,
- * just inside its corner.
+ * board's edge, over its rail but never its felt, shrunk to fit.
  */
 function placeSide(row: HTMLElement, at: TableGeometry, near: boolean): void {
   const { board, play, field } = at;
@@ -82,21 +81,15 @@ function placeSide(row: HTMLElement, at: TableGeometry, near: boolean): void {
     style.width = `${width}px`;
     if (near) style.bottom = `${window.innerHeight - board.bottom}px`;
     else style.top = `${board.top}px`;
-  } else if (railRoom >= MIN_H) {
+  } else {
     row.dataset.place = "rail";
-    h = Math.min(h, railRoom);
+    h = Math.max(MIN_H, Math.min(h, railRoom));
     w = Math.round(h / 1.413);
     style.setProperty("--table-w", `${w}px`);
     style.left = `${Math.max(GAP, board.left)}px`;
     style.width = `${across}px`;
     if (near) style.top = `${play.bottom + 4}px`;
     else style.bottom = `${window.innerHeight - play.top + 4}px`;
-  } else {
-    row.dataset.place = "inside";
-    style.left = `${board.left + GAP}px`;
-    style.width = `${across - GAP * 2}px`;
-    if (near) style.bottom = `${window.innerHeight - board.bottom + GAP}px`;
-    else style.top = `${board.top + GAP}px`;
   }
 }
 
