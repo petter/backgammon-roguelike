@@ -77,7 +77,7 @@ export type GameEvent =
   /** Played face up. A trap is never announced this way: see `trapSet`. */
   | { type: "cardPlayed"; player: Player; card: CardId }
   | { type: "diceRolled"; player: Player; dice: number[] }
-  /** A card changed the dice. `doubled`: it left an exact pair, which became four dice. */
+  /** A card changed the dice. `doubled`: it made a pair, which became four dice. */
   | { type: "diceChanged"; player: Player; dice: number[]; doubled: boolean }
   | { type: "shieldRaised"; player: Player }
   /** A hex landed on `player`, to bite at their next roll. */
