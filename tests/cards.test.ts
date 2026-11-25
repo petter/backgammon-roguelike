@@ -397,6 +397,25 @@ describe("traps", () => {
     expect(play(state).state.dice).toEqual([6, 6, 6]);
   });
 
+  it("Loose Board takes one die from doubles Lucky Charm pairs up", () => {
+    let sprung = 0;
+    for (let rng = 0; rng < 100; rng++) {
+      const state = game({
+        rng,
+        current: "black",
+        dice: [2, 5],
+        cards: hand("black", "charm"),
+        traps: { white: ["looseBoard"], black: [] },
+      });
+      const { state: after } = play(state);
+      if (after.traps.white.length > 0) continue;
+      expect(after.dice).toHaveLength(4);
+      expect(new Set(after.dice.slice(1)).size).toBe(1);
+      sprung++;
+    }
+    expect(sprung).toBeGreaterThan(0);
+  });
+
   it("Loose Board waits through rolls that are not doubles", () => {
     const state = blackRolls({ rng: plainSeed, traps: { white: ["looseBoard"], black: [] } });
     expect(roll(state).state.traps.white).toEqual(["looseBoard"]);

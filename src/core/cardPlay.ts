@@ -23,6 +23,7 @@ import {
 import { createRng, rollDie } from "./rng.ts";
 import {
   asDoubles,
+  withPairedDie,
   type CardTurn,
   cloneCards,
   type GameEvent,
@@ -123,18 +124,26 @@ function spring(next: GameState, owner: Player, trap: TrapId, events: GameEvent[
 }
 
 /**
- * Sets the player on turn's dice, making an exact pair doubles. Doubles spring the
- * opponent's Loose Board, which takes one of the four. Returns whether doubles were made.
+ * Sets the player on turn's dice, making an exact pair doubles, or, given an `extra` die rolled
+ * into them, a pair of it with any die already there. Doubles spring the opponent's Loose Board,
+ * which takes one of the four. Returns whether doubles were made.
  * `next` is a copy the caller owns; only its top-level fields are replaced.
  */
-export function settleDice(next: GameState, dice: number[], events: GameEvent[]): boolean {
-  const four = asDoubles(dice);
-  next.dice = four;
-  if (four === dice) return false;
+export function settleDice(
+  next: GameState,
+  dice: number[],
+  events: GameEvent[],
+  extra?: number,
+): boolean {
+  const all = extra === undefined ? dice : [...dice, extra];
+  const settled = extra === undefined ? asDoubles(dice) : withPairedDie(dice, extra);
+  next.dice = settled;
+  if (settled.length === all.length) return false;
   const them = opponent(next.current);
   if (next.traps[them].includes("looseBoard")) {
     spring(next, them, "looseBoard", events);
-    next.dice = four.slice(1);
+    // The four doubled dice come last.
+    next.dice = settled.slice(0, -1);
   }
   return true;
 }
@@ -299,8 +308,11 @@ export function playCard(state: GameState, index: number): Result {
   next.cards = withPlayer(state.cards, player, mine);
   events.push({ type: "cardPlayed", player, card });
 
-  /** New dice, and whether an exact pair among them makes doubles. */
-  let dice: { values: number[]; pairs: boolean } | null = null;
+  /**
+   * New dice, and whether an exact pair among them makes doubles. With `extra`, that die is
+   * rolled into `values` and pairs with any of them.
+   */
+  let dice: { values: number[]; pairs: boolean; extra?: number } | null = null;
   const lowest = () => state.dice.indexOf(Math.min(...state.dice));
 
   if (isHex(card)) {
@@ -312,7 +324,7 @@ export function playCard(state: GameState, index: number): Result {
     values[values.indexOf(Math.min(...values))] = 6;
     dice = { values, pairs: true };
   } else if (card === "charm") {
-    dice = { values: [...state.dice, rollDie(rng)], pairs: true };
+    dice = { values: [...state.dice], pairs: true, extra: rollDie(rng) };
   } else if (card === "shield") {
     next.shielded = withPlayer(state.shielded, player, true);
     events.push({ type: "shieldRaised", player });
@@ -381,7 +393,7 @@ export function playCard(state: GameState, index: number): Result {
   }
 
   if (dice) {
-    const doubled = dice.pairs ? settleDice(next, dice.values, events) : false;
+    const doubled = dice.pairs ? settleDice(next, dice.values, events, dice.extra) : false;
     if (!dice.pairs) next.dice = dice.values;
     events.push({ type: "diceChanged", player, dice: next.dice, doubled });
   }
