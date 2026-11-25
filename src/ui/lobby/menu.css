@@ -294,3 +294,46 @@
     gap: 16px;
   }
 }
+
+/* Links out, under the menu only: the forms and the rules keep the screen to themselves. */
+.lobby-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 20px;
+  margin-top: clamp(16px, 3vh, 28px);
+}
+
+#lobby:not([data-view="home"]) .lobby-footer {
+  display: none;
+}
+
+.lobby-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font: 13px / 1 var(--serif);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+
+.lobby-footer svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+@media (hover: hover) {
+  .lobby-footer a:hover {
+    color: var(--metal-light);
+  }
+}
+
+.lobby-footer a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--metal) 80%, transparent);
+  outline-offset: 3px;
+}
