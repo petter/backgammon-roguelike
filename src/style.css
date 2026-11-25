@@ -21,15 +21,19 @@ body {
   display: none;
 }
 
-/* Leaves the top and bottom strips to the HUD, so cards never cover the board. */
+/*
+ * Leaves the top and bottom strips to the HUD, so cards and names never cover the board.
+ * The HUD measures its rows into `--hud-top` and `--hud-bottom` (hud.ts); the numbers here
+ * only hold until it has.
+ */
 #stage {
   position: fixed;
-  inset: 84px 0 148px;
+  inset: var(--hud-top, 84px) 0 var(--hud-bottom, 148px);
 }
 
 /* Reserve vertical room above the board whenever the disconnect banner is shown so it never intercepts moves. */
 body:has(#opponent-away:not([hidden])) #stage {
-  inset: max(84px, var(--away-bottom, 156px)) 0 148px;
+  inset: max(var(--hud-top, 84px), var(--away-bottom, 156px)) 0 var(--hud-bottom, 148px);
 }
 
 /* Behind the start screen, the board has the whole window. */
@@ -580,7 +584,7 @@ kbd {
   letter-spacing: 0.02em;
 }
 
-/* The kind's glyph, dark on a disc of the same ink it has on a player's marks. */
+/* The kind's glyph, dark on a disc of the same ink that rims its cards on the table. */
 .card-kind-glyph {
   display: grid;
   flex: none;
@@ -1314,11 +1318,11 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
 /* Phones: the top strip wraps onto several lines and the hand takes the full width. */
 @media (max-width: 640px) {
   #stage {
-    inset: 150px 0 196px;
+    inset: var(--hud-top, 150px) 0 var(--hud-bottom, 196px);
   }
 
   body:has(#opponent-away:not([hidden])) #stage {
-    inset: max(150px, var(--away-bottom, 212px)) 0 196px;
+    inset: max(var(--hud-top, 150px), var(--away-bottom, 212px)) 0 var(--hud-bottom, 196px);
   }
 
   body:has(#lobby:not([hidden])) #stage {
@@ -1344,9 +1348,61 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
     transform: translateY(var(--drop, 0px)) rotate(var(--tilt, 0deg)) scale(0.5);
   }
 
+  /*
+   * The top strip keeps one shape whatever it says, so the board under it does not jump:
+   * the turn, dice and the opponent's cards on one line, the latest news on the next (one
+   * line, cut short if need be), then both players on one line.
+   */
+  #turn {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #message {
+    order: 1;
+    flex: 1 0 100%;
+    min-height: 1.4em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #opponent-hand {
+    min-height: 40px;
+  }
+
+  #opponent-hand .card-back {
+    font-size: 28px;
+  }
+
   #players {
+    order: 2;
+    flex-wrap: nowrap;
     width: 100%;
     justify-content: flex-start;
+  }
+
+  /* Each player gets up to half the line, so one long name cannot crowd out the other. */
+  .player {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: calc(50% - 4px);
+    box-sizing: border-box;
+  }
+
+  .player strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The checker dot already says which colour each player has: the names get the room. */
+  .player > span:not(.portrait, .dot, .wins, .quiet) {
+    display: none;
   }
 
   #notice {
@@ -1406,11 +1462,11 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
 /* Short viewports (e.g. landscape phones 568×320 or 640×400): compact the chrome into single rows so the board stays playable even with the disconnect banner visible. */
 @media (max-height: 500px) {
   #stage {
-    inset: 44px 0 92px;
+    inset: var(--hud-top, 44px) 0 var(--hud-bottom, 92px);
   }
 
   body:has(#opponent-away:not([hidden])) #stage {
-    inset: max(44px, var(--away-bottom, 106px)) 0 92px;
+    inset: max(var(--hud-top, 44px), var(--away-bottom, 106px)) 0 var(--hud-bottom, 92px);
   }
 
   body:has(#lobby:not([hidden])) #stage {
@@ -1504,33 +1560,8 @@ body:has(#opponent-away:not([hidden])) #offer .panel {
   }
 
   /* The checker dot already shows each player's colour on cramped landscape screens. */
-  .player > span:not(.portrait, .dot, .wins, .quiet, .marks) {
+  .player > span:not(.portrait, .dot, .wins, .quiet) {
     display: none;
-  }
-
-  /* Hexes, wards and traps stay visible: one tight row of glyphs and counts. */
-  .player .marks {
-    flex: none;
-    flex-wrap: nowrap;
-    gap: 2px;
-  }
-
-  .player .mark {
-    padding: 1px 3px;
-  }
-
-  .player .mark-glyph {
-    width: 12px;
-    height: 12px;
-  }
-
-  .player .mark-label {
-    display: none;
-  }
-
-  .player .mark-count {
-    display: block;
-    font-size: 10px;
   }
 
   .player .portrait {
