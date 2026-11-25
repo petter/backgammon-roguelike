@@ -1,6 +1,7 @@
 import { gsap } from "gsap";
 
-import { type Player, pointAt } from "../core/board.ts";
+import { sfx } from "../audio/sfx.ts";
+import { initialBoard, type Player, pointAt } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
@@ -31,6 +32,17 @@ function sameDice(a: number[], b: number[]): boolean {
 }
 
 const COLOR_NAMES = { white: "White", black: "Black" } as const;
+
+const OPENING = JSON.stringify(initialBoard());
+
+/** A game nobody has moved in yet: joining it is the start of the match, not a return to it. */
+function untouched(view: PlayerView): boolean {
+  return (
+    view.wins.white + view.wins.black === 0 &&
+    view.phase !== "over" &&
+    JSON.stringify(view.board) === OPENING
+  );
+}
 
 export interface GameScreenDeps {
   stageEl: HTMLElement;
@@ -124,7 +136,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   const dice = new DiceView(stage.lens, (count) => slotsFor(hud.diceFaces(), count));
+  dice.onKnock = (speed) => sfx.dieKnock(speed);
   stage.world.add(dice.group);
+  /** The room was waiting for the opponent on this screen, so the game starting is news. */
+  let waited = false;
   /**
    * Whether dice are in the air. Set by the throw itself and cleared when its animation
    * reports that it has finished, so the result can never show before the dice have landed,
@@ -149,8 +164,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
     rolling = true;
+    sfx.diceThrown();
     dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
       rolling = false;
+      sfx.diceSettled();
       coaching.landed();
       refresh();
     });
@@ -237,6 +254,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     /** Board events after a revealed card wait until it has turned face up. */
     let after = 0;
     let revealed = 0;
+    /** Points where a hit has its own sound, so the hitter's landing there is not heard twice. */
+    const struck = new Set<number>();
     const whose = (player: Player) =>
       !options.local && player === you ? "Your" : `${name(player)}'s`;
     const turnUp = (event: GameEvent) => {
@@ -252,29 +271,42 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     };
     for (const event of events) {
       if (event.type === "pieceMoved") {
-        pieces.apply(event);
+        const landing = pieces.apply(event);
+        if (event.to === "off") sfx.bearOff(landing.at);
+        else if (!struck.has(event.to)) sfx.checkerLands(landing.at, landing.stacked);
       } else if (event.type === "hit") {
-        const lands = pieces.apply(event, after);
+        const landing = pieces.apply(event, after);
+        const lands = landing.at;
         if (after > 0) heldUntil = Math.max(heldUntil, performance.now() + lands * 1000);
+        // The blow lands with the hitter, or as the revealed card that made it turns up.
+        struck.add(event.point);
+        sfx.hit(after > 0 ? after : 0.4, lands);
         // A quake already shook the board; a second shake would cut it short. A hit a
         // revealed card made shook the board as the card turned up.
         if (!quaked && after === 0) shake(stage.world, 0.6, 0.4);
       } else if (event.type === "cardPlayed") {
         holdUp(event);
         text = `${name(event.player)} played ${CARDS[event.card].name}`;
+        sfx.cardPlayed();
         if (event.card === "quake") {
           quaked = true;
           shake(stage.world, 1.4);
           tossAll(pieces.all());
+          sfx.boardThump(1.4);
+          sfx.clatter(1);
         }
+      } else if (event.type === "shieldRaised") {
+        sfx.shield();
       } else if (event.type === "hexCast") {
+        sfx.hexCast();
         text = `${name(event.player)} is hexed: ${CARDS[event.card].name}`;
       } else if (event.type === "hexWarded") {
         const ward = `${name(event.player)}'s ${CARDS[event.ward].name}`;
         const hex = CARDS[event.card].name;
         text = event.ward === "mirror" ? `${ward} throws ${hex} back` : `${ward} blocks ${hex}`;
+        sfx.hexWarded();
       } else if (event.type === "hexStruck") {
-        turnUp(event);
+        sfx.hexStruck(turnUp(event));
         text =
           event.card === "backstep"
             ? `Backstep: ${name(event.player)}'s next move goes backwards`
@@ -282,7 +314,9 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       } else if (event.type === "hexLifted") {
         const freed = event.cards.map((card) => CARDS[card].name).join(" and ");
         text = `${name(event.player)} is free of ${freed}`;
+        sfx.hexLifted();
       } else if (event.type === "trapSet") {
+        sfx.trapSet();
         // In pass-and-play the other player is about to take the device: the trap stays secret.
         const set = options.local ? { ...event, card: null } : event;
         holdUp(set);
@@ -293,8 +327,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         text = `${name(event.player)}'s ${CARDS[event.card].name} springs!`;
         after = turnUp(event);
         shake(stage.world, 0.5, after);
+        sfx.trapSprung(after);
       } else if (event.type === "coinFlipped") {
         text += event.heads ? ": heads!" : ": tails";
+        sfx.coin(event.heads);
       } else if (event.type === "diceRolled") {
         throwDice(event.dice, event.player, next.board);
       } else if (event.type === "diceChanged") {
@@ -303,9 +339,19 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         if (event.doubled && text) text += ": doubles!";
       } else if (event.type === "turnEnded") {
         settleDice(null);
-      } else if (event.type === "cardPicked" && event.player !== you) {
-        text = `${name(event.player)} picked a card`;
+        // Online, the wait is over: the player may have looked away.
+        if (!options.local && event.next === you) sfx.yourTurn();
+        else sfx.turnEnded();
+      } else if (event.type === "cardsOffered" && event.cards) {
+        sfx.cardsDealt(event.cards.length);
+      } else if (event.type === "cardPicked") {
+        sfx.cardFlick();
+        if (event.player !== you) text = `${name(event.player)} picked a card`;
+      } else if (event.type === "rematchOffered" && event.player !== you) {
+        sfx.rematchOffered();
       } else if (event.type === "gameWon") {
+        const victory = options.local || event.winner === you;
+        sfx.result(victory, prefersLessMotion() ? 0.15 : IMPACT_AT);
         // The board takes the blow when the result screen's crest strikes down.
         finale?.kill();
         if (!prefersLessMotion()) {
@@ -320,6 +366,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         reveal.clear();
         pieces.reset(next.board);
         settleDice(null);
+        sfx.matchStarted();
         text = `New game: ${name(event.first)} starts`;
       }
     }
@@ -329,10 +376,15 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   const onUpdate = (update: SessionUpdate) => {
     lobby = update.lobby;
     if (!update.view) {
+      waited = true;
       options.onWaiting(update.lobby);
       return;
     }
     const starting = !view;
+    // The opponent sitting down, or a fresh game begun here; not a return to one under way.
+    if (starting && (waited || update.events.length > 0 || untouched(update.view))) {
+      sfx.matchStarted();
+    }
     // A game that was over and now is not has been replaced by a rematch, even when the
     // update is a snapshot without the rematch's events, as after a reconnect.
     const rematched =
@@ -385,6 +437,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       away.onClaimError();
       // Whatever was asked was refused: the roll may be asked for again, by hand.
       rollAsked = false;
+      sfx.denied();
       // The server said no. Shown as a notice, so it is seen whatever else is on screen.
       hud.notify(text);
     },
@@ -435,7 +488,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     onPlay: (index) => {
       if (!rolling) session.send({ type: "playCard", index });
     },
-    onBlocked: (reason) => hud.notify(reason),
+    onBlocked: (reason) => {
+      sfx.denied();
+      hud.notify(reason);
+    },
     onPick: (index) => session.send({ type: "pickCard", index }),
     onClaimVictory: () => {
       if (!options.local && away.beginClaim(offline)) session.send({ type: "claimVictory" });
@@ -469,7 +525,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       }
       selected = target?.kind === "point" ? target.index : null;
       // Picking a checker that can move, not just any point, is acting on the lesson.
-      if (selected !== null && moves.some((m) => m.from === selected)) coaching.picked();
+      if (selected !== null && moves.some((m) => m.from === selected)) {
+        coaching.picked();
+        sfx.select();
+      }
       // A move a die allows but the rules do not: say why, or it just looks broken.
       const from = selected ?? (view.board.bar[view.current] > 0 ? "bar" : null);
       if (
@@ -477,6 +536,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         !moves.some((m) => m.from === from) &&
         possibleMoves(view).some((m) => m.from === from)
       ) {
+        sfx.denied();
         hud.notify(
           diceToPlay(view) === 1
             ? "You must play the higher die when only one can be played"

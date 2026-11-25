@@ -26,7 +26,7 @@ enter the code (or paste the invite link). Each tab is its own player with its o
 "Play both sides on this device" runs a hot-seat game with no server. Append `?seed=123` to
 replay the same shuffles and dice.
 
-Keys: `Space` rolls, `E` ends the turn. In development, `D` drops the connection to exercise
+Keys: `Space` rolls, `E` ends the turn, `M` turns sound on or off (remembered per browser). In development, `D` drops the connection to exercise
 reconnecting. Rooms live in memory and are lost when the dev server restarts.
 
 ## Playing a stranger
@@ -43,6 +43,13 @@ or whose browser stops asking for about five seconds is never matched.
 "How to play" under the start menu explains plain backgammon, what the cards add, and lists
 every card grouped by kind. Its words live in `src/ui/lobby/rulesCopy.ts`; each card's line
 is its own rules text from `src/core/cards.ts`, so a card change shows up there by itself.
+
+## Sound
+
+Every sound is synthesised at play time with Web Audio (`src/audio/`); there are no audio
+files. `engine.ts` holds the context, master bus, room reverb and building blocks;
+`sfx.ts` has one recipe per game moment. Dice knocks come from the dice simulation itself
+(`DiceThrow.knocks`), so each clack lines up with a die striking something on screen.
 
 ## How a turn works
 

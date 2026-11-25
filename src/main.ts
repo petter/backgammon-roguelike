@@ -3,6 +3,7 @@ import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { tableGeometry } from "./app/tableGeometry.ts";
+import { unlockAudio } from "./audio/engine.ts";
 import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
 import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
@@ -18,15 +19,18 @@ import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
 import { createLobbyUi, type PlayerChoice } from "./ui/lobby/lobby.ts";
 import { createRevealView } from "./ui/reveal.ts";
+import { createSoundToggle } from "./ui/soundToggle.ts";
 import { createTable } from "./ui/table.ts";
 
 startAnalytics();
+unlockAudio();
 
 const stageEl = el("stage");
 const stage = createStage(stageEl);
 const board = createBoard();
 stage.world.add(board.group);
 const hud = createHud();
+createSoundToggle(el("sound", HTMLButtonElement));
 const coach = createCoach();
 const table = createTable(() => tableGeometry(stage));
 const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView(), table };
