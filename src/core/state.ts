@@ -71,6 +71,8 @@ export type Command =
 export type GameEvent =
   | BoardEvent
   | { type: "cardsOffered"; player: Player; cards: CardId[] | null }
+  /** `player` starts a turn holding a full hand, so there is no card to pick. */
+  | { type: "handFull"; player: Player }
   | { type: "cardPicked"; player: Player; card: CardId | null }
   /** Played face up. A trap is never announced this way: see `trapSet`. */
   | { type: "cardPlayed"; player: Player; card: CardId }

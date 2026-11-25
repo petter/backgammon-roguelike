@@ -72,7 +72,7 @@ export const ROGUELIKE_RULES: readonly RulesSection[] = [
     body: [
       "Cards fold straight into your turn, which runs in four steps:",
       [
-        "Pick one card from those offered, usually three (skipped when your hand holds five).",
+        "Pick one card from those offered, usually three. A hand holds at most five cards: while yours is full, you skip the pick until you play one.",
         "Roll the dice. They roll by themselves, unless you hold a cleansing ward you could play first.",
         "Move checkers and play cards from your hand, in any order.",
         "End your turn once no checker move is left.",

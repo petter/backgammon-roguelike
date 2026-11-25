@@ -1,6 +1,6 @@
 import type { Player } from "../core/board.ts";
 import { CHARACTERS, type CharacterId, DEFAULT_CHARACTER } from "../core/characters.ts";
-import { cardBlock } from "../core/game.ts";
+import { cardBlock, HAND_LIMIT } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import { createCard, fanCard } from "./card.ts";
@@ -118,7 +118,8 @@ function playerChip(model: ChipModel): HTMLElement {
   colour.textContent = model.name === colourName ? "" : colourName;
   const details = document.createElement("span");
   details.className = "quiet";
-  const parts = [`${model.hand} ${model.hand === 1 ? "card" : "cards"}`];
+  // Out of the most a hand holds, so a full hand reads as full rather than as a number.
+  const parts = [`${model.hand}/${HAND_LIMIT} cards`];
   if (model.shielded) parts.push("shielded");
   if (model.away) parts.push("left");
   details.textContent = parts.join(", ");
