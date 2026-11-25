@@ -38,3 +38,29 @@ export function revealFor(event: GameEvent, whose: (player: Player) => string): 
   }
   return null;
 }
+
+/**
+ * The card to hold up as it is played, so both players see what was done. `who` names a
+ * player as the one acting: "You" or "Ada". A trap is set face down, so its owner sees it
+ * turn over and the other player sees only its back.
+ */
+export function playedReveal(event: GameEvent, who: (player: Player) => string): Reveal | null {
+  if (event.type === "cardPlayed") {
+    return {
+      card: event.card,
+      kind: "play",
+      title: `${who(event.player)} played ${CARDS[event.card].name}`,
+    };
+  }
+  if (event.type === "trapSet") {
+    return {
+      card: event.card,
+      kind: "set",
+      title: event.card
+        ? `${who(event.player)} set ${CARDS[event.card].name}`
+        : `${who(event.player)} set a trap`,
+      effect: "Face down",
+    };
+  }
+  return null;
+}

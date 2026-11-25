@@ -24,13 +24,10 @@ export interface CoachOptions {
   hold: number | null;
   /** Called once the card has been dismissed or has timed out. Not called by `hide`. */
   onDone: () => void;
+  /** Called when the player asks never to be shown a guide again, before the card goes. */
+  onNever?: () => void;
   /** Called after the card has been laid out again for a new window size. */
   onResize?: () => void;
-  /**
-   * Whether any press or key sends the card away. A card that comes mid-turn says so only
-   * when it has done its job, as a press on the board may be part of play.
-   */
-  pressDismisses: boolean;
 }
 
 /** Where things are on screen, in client pixels. */
@@ -191,11 +188,13 @@ export function createCoach(): Coach {
   const timer = el("coach-timer");
   const hint = el("coach-hint");
   const begin = el("coach-begin", HTMLButtonElement);
+  const never = el("coach-never", HTMLButtonElement);
   const dim = createDim();
   root.prepend(dim.svg);
 
   let locate: (() => CoachPlaces) | null = null;
   let done: (() => void) | null = null;
+  let onNever: (() => void) | null = null;
   let shownAt = 0;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let leaving: ReturnType<typeof setTimeout> | undefined;
@@ -343,6 +342,15 @@ export function createCoach(): Coach {
     }, 400);
   };
 
+  // Outside the per-card listeners, which a press elsewhere aborts as the card goes.
+  never.addEventListener("click", () => {
+    if (!locate) return;
+    const turnOff = onNever;
+    onNever = null;
+    turnOff?.();
+    dismiss();
+  });
+
   return {
     show(text, where, options) {
       takeDown();
@@ -354,6 +362,8 @@ export function createCoach(): Coach {
       if (options.hold !== null) timer.style.animationDuration = `${options.hold}s`;
       locate = where;
       done = options.onDone;
+      onNever = options.onNever ?? null;
+      never.hidden = !options.onNever;
       shownAt = performance.now();
       root.hidden = false;
       root.classList.toggle("still", prefersLessMotion());
@@ -364,15 +374,19 @@ export function createCoach(): Coach {
 
       listeners = new AbortController();
       const { signal } = listeners;
-      const press = () => {
+      const press = (event: Event) => {
+        // "Don't show again" is a press too, but it must reach its button: it says more.
+        if (event.target instanceof Node && never.contains(event.target)) return;
+        // Tab moves to the card's buttons, so a keyboard can reach "Don't show again".
+        if (event instanceof KeyboardEvent && (event.key === "Tab" || event.key === "Shift"))
+          return;
         if (performance.now() - shownAt >= GRACE_MS) dismiss();
       };
-      if (options.pressDismisses) {
-        window.addEventListener("pointerdown", press, { capture: true, signal });
-        window.addEventListener("keydown", press, { capture: true, signal });
-        // A click with no press before it, as assistive tools send.
-        window.addEventListener("click", press, { capture: true, signal });
-      }
+      // Any press or key sends the card away; a press on the board still plays.
+      window.addEventListener("pointerdown", press, { capture: true, signal });
+      window.addEventListener("keydown", press, { capture: true, signal });
+      // A click with no press before it, as assistive tools send.
+      window.addEventListener("click", press, { capture: true, signal });
       // The button means it at once, grace or no grace.
       begin.addEventListener("click", dismiss, { signal });
       window.addEventListener(
@@ -409,6 +423,7 @@ export function createCoach(): Coach {
     },
     hide() {
       done = null;
+      onNever = null;
       takeDown();
       clearTimeout(leaving);
       root.hidden = true;

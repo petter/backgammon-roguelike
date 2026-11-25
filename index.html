@@ -29,6 +29,9 @@
       </div>
     </div>
 
+    <!-- Hexes, wards, boons and traps lying on the table at each player's edge of the board. -->
+    <div id="table" role="group" aria-label="Cards on the table"></div>
+
     <!-- Outside the HUD, whose layer sits under the coach: a notice is always seen. -->
     <div id="notice" role="status" aria-live="polite" hidden></div>
     <!-- A sprung trap or a biting hex, turned up over the board. -->
@@ -42,6 +45,7 @@
         <p id="coach-body"></p>
         <button id="coach-begin" type="button" hidden>Begin</button>
         <p id="coach-hint">Click or press any key to dismiss</p>
+        <button id="coach-never" type="button">Don't show guides again</button>
         <span id="coach-timer"></span>
       </div>
     </div>

@@ -7,6 +7,7 @@ import {
   RARITIES,
 } from "../../core/cards.ts";
 import { glyph, KIND_GLYPH } from "../glyphs.ts";
+import { guidePrefs } from "../guidePrefs.ts";
 import {
   BACKGAMMON_RULES,
   CARD_LIST_TITLE,
@@ -99,11 +100,42 @@ function cardList(): HTMLElement {
   return box;
 }
 
+/** The switch for the in-game guides, which can be turned off from a guide itself. */
+function guidesSetting(): { element: HTMLElement; sync: () => void } {
+  const prefs = guidePrefs();
+  const box = node("section", "rules-section rules-guides");
+  const label = node("label", "rules-toggle");
+  const input = node("input");
+  input.type = "checkbox";
+  label.append(input, node("span", "", "Show the guides during play"));
+  box.append(
+    node("h4", "rules-section-title", "Guides"),
+    label,
+    node(
+      "p",
+      "rules-kind-line",
+      "The card that shows your goal as a game starts, and the one on bearing off once all your checkers are home.",
+    ),
+  );
+  const sync = () => {
+    input.checked = !prefs.off();
+  };
+  input.addEventListener("change", () => prefs.setOff(!input.checked));
+  sync();
+  return { element: box, sync };
+}
+
 /**
  * The "How to play" page: plain backgammon, what the cards add, then every card. Built
- * once; the lobby shows and hides it like its other views.
+ * once; the lobby shows and hides it like its other views. The title and Back stay put
+ * while the rest scrolls beneath them.
  */
-export function rulesPage(onBack: () => void): { element: HTMLElement; back: HTMLElement } {
+export function rulesPage(onBack: () => void): {
+  element: HTMLElement;
+  back: HTMLElement;
+  /** Scrolls back to the top and shows the settings as they are now. */
+  reset: () => void;
+} {
   const page = node("article", "plaque rules");
   page.setAttribute("aria-labelledby", "rules-title");
   const back = node("button", "link back", "‹ Back");
@@ -114,15 +146,26 @@ export function rulesPage(onBack: () => void): { element: HTMLElement; back: HTM
   header.append(title, node("p", "lede", RULES_LEDE));
   const done = node("button", "primary rules-done", "Back to the menu");
   done.type = "button";
-  page.append(
-    back,
-    header,
+  const guides = guidesSetting();
+  const scroller = node("div", "rules-scroll");
+  scroller.tabIndex = 0;
+  scroller.setAttribute("aria-label", "How to play");
+  scroller.append(
     part("Backgammon", BACKGAMMON_RULES),
     part("The cards", ROGUELIKE_RULES),
     cardList(),
+    guides.element,
     done,
   );
+  page.append(back, header, scroller);
   back.addEventListener("click", onBack);
   done.addEventListener("click", onBack);
-  return { element: page, back };
+  return {
+    element: page,
+    back,
+    reset() {
+      scroller.scrollTop = 0;
+      guides.sync();
+    },
+  };
 }

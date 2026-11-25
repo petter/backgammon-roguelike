@@ -22,6 +22,7 @@ import {
 import type { Stage } from "../render/stage.ts";
 import type { Coach } from "../ui/coach.ts";
 import { prefersLessMotion } from "../ui/gameOver.ts";
+import { guidePrefs } from "../ui/guidePrefs.ts";
 import { type Lesson, lessonText, nextLesson, type Progress, startProgress } from "./guidance.ts";
 
 /** The part of the board a lesson is about: home, or home and the tray beside it. */
@@ -63,6 +64,9 @@ interface Leaving {
  * act to start anyway; the second comes mid-turn, so it goes by itself.
  */
 const HOLD = { home: null, bearOff: 16 } as const;
+
+/** The player's choice to see the guides or not, kept across games. */
+const prefs = guidePrefs();
 
 /**
  * The whole board, rails and tray included, with a little more along each long edge for
@@ -285,7 +289,7 @@ export function createCoaching(
       }),
       {
         hold: HOLD[next.kind],
-        pressDismisses: next.kind === "home",
+        onNever: () => prefs.setOff(true),
         // A narrower window draws the board smaller: the route's marks grow to match.
         onResize: () => {
           if (lesson !== next || !guide || routeScale() === scale) return;
@@ -358,7 +362,8 @@ export function createCoaching(
       if (progress) {
         const taught = nextLesson(progress, next, local);
         progress = taught.progress;
-        if (taught.lesson) teach(taught.lesson);
+        // Turned off for good: what has been taught is still noted, but nothing is shown.
+        if (taught.lesson && !prefs.off()) teach(taught.lesson);
       }
       // Hit after coming home: bearing off is no longer what to do next.
       const stale = lesson?.kind === "bearOff" && !allHome(next.board, lesson.player);

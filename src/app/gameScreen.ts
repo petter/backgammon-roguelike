@@ -15,10 +15,13 @@ import type { Stage } from "../render/stage.ts";
 import type { Coach } from "../ui/coach.ts";
 import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
+import { marksFor } from "../ui/marks.ts";
 import type { RevealView } from "../ui/reveal.ts";
+import type { TableView } from "../ui/table.ts";
+import { rollsByItself } from "./autoRoll.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
-import { revealFor } from "./reveals.ts";
+import { playedReveal, revealFor } from "./reveals.ts";
 
 const byValue = (x: number, y: number) => x - y;
 
@@ -36,6 +39,7 @@ export interface GameScreenDeps {
   hud: Hud;
   coach: Coach;
   reveal: RevealView;
+  table: TableView;
 }
 
 export interface GameScreenOptions {
@@ -69,6 +73,9 @@ function slotsFor(faces: DOMRect[], count: number): DieSlot[] {
   );
 }
 
+/** Milliseconds from a turn's roll coming up to the dice being thrown for the player. */
+const AUTO_ROLL_MS = 450;
+
 /** When a revealed card turns up: after the move or throw that set it off has landed. */
 const REVEAL_AT = 0.4;
 /** Between cards revealed by one update, which line up side by side. */
@@ -85,7 +92,7 @@ const physical = (values: number[]) =>
  * input into commands. Returns a function that tears it all down.
  */
 export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () => void {
-  const { stageEl, stage, board, hud, coach, reveal } = deps;
+  const { stageEl, stage, board, hud, coach, reveal, table } = deps;
   const listeners = new AbortController();
   let view: PlayerView | null = null;
   let lobby: LobbyView | null = null;
@@ -110,6 +117,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       // alone: this runs on the very press that dismissed the card, and a redraw would
       // replace the hand card that press is about to click.
       if (shown.phase === "pick") refresh();
+      // So does a roll the dice would make by themselves.
+      else autoRoll();
     },
     () => rolling,
   );
@@ -129,6 +138,13 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let heldUntil = 0;
   /** The board's shake when the game is won, waiting for the result screen to land. */
   let finale: gsap.core.Tween | null = null;
+  /** The throw about to be made for the player, and whether this roll has been asked for. */
+  let autoTimer: ReturnType<typeof setTimeout> | undefined;
+  let rollAsked = false;
+  const cancelAutoRoll = () => {
+    clearTimeout(autoTimer);
+    autoTimer = undefined;
+  };
 
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
@@ -202,6 +218,15 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       coaching: coaching.active(),
       opponentOnline: options.local || away.isOnline(),
     });
+    autoRoll();
+    // What lies on the table in front of each player, for both of them to see.
+    table.render(
+      (["white", "black"] as const).map((player) => ({
+        player,
+        owner: !options.local && player === view?.you ? "you" : name(player),
+        marks: view ? marksFor(view, player) : [],
+      })),
+    );
   };
 
   /** Plays events back as animation and returns the line to show for them, if any. */
@@ -219,6 +244,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (!shown) return 0;
       return reveal.show(shown, REVEAL_AT + REVEAL_STAGGER * revealed++);
     };
+    const who = (player: Player) => (!options.local && player === you ? "You" : name(player));
+    /** Holds up a card as it is played, at once: nothing on the board waits for it. */
+    const holdUp = (event: GameEvent) => {
+      const shown = playedReveal(event, who);
+      if (shown) reveal.show(shown, REVEAL_STAGGER * revealed++);
+    };
     for (const event of events) {
       if (event.type === "pieceMoved") {
         pieces.apply(event);
@@ -229,6 +260,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         // revealed card made shook the board as the card turned up.
         if (!quaked && after === 0) shake(stage.world, 0.6, 0.4);
       } else if (event.type === "cardPlayed") {
+        holdUp(event);
         text = `${name(event.player)} played ${CARDS[event.card].name}`;
         if (event.card === "quake") {
           quaked = true;
@@ -251,9 +283,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         const freed = event.cards.map((card) => CARDS[card].name).join(" and ");
         text = `${name(event.player)} is free of ${freed}`;
       } else if (event.type === "trapSet") {
-        text = event.card
-          ? `${name(event.player)} set ${CARDS[event.card].name}, face down`
-          : `${name(event.player)} set a trap`;
+        // In pass-and-play the other player is about to take the device: the trap stays secret.
+        const set = options.local ? { ...event, card: null } : event;
+        holdUp(set);
+        text = set.card
+          ? `${name(set.player)} set ${CARDS[set.card].name}, face down`
+          : `${name(set.player)} set a trap`;
       } else if (event.type === "trapSprung") {
         text = `${name(event.player)}'s ${CARDS[event.card].name} springs!`;
         after = turnUp(event);
@@ -328,6 +363,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
     if (!checkers.matches(update.view.board)) checkers.reset(update.view.board);
+    // A pass-and-play handover: a card the last player was studying up close goes away.
+    if (options.local && view && view.current !== update.view.current) table.dismiss();
+    // A roll that has come and gone may be thrown for the player again next time.
+    if (update.view.phase !== "roll") rollAsked = false;
     coaching.update(view, update.view, starting || rematched);
     view = update.view;
     selected = null;
@@ -344,6 +383,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     onError(text, fatal) {
       if (fatal) return options.onFatal(text);
       away.onClaimError();
+      // Whatever was asked was refused: the roll may be asked for again, by hand.
+      rollAsked = false;
       // The server said no. Shown as a notice, so it is seen whatever else is on screen.
       hud.notify(text);
     },
@@ -354,12 +395,37 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       offline = lost;
       hud.setOffline(offline);
       if (!offline) hud.notify("Back online");
+      // No throw is made into a dead connection; once back, the roll is looked at afresh,
+      // as a reconnect that missed nothing brings no update to do it. A roll asked for as
+      // the line went may never have arrived, and no answer will come for it: ask again.
+      // If it did arrive, the reconnect brings the roll itself, and nothing is asked twice.
+      if (offline) {
+        cancelAutoRoll();
+        rollAsked = false;
+      } else autoRoll();
     },
   });
 
+  /** Asks for the roll once, whether by hand or by itself, until the server answers. */
   const roll = () => {
-    if (myTurn() && view?.phase === "roll") session.send({ type: "roll" });
+    if (rollAsked || !myTurn() || view?.phase !== "roll") return;
+    rollAsked = true;
+    cancelAutoRoll();
+    session.send({ type: "roll" });
   };
+  /**
+   * Nothing is decided before the roll unless a card can be played first, so the dice are
+   * thrown for the player a moment after their roll comes up. Not while a guide is up.
+   */
+  function autoRoll() {
+    if (autoTimer !== undefined || rollAsked || offline || !view || coaching.active()) return;
+    if (!rollsByItself(view)) return;
+    autoTimer = setTimeout(() => {
+      autoTimer = undefined;
+      if (offline || !view || coaching.active() || !rollsByItself(view)) return;
+      roll();
+    }, AUTO_ROLL_MS);
+  }
   const end = () => {
     if (myTurn() && !rolling && view?.phase === "move") session.send({ type: "endTurn" });
   };
@@ -444,10 +510,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
+    cancelAutoRoll();
     away.stop();
     coaching.stop();
     finale?.kill();
     reveal.clear();
+    table.clear();
     session.close();
     listeners.abort();
     hud.actions = null;

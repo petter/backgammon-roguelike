@@ -1,0 +1,271 @@
+/*
+ * Cards lying on the table at each player's edge of the board: hexes, wards and boons face
+ * up, traps face down. Each is rimmed in its kind's ink: a hex violet, a ward silver, a trap
+ * the rust of a card back, a boon gold. Pressed, a card is shown up close.
+ */
+#table {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.table-side {
+  position: fixed;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-side:empty {
+  display: none;
+}
+
+/* Beside the board, the cards hug its edge: the near side grows up, the far side down. */
+.table-side[data-place="side"] {
+  justify-content: flex-end;
+}
+
+.table-side[data-place="side"][data-near="true"] {
+  flex-wrap: wrap-reverse;
+}
+
+.table-card {
+  --ring: #ffd27a;
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  cursor: zoom-in;
+  pointer-events: auto;
+}
+
+/* A card just laid down drops onto the table. */
+.table-new {
+  animation: table-land 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+/* A face-up card at the size that sits on the table, set from table.ts: 52px wide, 40px on a phone. */
+.table-card.card {
+  font-size: calc(var(--table-w, 52px) / 11.54);
+  padding: 0.44em;
+  box-shadow:
+    0 0 0 1px #000a,
+    0 0 0 3px var(--ring),
+    0 0 12px 2px color-mix(in srgb, var(--ring) 55%, transparent),
+    0 4px 8px #000a;
+}
+
+/* The words are too small to read here; the close-up has them. */
+.table-card.card :is(.card-text, .card-foot, .card-type) {
+  visibility: hidden;
+}
+
+.table-back {
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  box-shadow:
+    0 0 0 2px var(--ring),
+    0 0 12px 2px color-mix(in srgb, var(--ring) 45%, transparent);
+}
+
+.table-back .card-back {
+  display: block;
+  margin: 0;
+  font-size: var(--table-w, 52px);
+}
+
+.table-hex {
+  --ring: #a46bff;
+}
+
+.table-ward {
+  --ring: #a9c4e0;
+}
+
+.table-trap {
+  --ring: #b3542f;
+}
+
+.table-boon {
+  --ring: #f2bf4f;
+}
+
+/* A hex waiting to bite breathes, so it is not missed. */
+.table-hex.card {
+  animation: table-breathe 2.4s ease-in-out infinite;
+}
+
+.table-hex.card.table-new {
+  animation:
+    table-land 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both,
+    table-breathe 2.4s 0.45s ease-in-out infinite;
+}
+
+@media (hover: hover) {
+  .table-card:hover {
+    transform: translateY(-3px);
+  }
+
+  button.table-back:hover:not(:disabled) {
+    background: none;
+  }
+}
+
+.table-card:focus-visible {
+  outline: 2px solid #fff4c4;
+  outline-offset: 4px;
+}
+
+@keyframes table-land {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.25);
+  }
+}
+
+@keyframes table-breathe {
+  50% {
+    box-shadow:
+      0 0 0 1px #000a,
+      0 0 0 3px var(--ring),
+      0 0 22px 6px color-mix(in srgb, var(--ring) 70%, transparent),
+      0 4px 8px #000a;
+  }
+}
+
+@media (max-width: 640px), (max-height: 500px) {
+  .table-side {
+    gap: 6px;
+  }
+}
+
+/* Up close: the card at full size, with whose it is and what it does. */
+#table-zoom {
+  --ink: #ffd27a;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px;
+  overflow-y: auto;
+  background: #0c0a09d9;
+  cursor: zoom-out;
+  animation: table-zoom-in 0.2s ease-out;
+}
+
+#table-zoom[hidden] {
+  display: none;
+}
+
+#table-zoom.table-zoom-hex {
+  --ink: #e6d4ff;
+}
+
+#table-zoom.table-zoom-ward {
+  --ink: #cfe0f2;
+}
+
+#table-zoom.table-zoom-trap {
+  --ink: #ffc9a3;
+}
+
+.table-zoom-card {
+  display: flex;
+  flex: none;
+}
+
+.table-zoom-card .card {
+  pointer-events: none;
+}
+
+.table-zoom-back {
+  margin: 0;
+  font-size: 196px;
+}
+
+.table-zoom-caption {
+  flex: 0 1 300px;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--ink) 55%, transparent);
+  border-radius: 8px;
+  background: #1c1612f2;
+  box-shadow: 0 6px 18px #000a;
+  color: #efe6d2;
+  font:
+    16px / 1.45 "Iowan Old Style",
+    Palatino,
+    Georgia,
+    serif;
+}
+
+.table-zoom-kicker {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font:
+    700 11px Cinzel,
+    Georgia,
+    serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.table-zoom-caption h2 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font:
+    700 20px / 1.2 Cinzel,
+    Georgia,
+    serif;
+}
+
+.table-zoom-caption p:not(.table-zoom-kicker) {
+  margin: 0;
+}
+
+.table-zoom-close {
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 8px 18px;
+}
+
+@keyframes table-zoom-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .table-zoom-back {
+    font-size: 138px;
+  }
+
+  .table-zoom-caption {
+    flex-basis: 100%;
+    max-width: 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-new,
+  .table-hex.card,
+  .table-hex.card.table-new,
+  #table-zoom {
+    animation: none;
+  }
+}
+
+@media (hover: hover) {
+  .table-card.card:hover:not(:disabled) {
+    box-shadow:
+      0 0 0 1px #000a,
+      0 0 0 3px var(--ring),
+      0 0 16px 4px color-mix(in srgb, var(--ring) 65%, transparent),
+      0 6px 10px #000a;
+  }
+}

@@ -2,6 +2,7 @@ import "./style.css";
 import { startAnalytics } from "./app/analytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
+import { tableGeometry } from "./app/tableGeometry.ts";
 import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
 import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
@@ -17,6 +18,7 @@ import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
 import { createLobbyUi, type PlayerChoice } from "./ui/lobby/lobby.ts";
 import { createRevealView } from "./ui/reveal.ts";
+import { createTable } from "./ui/table.ts";
 
 startAnalytics();
 
@@ -26,7 +28,8 @@ const board = createBoard();
 stage.world.add(board.group);
 const hud = createHud();
 const coach = createCoach();
-const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView() };
+const table = createTable(() => tableGeometry(stage));
+const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView(), table };
 
 let stopGame: (() => void) | null = null;
 /** The search for a stranger, while one is running. */

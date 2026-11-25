@@ -7,7 +7,6 @@ import { createCard, fanCard } from "./card.ts";
 import { characterArt } from "./characterArt.ts";
 import { el } from "./dom.ts";
 import { createGameOver } from "./gameOver.ts";
-import { type Mark, markRow, marksFor } from "./marks.ts";
 
 export interface HudActions {
   onRoll: () => void;
@@ -99,7 +98,6 @@ interface ChipModel {
   hand: number;
   shielded: boolean;
   away: boolean;
-  marks: Mark[];
 }
 
 /** One player's colour, name and state. The player on turn is outlined. */
@@ -125,8 +123,6 @@ function playerChip(model: ChipModel): HTMLElement {
   if (model.away) parts.push("left");
   details.textContent = parts.join(", ");
   chip.append(portrait, dot, label, colour, details);
-  const marks = markRow(model.marks);
-  if (marks) chip.append(marks);
   if (model.scored) {
     const wins = document.createElement("span");
     wins.className = "wins";
@@ -195,13 +191,35 @@ export function createHud(): Hud {
           hand: view.counts[player].hand,
           shielded: view.shielded[player],
           away: !model.local && player === other && !model.opponentOnline,
-          marks: marksFor(view, player),
         }),
       ),
     );
   };
 
   const topRow = root.querySelector<HTMLElement>(".row");
+  const bottomRow = root.querySelector<HTMLElement>(".row.bottom");
+  /**
+   * Tells the board how much of the window the HUD's rows take, so it is drawn between
+   * them: on a phone the top strip wraps onto several lines, and long names wrap further.
+   */
+  const syncHudSpace = () => {
+    const style = document.documentElement.style;
+    const top = topRow?.getBoundingClientRect();
+    const bottom = bottomRow?.getBoundingClientRect();
+    if (root.hidden || !top || !bottom || top.height === 0) {
+      style.removeProperty("--hud-top");
+      style.removeProperty("--hud-bottom");
+      return;
+    }
+    style.setProperty("--hud-top", `${Math.ceil(top.bottom + 8)}px`);
+    style.setProperty("--hud-bottom", `${Math.ceil(window.innerHeight - bottom.top + 4)}px`);
+  };
+  if (typeof ResizeObserver !== "undefined") {
+    const watchRows = new ResizeObserver(syncHudSpace);
+    if (topRow) watchRows.observe(topRow);
+    if (bottomRow) watchRows.observe(bottomRow);
+  }
+  window.addEventListener("resize", syncHudSpace);
   const syncAwaySpace = () => {
     if (awayBanner.hidden) {
       document.documentElement.style.removeProperty("--away-top");
@@ -407,9 +425,11 @@ export function createHud(): Hud {
     },
     show() {
       root.hidden = false;
+      syncHudSpace();
     },
     hide() {
       root.hidden = true;
+      syncHudSpace();
       offer.hidden = true;
       gameOver.hide();
       raised = null;
