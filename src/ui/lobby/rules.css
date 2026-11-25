@@ -1,6 +1,7 @@
 /*
- * "How to play": one long walnut plaque that scrolls with the lobby. Headings in Cinzel,
- * reading text in the serif, every card as a ruled row under its kind's glyph.
+ * "How to play": a walnut plaque as tall as the window allows. The game's title, Back and
+ * the heading stay in sight; the rules scroll inside the plaque beneath them. Headings in
+ * Cinzel, reading text in the serif, every card as a ruled row under its kind's glyph.
  */
 
 /* Wide screens: a reading column, wider than the menu. */
@@ -10,9 +11,74 @@
   }
 }
 
-/* The page is long: it starts near the top rather than centred, and scrolls from there. */
+/* The page is long: it fills the window from the top, and scrolls inside the plaque. */
+#lobby[data-view="rules"] {
+  overflow: hidden;
+}
+
 #lobby[data-view="rules"] .lobby-shell {
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0 auto;
+}
+
+#lobby .rules {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 6px;
+}
+
+/* Out to the plaque's inner rim, so the scroll bar runs down its edge, not over the text. */
+.rules-scroll {
+  --inset: clamp(18px, 5vw, 28px);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--inset) + 6px);
+  padding: 0 calc(var(--inset) - 6px) 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--metal) 45%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.rules-scroll:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--metal) 60%, transparent);
+  outline-offset: -2px;
+}
+
+/* The in-game guides can be turned back on here once a guide has turned them off. */
+.rules-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* A plain checkbox, not the lobby's text-field well. */
+#lobby .rules-toggle input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  accent-color: var(--metal);
+  cursor: pointer;
+}
+
+#lobby .rules-toggle input:focus {
+  box-shadow: none;
+}
+
+#lobby .rules-toggle input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--metal) 80%, transparent);
+  outline-offset: 3px;
 }
 
 /* The title gives way to the page on short screens and phones, as on the forms. */

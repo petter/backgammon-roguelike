@@ -228,6 +228,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     if (next === "home") return;
     if (next === "rules") {
       root.scrollTop = 0;
+      rules.reset();
       if (focus) rules.back.focus({ focusVisible: false });
       return;
     }
