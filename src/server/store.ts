@@ -1,7 +1,7 @@
 import type { Player } from "../core/board.ts";
 import type { CharacterId } from "../core/characters.ts";
 import type { GameEvent, GameState } from "../core/game.ts";
-import type { OnlineCounts, SeatGrant } from "../net/protocol.ts";
+import type { ChatMessage, OnlineCounts, SeatGrant } from "../net/protocol.ts";
 
 export interface Seat {
   /** Secret that proves a connection owns this seat. */
@@ -163,6 +163,12 @@ export interface PresenceUpdate {
   at: number;
 }
 
+/** Sent on a room's chat channel (`chat:<roomId>`) for each new line. */
+export interface ChatUpdate {
+  roomId: string;
+  message: ChatMessage;
+}
+
 /** How long a seeker is remembered after they were last heard from, or after their match. */
 export const SEEKER_TTL_SECONDS = 10 * 60;
 
@@ -251,6 +257,19 @@ export interface GameStore {
     opponent: Player,
     timings: ClaimTimings,
   ) => Promise<ClaimOutcome>;
+
+  /**
+   * Appends a chat line to a room's log, numbered one past the room's last line, and keeps
+   * only the newest `keep`. Returns the line as kept. The log expires like a room, a day
+   * after its last line; a room kept alive by moves alone can outlive it. Numbering then
+   * starts again from `line.at` (epoch ms), so ids never repeat within a room.
+   */
+  appendChat: (roomId: string, line: Omit<ChatMessage, "id">, keep: number) => Promise<ChatMessage>;
+  /** A room's kept chat lines, oldest first; empty if it has none. */
+  loadChat: (roomId: string) => Promise<ChatMessage[]>;
+  /** Announces a new chat line on the room's chat channel, separate from game moves. */
+  publishChat: (roomId: string, update: ChatUpdate) => Promise<void>;
+  subscribeChat: (roomId: string, listener: (update: ChatUpdate) => void) => Promise<() => void>;
 
   /** Starts a seeker waiting. Resolves `false`, changing nothing, if the id is already known. */
   addSeeker: (seeker: Seeker) => Promise<boolean>;

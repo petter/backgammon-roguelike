@@ -15,6 +15,7 @@ import { ticketMemory } from "./net/unsettled.ts";
 import { createBoard } from "./render/board.ts";
 import { CheckersView } from "./render/checkers.ts";
 import { createStage } from "./render/stage.ts";
+import { createChat } from "./ui/chat.ts";
 import { createCoach } from "./ui/coach.ts";
 import { el } from "./ui/dom.ts";
 import { createHud } from "./ui/hud.ts";
@@ -35,6 +36,7 @@ createSoundToggle(el("sound", HTMLButtonElement));
 const coach = createCoach();
 const table = createTable(() => tableGeometry(stage));
 const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView(), table };
+const chat = createChat();
 
 let stopGame: (() => void) | null = null;
 /** The search for a stranger, while one is running. */
@@ -53,6 +55,7 @@ function setSearch(next: Search | null): void {
 const seats = seatMemory();
 
 function leaveGame(): void {
+  chat.stop();
   stopGame?.();
   stopGame = null;
   hud.hide();
@@ -69,7 +72,19 @@ function startRemote(code: string, token: string): void {
   leaveGame();
   stopGame = runGame(deps, {
     local: false,
-    connect: (handlers) => createRemoteSession(code, token, handlers),
+    connect: (handlers) => {
+      // Chat lives beside the game, not in it: hot-seat players share a screen.
+      const session = createRemoteSession(code, token, {
+        ...handlers,
+        onUpdate: (update) => {
+          chat.setLobby(update.lobby);
+          handlers.onUpdate(update);
+        },
+        onChat: chat.receive,
+      });
+      chat.start(session.say);
+      return session;
+    },
     onWaiting: () => lobby.showWaiting(code, `${location.origin}/g/${code}`),
     onStarted: () => {
       lobby.hide();

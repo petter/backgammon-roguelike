@@ -51,6 +51,15 @@ function isolated(store: RedisStore, prefix: string): RedisStore {
     getPresence: (roomId) => store.getPresence(roomId),
     claimSeat: (room, expectedVersion, opponent, timings) =>
       store.claimSeat({ ...room, code: tag(room.code) }, expectedVersion, opponent, timings),
+    // Channels are not prefixed by the store, so chat room ids are tagged like presence ones.
+    appendChat: (roomId, line, keep) => store.appendChat(tag(roomId), line, keep),
+    loadChat: (roomId) => store.loadChat(tag(roomId)),
+    publishChat: (roomId, update) =>
+      store.publishChat(tag(roomId), { ...update, roomId: tag(update.roomId) }),
+    subscribeChat: (roomId, listener) =>
+      store.subscribeChat(tag(roomId), (update) =>
+        listener({ ...update, roomId: strip(update.roomId) }),
+      ),
     // Seekers are kept apart by the store's own key prefix.
     addSeeker: (seeker) => store.addSeeker(seeker),
     touchSeeker: (id, now) => store.touchSeeker(id, now),

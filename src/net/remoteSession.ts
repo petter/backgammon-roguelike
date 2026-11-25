@@ -43,6 +43,8 @@ interface Link {
   presenceVersion: number;
   /** Commands sent on this socket that the server has not yet acknowledged. */
   pending: Set<number>;
+  /** Whether the server has said, with a `chat` frame, that it has chat. */
+  chat: boolean;
 }
 
 function gameStage(view: PlayerView | null): string {
@@ -71,7 +73,7 @@ export function createRemoteSession(
   token: string,
   handlers: SessionHandlers,
   connect: () => ClientSocket = () => new WebSocket(roomUrl(code)) as unknown as ClientSocket,
-): Session {
+): Required<Session> {
   let active: Link | null = null;
   let incoming: Link | null = null;
   /** Sockets that have been replaced and are being listened to for a little longer. */
@@ -203,6 +205,13 @@ export function createRemoteSession(
       if (retiring.has(link) && link.pending.size === 0) discard(link);
       return;
     }
+    if (message.type === "chat") {
+      link.chat = true;
+      // Lines are facts, whichever socket brings them; the screen merges them by id. Passed
+      // on even when empty: the first frame is the log so far, and says so by arriving.
+      handlers.onChat?.(message.messages);
+      return;
+    }
     if (message.type === "presence") {
       if (link === active && link.stage === stage) {
         handlers.onPresence?.({ online: message.online, claimInMs: message.claimInMs });
@@ -268,11 +277,12 @@ export function createRemoteSession(
       stage: "lobby",
       presenceVersion: -1,
       pending: new Set(),
+      chat: false,
     };
     incoming = link;
     // Only the very first attempt is "connecting"; after any failure the player is told.
     if (!active) handlers.onStatus(everFailed ? "reconnecting" : "connecting");
-    link.socket.onopen = () => say(link, { type: "hello", token, presence: true });
+    link.socket.onopen = () => say(link, { type: "hello", token, presence: true, chat: true });
     link.socket.onmessage = (event) => {
       if (closed) return;
       receive(link, JSON.parse(String(event.data)) as ServerMessage);
@@ -305,6 +315,19 @@ export function createRemoteSession(
       const id = nextId++;
       active.pending.add(id);
       say(active, { type: "command", command, id });
+    },
+    say(text) {
+      if (!active) {
+        handlers.onError("You are offline. Reconnecting…", false);
+        return false;
+      }
+      // A server from before chat would take the line as malformed and end the seat.
+      if (!active.chat) {
+        handlers.onError("Chat is not available right now", false);
+        return false;
+      }
+      say(active, { type: "chat", text });
+      return true;
     },
     drop() {
       if (active) lose(active);

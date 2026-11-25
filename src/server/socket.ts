@@ -1,4 +1,5 @@
 import { isRoomCode, parseClientMessage, type ServerMessage } from "../net/protocol.ts";
+import { type ChatLink, openChat } from "./chat.ts";
 import { type Connection, openConnection, RoomError } from "./room.ts";
 import type { GameStore } from "./store.ts";
 
@@ -16,8 +17,12 @@ export interface SocketLike {
  */
 export function serveSocket(store: GameStore, code: string, socket: SocketLike): void {
   let connection: Connection | null = null;
+  /** Opened beside the game, never in its way: commands do not wait for it. */
+  let chat: Promise<ChatLink | null> | null = null;
   let closed = false;
   let queue: Promise<void> = Promise.resolve();
+  /** Chat lines, in order, on their own queue: a slow chat store never holds up the game. */
+  let chatQueue: Promise<void> = Promise.resolve();
 
   const send = (message: ServerMessage) => {
     if (!closed) socket.send(JSON.stringify(message));
@@ -46,11 +51,30 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
       } catch (error) {
         if (!(error instanceof RoomError)) throw error;
         reject(error.message);
+        return;
+      }
+      // Only for clients that know chat frames. Without its first frame the client knows
+      // there is no chat on this socket, so a failure or a stall here costs chat, not the
+      // game: it is not waited for.
+      if (message.chat === true) {
+        chat = openChat(store, connection.roomId, connection.seat, send).catch((error) => {
+          console.error("Could not open a room's chat", error);
+          return null;
+        });
       }
       return;
     }
 
     if (!connection) return reject("Say hello first");
+    if (message.type === "chat") {
+      // A client sends chat only once it has had the first chat frame, which goes out just
+      // before the chat is ready, so waiting for it is not a real wait.
+      const opening = chat;
+      chatQueue = chatQueue
+        .then(async () => (await opening)?.say(message.text))
+        .catch((error) => console.error("Could not handle a chat line", error));
+      return;
+    }
     await connection.command(message.command);
     // After the outcome, never before it: a client may stop listening once it has this.
     if (message.id !== undefined) send({ type: "done", id: message.id });
@@ -74,6 +98,12 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     queue = queue.finally(() => {
       connection?.close();
       connection = null;
+      // Chat lines received before the close are kept too, so chat is let go of once its
+      // own queue has drained; by now every one of them is on it. It may still be opening:
+      // then it is closed as soon as it is open.
+      const opening = chat;
+      chat = null;
+      void chatQueue.then(async () => (await opening)?.close());
     });
   });
 }

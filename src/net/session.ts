@@ -1,6 +1,6 @@
 import type { Command, GameEvent } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
-import type { LobbyView, OpponentPresence } from "./protocol.ts";
+import type { ChatMessage, LobbyView, OpponentPresence } from "./protocol.ts";
 
 export interface SessionUpdate {
   lobby: LobbyView;
@@ -20,6 +20,11 @@ export interface SessionHandlers {
    * stale claim UI should be cleared silently without announcing a reconnect.
    */
   onPresence?: (presence: OpponentPresence | null) => void;
+  /**
+   * Chat lines from the server, oldest first. A line can come more than once (after a
+   * reconnect, say): merge by id. Only sessions with `say` call this.
+   */
+  onChat?: (messages: ChatMessage[]) => void;
   /** `fatal` means the session is over and will send nothing more. */
   onError: (message: string, fatal: boolean) => void;
   onStatus: (status: SessionStatus) => void;
@@ -31,6 +36,10 @@ export interface SessionHandlers {
  */
 export interface Session {
   send: (command: Command) => void;
+  /** Says a chat line to the other seat. Absent where there is nobody to talk to. */
+  /** Says a chat line to the other seat. Absent where there is nobody to talk to. Returns
+   * whether the line went out; if not, the player has been told why. */
+  say?: (text: string) => boolean;
   /** Cuts the connection as a network failure would, to exercise reconnecting. */
   drop: () => void;
   close: () => void;

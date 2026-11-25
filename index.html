@@ -25,6 +25,13 @@
           <button id="roll" type="button">Roll <kbd>Space</kbd></button>
           <button id="end" type="button">End turn <kbd>E</kbd></button>
           <button id="sound" type="button"></button>
+          <button
+            id="chat-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="chat-panel"
+            hidden
+          ></button>
         </div>
         <div id="hand"></div>
       </div>
@@ -100,6 +107,28 @@
       <span class="pulse"></span>
       <span>Connection lost. Reconnecting…</span>
     </div>
+
+    <!-- Outside the HUD and above the result screen, so a rematch can be talked over. -->
+    <section id="chat-panel" aria-labelledby="chat-title" hidden>
+      <header>
+        <h2 id="chat-title">Chat</h2>
+        <button id="chat-close" type="button" aria-label="Close chat">&times;</button>
+      </header>
+      <ol id="chat-log" role="log" aria-live="polite"></ol>
+      <p id="chat-empty">Nothing said yet. Say hello.</p>
+      <form id="chat-form">
+        <input
+          id="chat-input"
+          type="text"
+          autocomplete="off"
+          enterkeyhint="send"
+          placeholder="Say something…"
+          aria-label="Message"
+        />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+    <button id="chat-preview" type="button" hidden></button>
 
     <div id="offer" class="overlay" hidden>
       <div class="panel wide">

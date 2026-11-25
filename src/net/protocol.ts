@@ -9,6 +9,21 @@ export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
 export const NAME_MAX = 20;
 /** How long an opponent must stay disconnected before the other player may claim victory. */
 export const CLAIM_GRACE_MS = 30_000;
+/** Longest chat line, in characters (code points). Longer lines are cut, not refused. */
+export const CHAT_MAX = 200;
+/** How many chat lines a room keeps; older ones fall off. */
+export const CHAT_KEEP = 50;
+/** Longest chat text a client may send before it is malformed rather than merely long. */
+const CHAT_WIRE_MAX = 2000;
+
+/** One line of a room's chat. Ids rise within a room and never repeat, so they give the order. */
+export interface ChatMessage {
+  id: number;
+  from: Player;
+  text: string;
+  /** Server time, epoch ms. */
+  at: number;
+}
 
 /** What both players may know about the room. Never contains seat tokens. */
 export interface LobbyView {
@@ -29,15 +44,23 @@ export interface OpponentPresence {
 }
 
 export type ClientMessage =
-  /** `presence: true` tells the server this client understands standalone `presence` frames. */
-  | { type: "hello"; token: string; presence?: true }
+  /**
+   * `presence: true` tells the server this client understands standalone `presence` frames;
+   * `chat: true`, that it understands `chat` frames.
+   */
+  | { type: "hello"; token: string; presence?: true; chat?: true }
   /**
    * `id`, when given, is echoed in a `done` once the command has been dealt with, whatever
    * the outcome. It lets a client know that a socket has nothing more to tell it.
    */
   | { type: "command"; command: Command; id?: number }
   /** "Are you there?" Answered with `pong`. Allowed at any time, before hello too. */
-  | { type: "ping" };
+  | { type: "ping" }
+  /**
+   * A chat line from this seat. Send only on a socket that has had a `chat` frame: a server
+   * without chat refuses this as malformed, and that ends the seat.
+   */
+  | { type: "chat"; text: string };
 
 export type ServerMessage =
   | {
@@ -54,6 +77,12 @@ export type ServerMessage =
     }
   /** Live update when the opponent disconnects or reconnects, without changing room version. */
   | ({ type: "presence" } & OpponentPresence)
+  /**
+   * Chat lines, oldest first, only to clients that said `chat: true`. The first one on a
+   * socket is the room's whole kept log, even if empty: it is also the server's way of
+   * saying it has chat. Later ones carry new lines. A line may come more than once.
+   */
+  | { type: "chat"; messages: ChatMessage[] }
   | { type: "pong" }
   /** The command sent with this `id` has been dealt with; its outcome was sent before this. */
   | { type: "done"; id: number }
@@ -143,6 +172,27 @@ function parseCommand(raw: unknown): Command | null {
   }
 }
 
+/** Bidirectional overrides and isolates: they could make a line read as something else. */
+const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/g;
+
+/**
+ * A chat line as it is kept and shown: one line, control characters gone, trimmed and cut
+ * to `CHAT_MAX`. `null` when nothing is left to say.
+ */
+export function cleanChat(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = Array.from(
+    raw
+      .replaceAll(/[\p{Cc}\u2028\u2029]+/gu, " ")
+      .replaceAll(BIDI_CONTROLS, "")
+      .trim(),
+  )
+    .slice(0, CHAT_MAX)
+    .join("")
+    .trim();
+  return text === "" ? null : text;
+}
+
 /** Parses a message from a client. Returns `null` for anything malformed. */
 export function parseClientMessage(text: string): ClientMessage | null {
   let raw: unknown;
@@ -155,10 +205,21 @@ export function parseClientMessage(text: string): ClientMessage | null {
   const m = raw as Record<string, unknown>;
   if (m.type === "hello") {
     return typeof m.token === "string" && m.token.length <= 100
-      ? { type: "hello", token: m.token, ...(m.presence === true ? { presence: true } : {}) }
+      ? {
+          type: "hello",
+          token: m.token,
+          ...(m.presence === true ? { presence: true } : {}),
+          ...(m.chat === true ? { chat: true } : {}),
+        }
       : null;
   }
   if (m.type === "ping") return { type: "ping" };
+  // An empty or blank line is not malformed, just nothing to say: the server drops it.
+  if (m.type === "chat") {
+    return typeof m.text === "string" && m.text.length <= CHAT_WIRE_MAX
+      ? { type: "chat", text: m.text }
+      : null;
+  }
   if (m.type === "command") {
     const command = parseCommand(m.command);
     if (!command) return null;
