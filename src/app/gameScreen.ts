@@ -15,10 +15,12 @@ import type { Stage } from "../render/stage.ts";
 import type { Coach } from "../ui/coach.ts";
 import { IMPACT_AT, prefersLessMotion } from "../ui/gameOver.ts";
 import type { Hud } from "../ui/hud.ts";
+import { marksFor } from "../ui/marks.ts";
 import type { RevealView } from "../ui/reveal.ts";
+import type { TableView } from "../ui/table.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
-import { revealFor } from "./reveals.ts";
+import { playedReveal, revealFor } from "./reveals.ts";
 
 const byValue = (x: number, y: number) => x - y;
 
@@ -36,6 +38,7 @@ export interface GameScreenDeps {
   hud: Hud;
   coach: Coach;
   reveal: RevealView;
+  table: TableView;
 }
 
 export interface GameScreenOptions {
@@ -85,7 +88,7 @@ const physical = (values: number[]) =>
  * input into commands. Returns a function that tears it all down.
  */
 export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () => void {
-  const { stageEl, stage, board, hud, coach, reveal } = deps;
+  const { stageEl, stage, board, hud, coach, reveal, table } = deps;
   const listeners = new AbortController();
   let view: PlayerView | null = null;
   let lobby: LobbyView | null = null;
@@ -202,6 +205,14 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       coaching: coaching.active(),
       opponentOnline: options.local || away.isOnline(),
     });
+    // What lies on the table in front of each player, for both of them to see.
+    table.render(
+      (["white", "black"] as const).map((player) => ({
+        player,
+        owner: !options.local && player === view?.you ? "you" : name(player),
+        marks: view ? marksFor(view, player) : [],
+      })),
+    );
   };
 
   /** Plays events back as animation and returns the line to show for them, if any. */
@@ -219,6 +230,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       if (!shown) return 0;
       return reveal.show(shown, REVEAL_AT + REVEAL_STAGGER * revealed++);
     };
+    const who = (player: Player) => (!options.local && player === you ? "You" : name(player));
+    /** Holds up a card as it is played, at once: nothing on the board waits for it. */
+    const holdUp = (event: GameEvent) => {
+      const shown = playedReveal(event, who);
+      if (shown) reveal.show(shown, REVEAL_STAGGER * revealed++);
+    };
     for (const event of events) {
       if (event.type === "pieceMoved") {
         pieces.apply(event);
@@ -229,6 +246,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         // revealed card made shook the board as the card turned up.
         if (!quaked && after === 0) shake(stage.world, 0.6, 0.4);
       } else if (event.type === "cardPlayed") {
+        holdUp(event);
         text = `${name(event.player)} played ${CARDS[event.card].name}`;
         if (event.card === "quake") {
           quaked = true;
@@ -251,6 +269,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         const freed = event.cards.map((card) => CARDS[card].name).join(" and ");
         text = `${name(event.player)} is free of ${freed}`;
       } else if (event.type === "trapSet") {
+        holdUp(event);
         text = event.card
           ? `${name(event.player)} set ${CARDS[event.card].name}, face down`
           : `${name(event.player)} set a trap`;
@@ -448,6 +467,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     coaching.stop();
     finale?.kill();
     reveal.clear();
+    table.clear();
     session.close();
     listeners.abort();
     hud.actions = null;

@@ -1,7 +1,8 @@
 /*
- * A card that just changed the game, shown over the board: a trap turns face up as it
- * springs, a hex flares as it bites. Seen, not touched: taps go through to the board.
- * Timings match FACE_UP_AT and GONE_AT in reveal.ts.
+ * A card shown over the board as it acts: a trap turns face up as it springs, a hex flares
+ * as it bites, a card being played is held up for both players to see, and a trap being set
+ * is laid face down. Seen, not touched: taps go through to the board.
+ * Timings match FACE_UP_AT and HOLD in reveal.ts.
  */
 /* At the left edge, clear of the bar in the middle, where a checker it sends must be seen. */
 #reveal {
@@ -21,18 +22,30 @@
   --ink: #ffc9a3;
   --glow: #ff7a3d;
   --delay: 0s;
+  --hold: 3s;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   animation:
     reveal-in 0.25s var(--delay) cubic-bezier(0.2, 1.4, 0.4, 1) both,
-    reveal-out 0.35s calc(var(--delay) + 3s) ease-in forwards;
+    reveal-out 0.35s calc(var(--delay) + var(--hold)) ease-in forwards;
 }
 
 .reveal-hex {
   --ink: #e6d4ff;
   --glow: #a46bff;
+}
+
+/* A card being played glows in the gold of the table's metal. */
+.reveal-play {
+  --ink: #ffd27a;
+  --glow: #f2bf4f;
+}
+
+/* A trap laid face down keeps the rust of a card back; its owner sees it turn over first. */
+.reveal-set {
+  --glow: #b3542f;
 }
 
 /* Sized like a large card; the back's em is its own width, so it is set to the face's. */
@@ -58,6 +71,23 @@
   animation:
     reveal-turn 0.35s calc(var(--delay) + 0.2s) cubic-bezier(0.3, 1.5, 0.5, 1) both,
     reveal-glow 0.9s calc(var(--delay) + 0.5s) ease-out both;
+}
+
+/* Played: face up from the start, glowing as it comes in. */
+.reveal-play .reveal-spin {
+  animation: reveal-glow 0.9s calc(var(--delay) + 0.1s) ease-out both;
+}
+
+/* Set: its owner sees the face, then it turns face down. The other player sees only the back. */
+.reveal-set .reveal-spin {
+  animation:
+    reveal-turn 0.4s calc(var(--delay) + 0.7s) cubic-bezier(0.3, 1.5, 0.5, 1) reverse both,
+    reveal-glow 0.9s calc(var(--delay) + 0.9s) ease-out both;
+}
+
+.reveal-set.reveal-hidden .reveal-spin {
+  transform: none;
+  animation: reveal-glow 0.9s calc(var(--delay) + 0.1s) ease-out both;
 }
 
 .reveal-back,
@@ -93,6 +123,10 @@
   color: #efe6d2;
   text-align: center;
   animation: reveal-in 0.25s calc(var(--delay) + 0.5s) ease-out both;
+}
+
+.reveal:is(.reveal-play, .reveal-set) .reveal-caption {
+  animation-delay: calc(var(--delay) + 0.15s);
 }
 
 .reveal-caption strong {
@@ -144,15 +178,21 @@
 
 @media (prefers-reduced-motion: reduce) {
   .reveal,
-  .reveal-caption {
+  .reveal-caption,
+  .reveal:is(.reveal-play, .reveal-set) .reveal-caption {
     animation:
       reveal-fade 0.2s var(--delay) both,
-      reveal-fade 0.3s calc(var(--delay) + 3s) reverse forwards;
+      reveal-fade 0.3s calc(var(--delay) + var(--hold)) reverse forwards;
   }
 
   .reveal-spin,
-  .reveal-trap .reveal-spin {
+  .reveal:is(.reveal-trap, .reveal-play, .reveal-set) .reveal-spin {
     animation: none;
+  }
+
+  /* Without the turn, a trap being set is simply shown face down. */
+  .reveal-set .reveal-spin {
+    transform: none;
   }
 }
 

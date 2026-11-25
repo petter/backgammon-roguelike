@@ -58,6 +58,10 @@ offered as moves; clicking one says why.
 On a touch screen, the first tap on a hand card raises it so it can be read, and the second
 plays it. Tap anywhere else to put it back.
 
+Guides explain the goal as a game starts and bearing off once every checker is home. Any
+press closes one; "Don't show guides again" turns them off for good (kept in
+`localStorage`), and the How to play page turns them back on.
+
 ## Characters
 
 Each player picks a character on the start screen. It is shown as a medallion next to their
@@ -117,8 +121,13 @@ opponent sees that one is set, never which, until it springs. A player may have 
 different kinds. Counterpunch holds rather than spring when it would leave both players
 shut out on the bar for good.
 
-Each player's chip shows what lies in front of them: hexes (violet), wards (silver), traps
-(rust) and boons (gold). Each card prints the same glyph on its type line.
+Whatever lies in front of a player is shown as cards on the table at their edge of the board
+(`src/ui/table.ts`): hexes on them, wards and boons face up, traps face down. Each is rimmed
+in its kind's ink: hexes violet, wards silver, traps rust, boons gold. Pressing one shows it
+up close with what it does; your own face-down trap shows its face to you alone.
+
+Every card played is held up over the board for both players for a moment; a trap being
+set is shown face down to the opponent.
 
 You see your opponent's hand face down: how many cards they hold, never which.
 

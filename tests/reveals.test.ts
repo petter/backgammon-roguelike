@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { revealFor } from "../src/app/reveals.ts";
+import { playedReveal, revealFor } from "../src/app/reveals.ts";
 import { emptyBoard, place, type Player } from "../src/core/board.ts";
 import { applyCommand } from "../src/core/game.ts";
-import { game } from "./helpers.ts";
+import { game, hand } from "./helpers.ts";
 
 const whose = (player: Player) => (player === "white" ? "Your" : "Ada's");
 
@@ -34,5 +34,35 @@ describe("revealFor", () => {
 
   it("shows nothing for an ordinary event", () => {
     expect(revealFor({ type: "hit", player: "black", point: 8 }, whose)).toBeNull();
+  });
+});
+
+describe("playedReveal", () => {
+  const who = (player: Player) => (player === "white" ? "You" : "Ada");
+
+  it("holds up a played card face up for both players", () => {
+    const state = game({ dice: [3, 5], cards: hand("white", "leadWeight") });
+    const { events } = applyCommand(state, "white", { type: "playCard", index: 0 });
+    const played = events.find((event) => event.type === "cardPlayed");
+    expect(played && playedReveal(played, who)).toEqual({
+      card: "leadWeight",
+      kind: "play",
+      title: "You played Lead Weight",
+    });
+  });
+
+  it("shows the opponent's trap only from the back, and the owner's by name", () => {
+    expect(playedReveal({ type: "trapSet", player: "black", card: null }, who)).toMatchObject({
+      card: null,
+      kind: "set",
+      title: "Ada set a trap",
+    });
+    expect(
+      playedReveal({ type: "trapSet", player: "white", card: "counterpunch" }, who),
+    ).toMatchObject({ card: "counterpunch", title: "You set Counterpunch" });
+  });
+
+  it("holds up nothing for an event that is not a card being played", () => {
+    expect(playedReveal({ type: "hit", player: "black", point: 8 }, who)).toBeNull();
   });
 });
