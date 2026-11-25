@@ -32,6 +32,11 @@
     reveal-out 0.35s calc(var(--delay) + var(--hold)) ease-in forwards;
 }
 
+/* Faded out, but holding its place until those beside it have gone too. */
+.reveal-gone {
+  visibility: hidden;
+}
+
 .reveal-hex {
   --ink: #e6d4ff;
   --glow: #a46bff;
@@ -191,7 +196,7 @@
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .reveal-caption,
-  .reveal:is(.reveal-play, .reveal-set) .reveal-caption {
+  .reveal:is(.reveal-play, .reveal-set, .reveal-coin) .reveal-caption {
     animation:
       reveal-fade 0.2s var(--delay) both,
       reveal-fade 0.3s calc(var(--delay) + var(--hold)) reverse forwards;

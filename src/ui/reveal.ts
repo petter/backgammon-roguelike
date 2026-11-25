@@ -68,7 +68,12 @@ export function createRevealView(): RevealView {
     const timer = setTimeout(
       () => {
         timers.delete(timer);
-        item.remove();
+        // One that has faded out keeps its place, unseen, while any beside it is still up,
+        // so those do not jump across: a coin outlasts the card it was tossed for.
+        item.classList.add("reveal-gone");
+        while (root.lastElementChild?.classList.contains("reveal-gone")) {
+          root.lastElementChild.remove();
+        }
       },
       (delay + HOLD[kind] + OUT) * 1000,
     );
