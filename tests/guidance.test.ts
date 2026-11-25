@@ -94,6 +94,12 @@ describe("lessonText", () => {
     expect(lessonText(lesson, false, false, []).body).toMatch(/^When a checker is ringed in gold/);
   });
 
+  it("says the bear-off card closes on a press, as the first card does", () => {
+    const lesson = { kind: "bearOff", player: "white" } as const;
+    expect(lessonText(lesson, false, true).hint).toBe("Tap anywhere to close");
+    expect(lessonText(lesson, false, false).hint).toMatch(/^Click anywhere/);
+  });
+
   it("names the player in hot-seat play and says you online", () => {
     expect(lessonText({ kind: "home", player: "black" }, true).kicker).toMatch(/Black/);
     expect(lessonText({ kind: "home", player: "black" }, false).kicker).not.toMatch(/Black/);

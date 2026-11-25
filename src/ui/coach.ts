@@ -24,6 +24,8 @@ export interface CoachOptions {
   hold: number | null;
   /** Called once the card has been dismissed or has timed out. Not called by `hide`. */
   onDone: () => void;
+  /** Called when the player asks never to be shown a guide again, before the card goes. */
+  onNever?: () => void;
   /** Called after the card has been laid out again for a new window size. */
   onResize?: () => void;
   /**
@@ -191,11 +193,13 @@ export function createCoach(): Coach {
   const timer = el("coach-timer");
   const hint = el("coach-hint");
   const begin = el("coach-begin", HTMLButtonElement);
+  const never = el("coach-never", HTMLButtonElement);
   const dim = createDim();
   root.prepend(dim.svg);
 
   let locate: (() => CoachPlaces) | null = null;
   let done: (() => void) | null = null;
+  let onNever: (() => void) | null = null;
   let shownAt = 0;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let leaving: ReturnType<typeof setTimeout> | undefined;
@@ -343,6 +347,15 @@ export function createCoach(): Coach {
     }, 400);
   };
 
+  // Outside the per-card listeners, which a press elsewhere aborts as the card goes.
+  never.addEventListener("click", () => {
+    if (!locate) return;
+    const turnOff = onNever;
+    onNever = null;
+    turnOff?.();
+    dismiss();
+  });
+
   return {
     show(text, where, options) {
       takeDown();
@@ -354,6 +367,8 @@ export function createCoach(): Coach {
       if (options.hold !== null) timer.style.animationDuration = `${options.hold}s`;
       locate = where;
       done = options.onDone;
+      onNever = options.onNever ?? null;
+      never.hidden = !options.onNever;
       shownAt = performance.now();
       root.hidden = false;
       root.classList.toggle("still", prefersLessMotion());
@@ -364,7 +379,9 @@ export function createCoach(): Coach {
 
       listeners = new AbortController();
       const { signal } = listeners;
-      const press = () => {
+      const press = (event: Event) => {
+        // "Don't show again" is a press too, but it must reach its button: it says more.
+        if (event.target instanceof Node && never.contains(event.target)) return;
         if (performance.now() - shownAt >= GRACE_MS) dismiss();
       };
       if (options.pressDismisses) {
@@ -409,6 +426,7 @@ export function createCoach(): Coach {
     },
     hide() {
       done = null;
+      onNever = null;
       takeDown();
       clearTimeout(leaving);
       root.hidden = true;

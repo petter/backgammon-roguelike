@@ -108,8 +108,8 @@ export function lessonText(
     : `When a checker is ringed in gold, ${verb} it, then the tray.`;
   return {
     swatch: lesson.player,
-    // The card does not block the board, and goes by itself.
-    hint: "This card hides by itself",
+    // The card does not block the board: it goes by itself, or with any press, as the first does.
+    hint: touch ? "Tap anywhere to close" : "Click anywhere, or press any key, to close",
     kicker: local ? `${name}, all home` : "All checkers home",
     title: "Now bear them off",
     body: `${how} First to bear off all 15 wins.`,
