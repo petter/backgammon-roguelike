@@ -396,9 +396,13 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       hud.setOffline(offline);
       if (!offline) hud.notify("Back online");
       // No throw is made into a dead connection; once back, the roll is looked at afresh,
-      // as a reconnect that missed nothing brings no update to do it.
-      if (offline) cancelAutoRoll();
-      else autoRoll();
+      // as a reconnect that missed nothing brings no update to do it. A roll asked for as
+      // the line went may never have arrived, and no answer will come for it: ask again.
+      // If it did arrive, the reconnect brings the roll itself, and nothing is asked twice.
+      if (offline) {
+        cancelAutoRoll();
+        rollAsked = false;
+      } else autoRoll();
     },
   });
 
