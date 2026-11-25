@@ -16,7 +16,7 @@ export const CHAT_KEEP = 50;
 /** Longest chat text a client may send before it is malformed rather than merely long. */
 const CHAT_WIRE_MAX = 2000;
 
-/** One line of a room's chat. Ids rise by one per room, so they also give the order. */
+/** One line of a room's chat. Ids rise within a room and never repeat, so they give the order. */
 export interface ChatMessage {
   id: number;
   from: Player;

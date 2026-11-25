@@ -317,10 +317,17 @@ export function createRemoteSession(
       say(active, { type: "command", command, id });
     },
     say(text) {
-      if (!active) return handlers.onError("You are offline. Reconnecting…", false);
+      if (!active) {
+        handlers.onError("You are offline. Reconnecting…", false);
+        return false;
+      }
       // A server from before chat would take the line as malformed and end the seat.
-      if (!active.chat) return handlers.onError("Chat is not available right now", false);
+      if (!active.chat) {
+        handlers.onError("Chat is not available right now", false);
+        return false;
+      }
       say(active, { type: "chat", text });
+      return true;
     },
     drop() {
       if (active) lose(active);

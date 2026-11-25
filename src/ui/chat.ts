@@ -2,7 +2,7 @@ import "./chat.css";
 import { mergeChat } from "../app/chatLog.ts";
 import { sfx } from "../audio/sfx.ts";
 import type { Player } from "../core/board.ts";
-import { type ChatMessage, cleanChat, type LobbyView } from "../net/protocol.ts";
+import { CHAT_MAX, type ChatMessage, cleanChat, type LobbyView } from "../net/protocol.ts";
 import { el } from "./dom.ts";
 
 /** How long a line from the opponent is previewed while the chat is shut. */
@@ -14,7 +14,7 @@ const BUBBLE = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stro
 
 export interface ChatView {
   /** Opens chat for a game with someone else; `say` sends a line to them. */
-  start: (say: (text: string) => void) => void;
+  start: (say: (text: string) => boolean) => void;
   /** Who is who: the names, and which seat is this player's. */
   setLobby: (lobby: LobbyView) => void;
   /** Lines from the server, in any order and possibly again. */
@@ -48,7 +48,7 @@ export function createChat(): ChatView {
   const input = el("chat-input", HTMLInputElement);
   const preview = el("chat-preview", HTMLButtonElement);
 
-  let say: ((text: string) => void) | null = null;
+  let say: ((text: string) => boolean) | null = null;
   let lobby: LobbyView | null = null;
   let lines: ChatMessage[] = [];
   /** The first lines of a game are its history: shown, but not announced. */
@@ -150,8 +150,13 @@ export function createChat(): ChatView {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!say || cleanChat(input.value) === null) return;
-    say(input.value);
-    input.value = "";
+    // A line that could not go out stays in the field, to be sent again.
+    if (say(input.value)) input.value = "";
+  });
+  // The same count as the server's: characters, not UTF-16 units, so emoji are not halved.
+  input.addEventListener("input", () => {
+    const chars = Array.from(input.value);
+    if (chars.length > CHAT_MAX) input.value = chars.slice(0, CHAT_MAX).join("");
   });
   window.addEventListener("keydown", (event) => {
     if (!say || isOpen() || event.key !== "Enter" || event.repeat) return;

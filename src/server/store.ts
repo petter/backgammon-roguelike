@@ -260,7 +260,9 @@ export interface GameStore {
 
   /**
    * Appends a chat line to a room's log, numbered one past the room's last line, and keeps
-   * only the newest `keep`. Returns the line as kept. The log expires with the room.
+   * only the newest `keep`. Returns the line as kept. The log expires like a room, a day
+   * after its last line; a room kept alive by moves alone can outlive it. Numbering then
+   * starts again from `line.at` (epoch ms), so ids never repeat within a room.
    */
   appendChat: (roomId: string, line: Omit<ChatMessage, "id">, keep: number) => Promise<ChatMessage>;
   /** A room's kept chat lines, oldest first; empty if it has none. */

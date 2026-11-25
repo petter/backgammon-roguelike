@@ -253,7 +253,8 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
     async appendChat(roomId, line, kept) {
       // Room ids are never reused, so a log nobody reads again is dropped here instead.
       for (const id of Array.from(chats.keys())) liveChat(id);
-      const entry = liveChat(roomId) ?? { lines: [], last: 0, expires: 0 };
+      // An expired log numbers on from the line's time, past every id it handed out before.
+      const entry = liveChat(roomId) ?? { lines: [], last: line.at, expires: 0 };
       const message = { ...structuredClone(line), id: entry.last + 1 };
       const lines = [...entry.lines, message].slice(-kept);
       chats.set(roomId, { lines, last: message.id, expires: now() + ttlMs });

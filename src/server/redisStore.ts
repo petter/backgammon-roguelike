@@ -132,11 +132,14 @@ return { redis.call('ZCARD', KEYS[1]), redis.call('ZCARD', KEYS[2]) }
 
 /**
  * Numbers a chat line one past the room's last, appends it and trims the log to the newest
- * ARGV[2] lines. Both keys live as long as a room does after its last write.
+ * ARGV[2] lines. Both keys live as long as a room does after its last write. A log that has
+ * expired (the room kept alive by moves alone) starts numbering again from the line's time,
+ * past every id it handed out before. Epoch ms has 13 digits, within cjson's 14.
  */
 const APPEND_CHAT = `
-local id = redis.call('INCR', KEYS[2])
 local line = cjson.decode(ARGV[1])
+redis.call('SET', KEYS[2], line.at, 'NX')
+local id = redis.call('INCR', KEYS[2])
 line.id = id
 local text = cjson.encode(line)
 redis.call('RPUSH', KEYS[1], text)

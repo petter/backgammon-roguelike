@@ -80,13 +80,14 @@ describe("chat over a room socket", () => {
   it("carries a line to both seats, numbered and marked with who said it", async () => {
     const { white, black } = await seated();
     await white.say({ type: "chat", text: "  good luck!  " });
-    const line = { id: 1, from: "white", text: "good luck!" };
+    const line = { from: "white", text: "good luck!" };
     expect(white.lines()).toMatchObject([line]);
-    expect(black.lines()).toMatchObject([line]);
+    expect(black.lines()).toEqual(white.lines());
     await black.say({ type: "chat", text: "you too" });
-    expect(white.lines().map((l) => [l.id, l.from])).toEqual([
-      [1, "white"],
-      [2, "black"],
+    const [first] = white.lines();
+    expect(white.lines().map((l) => [l.id - first!.id, l.from])).toEqual([
+      [0, "white"],
+      [1, "black"],
     ]);
   });
 
@@ -117,6 +118,29 @@ describe("chat over a room socket", () => {
     await old.say({ type: "chat", text: "hi" });
     expect(old.isOpen()).toBe(true);
     expect(white.lines().map((l) => l.text)).toEqual(["hello?"]);
+  });
+
+  it("never holds up the game while chat is slow to open", async () => {
+    const store = createMemoryStore();
+    const host = await createRoom(store, "Ada");
+    await joinRoom(store, host.code, "Grace");
+    let release: (lines: ChatMessage[]) => void = () => {};
+    const stalled: GameStore = {
+      ...store,
+      loadChat: () => new Promise((resolve) => (release = resolve)),
+    };
+    const white = fakeSocket(stalled, host.code);
+    await white.say({ type: "hello", token: host.token, chat: true });
+    await white.say({ type: "ping" });
+    await white.say({ type: "command", command: { type: "pickCard", index: 0 }, id: 7 });
+    expect(white.sent.map((m) => m.type)).toContain("pong");
+    expect(white.sent).toContainEqual({ type: "done", id: 7 });
+    expect(white.chatFrames()).toEqual([]);
+    // Closed while still opening: once open, it lets go and says nothing.
+    await white.hangUp();
+    release([]);
+    await settle();
+    expect(white.chatFrames()).toEqual([]);
   });
 
   it("refuses chat before hello, like any other message", async () => {
@@ -150,6 +174,21 @@ describe("chat over a room socket", () => {
     const before = black.sent.length;
     await white.say({ type: "chat", text: "anyone?" });
     expect(black.sent).toHaveLength(before);
+  });
+});
+
+describe("a chat log that expires before its room", () => {
+  it("never hands out an id again", async () => {
+    let now = 1_764_000_000_000;
+    const ttlMs = 1000;
+    const store = createMemoryStore(ttlMs, () => now);
+    const line = (at: number) => ({ from: "white" as const, text: "hi", at });
+    const before = [];
+    for (let i = 0; i < 3; i++) before.push(await store.appendChat("room-1", line(now), 50));
+    now += ttlMs;
+    expect(await store.loadChat("room-1")).toEqual([]);
+    const after = await store.appendChat("room-1", line(now), 50);
+    expect(after.id).toBeGreaterThan(Math.max(...before.map((l) => l.id)));
   });
 });
 

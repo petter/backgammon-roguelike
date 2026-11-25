@@ -37,7 +37,9 @@ export interface SessionHandlers {
 export interface Session {
   send: (command: Command) => void;
   /** Says a chat line to the other seat. Absent where there is nobody to talk to. */
-  say?: (text: string) => void;
+  /** Says a chat line to the other seat. Absent where there is nobody to talk to. Returns
+   * whether the line went out; if not, the player has been told why. */
+  say?: (text: string) => boolean;
   /** Cuts the connection as a network failure would, to exercise reconnecting. */
   drop: () => void;
   close: () => void;

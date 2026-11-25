@@ -600,21 +600,23 @@ export function storeContract(name: string, makeStore: (now?: () => number) => G
     it("numbers chat lines per room and keeps only the newest", async () => {
       const store = makeStore();
       expect(await store.loadChat("room-1")).toEqual([]);
+      const at = 1_764_000_000_000;
       const say = (roomId: string, text: string) =>
-        store.appendChat(roomId, { from: "white", text, at: 5 }, 3);
-      expect(await say("room-1", "a")).toEqual({ id: 1, from: "white", text: "a", at: 5 });
+        store.appendChat(roomId, { from: "white", text, at }, 3);
+      const first = await say("room-1", "a");
+      expect(first).toMatchObject({ from: "white", text: "a", at });
       await say("room-2", "elsewhere");
       for (const text of ["b", "c", "d"]) await say("room-1", text);
       const kept = await store.loadChat("room-1");
-      expect(kept.map((line) => [line.id, line.text])).toEqual([
-        [2, "b"],
-        [3, "c"],
-        [4, "d"],
+      expect(kept.map((line) => [line.id - first.id, line.text])).toEqual([
+        [1, "b"],
+        [2, "c"],
+        [3, "d"],
       ]);
       // Numbers keep rising after old lines fall off.
-      expect((await say("room-1", 'é 🎲 "quoted"')).id).toBe(5);
+      expect((await say("room-1", 'é 🎲 "quoted"')).id).toBe(first.id + 4);
       expect((await store.loadChat("room-1")).at(-1)?.text).toBe('é 🎲 "quoted"');
-      expect(await store.loadChat("room-2")).toMatchObject([{ id: 1, text: "elsewhere" }]);
+      expect(await store.loadChat("room-2")).toMatchObject([{ text: "elsewhere" }]);
     });
 
     it("announces chat lines only to that room's listeners", async () => {

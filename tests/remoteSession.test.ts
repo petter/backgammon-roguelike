@@ -828,17 +828,17 @@ describe("remote session chat", () => {
   it("says nothing until the server has shown it has chat", () => {
     const { api, sockets, errors } = session();
     sockets[0]!.come(0);
-    api.say("hi");
+    expect(api.say("hi")).toBe(false);
     expect(chatLines(sockets[0]!)).toEqual([]);
     expect(errors).toEqual([["Chat is not available right now", false]]);
     sockets[0]!.deliver({ type: "chat", messages: [] });
-    api.say("hi");
+    expect(api.say("hi")).toBe(true);
     expect(chatLines(sockets[0]!)).toEqual(["hi"]);
   });
 
   it("says it is offline rather than sending into nothing", () => {
     const { api, errors } = session();
-    api.say("hi");
+    expect(api.say("hi")).toBe(false);
     expect(errors).toEqual([["You are offline. Reconnecting…", false]]);
   });
 
