@@ -106,6 +106,12 @@ function placeOf(player: Player, where: number | "bar" | "off"): Place {
   return typeof where === "number" ? { kind: "point", index: where } : { kind: where, player };
 }
 
+/** When an animated checker lands, in seconds from now, and whether onto another checker. */
+export interface Landing {
+  at: number;
+  stacked: boolean;
+}
+
 /**
  * Checker meshes, kept in step with the core board by replaying its events.
  * The core only counts checkers per place; identity lives here, as stacks of meshes.
@@ -159,9 +165,9 @@ export class CheckersView {
 
   /**
    * Animates one board event, its motion held back `wait` seconds while the checkers count
-   * as moved already. Returns when its motion lands, in seconds from now.
+   * as moved already. Returns when and onto what its motion lands.
    */
-  apply(event: BoardEvent, wait = 0): number {
+  apply(event: BoardEvent, wait = 0): Landing {
     this.lift(null);
     if (event.type === "hit") {
       // The hit checker waits for the attacker to arrive before flying to the bar.
@@ -222,13 +228,14 @@ export class CheckersView {
     this.group.add(mesh);
   }
 
-  private move(from: Place, to: Place, delay: number): number {
+  private move(from: Place, to: Place, delay: number): Landing {
     const mesh = this.stack(from).pop();
     // Out of step with the core. The caller notices through `matches` and resets.
-    if (!mesh) return 0;
+    if (!mesh) return { at: 0, stacked: false };
     const target = this.stack(to);
+    const stacked = target.length > 0;
     setRest(mesh, slotPosition(to, target.length));
     target.push(mesh);
-    return hopToRest(mesh, delay);
+    return { at: hopToRest(mesh, delay), stacked };
   }
 }

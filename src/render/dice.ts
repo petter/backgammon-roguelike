@@ -137,6 +137,8 @@ export class DiceView {
   private shown: number[] = [];
   private readonly lens: Lens;
   private readonly slots: (count: number) => DieSlot[];
+  /** Called as a thrown die strikes something, with how fast it was going, to be heard. */
+  onKnock: ((speed: number) => void) | null = null;
 
   /** `slots` says where each of that many dice should end up, in client pixels. */
   constructor(lens: Lens, slots: (count: number) => DieSlot[]) {
@@ -182,6 +184,9 @@ export class DiceView {
       ease: "none",
       onUpdate: place,
     });
+    for (const { step, speed } of thrown.knocks) {
+      this.playback.call(() => this.onKnock?.(speed), [], step * SIM_DT);
+    }
     this.showOff(this.playback);
   }
 

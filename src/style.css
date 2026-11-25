@@ -74,6 +74,20 @@ body:has(#lobby:not([hidden])) #stage {
   gap: 10px;
 }
 
+#sound {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+}
+
+#sound svg {
+  display: block;
+}
+
+#sound[aria-pressed="true"] {
+  opacity: 0.6;
+}
+
 #turn {
   font-weight: 600;
 }
