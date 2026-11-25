@@ -40,6 +40,10 @@ const REST_SPIN = 2;
 const SETTLE_TIME = 0.22;
 /** A die still moving this long after the throw is put to rest where it is. */
 const MAX_TIME = 3.2;
+/** Slowest a corner may strike something and still be heard, in units per second. */
+const KNOCK_SPEED = 1.2;
+/** Steps a die stays quiet after a knock, so one landing is not heard as a buzz. */
+const KNOCK_GAP = 6;
 
 const UP = new Vector3(0, 1, 0);
 
@@ -71,9 +75,18 @@ export interface DiePath {
   faces: Quaternion;
 }
 
+/** A die striking the felt, a rim, a checker or another die: something to be heard. */
+export interface DiceKnock {
+  step: number;
+  /** How fast the die met what it struck, in units per second. */
+  speed: number;
+}
+
 export interface DiceThrow {
   steps: number;
   dice: DiePath[];
+  /** Every audible knock of every die, in step order. */
+  knocks: DiceKnock[];
 }
 
 interface Body extends Rigid {
@@ -91,6 +104,10 @@ interface Body extends Rigid {
   value: number;
   /** Position and orientation at every step, seven numbers each. */
   frames: Float32Array;
+  /** The hardest strike during this step, in units per second. */
+  struck: number;
+  /** The step of the latest knock that was heard. */
+  knocked: number;
 }
 
 /** The orientation nearest to `q` that lies flat, and the local axis it puts on top. */
@@ -193,6 +210,9 @@ export function simulateThrow(
       top: new Vector3(0, 1, 0),
       value,
       frames: new Float32Array(maxSteps * 7),
+      struck: 0,
+      // Quiet at first: the dice leave the hand touching, which is no knock.
+      knocked: 0,
     };
   });
   const pairs = bodies.flatMap((a, i) => bodies.slice(i + 1).map((b) => [a, b] as const));
@@ -201,7 +221,17 @@ export function simulateThrow(
   const normal = new Vector3();
   const offsets: Vector3[] = [];
   const contacts: Contact[] = [];
+  const knocks: DiceKnock[] = [];
   let steps = 0;
+  const strike = (b: Body, speed: number) => {
+    b.struck = Math.max(b.struck, speed);
+  };
+  /** Contact with a surface, noting how hard the corner came in. */
+  const meet = (b: Body, r: Vector3, n: Vector3, surface: Surface) => {
+    const c = contact(b, r, n, surface);
+    strike(b, c.target / surface.bounce);
+    contacts.push(c);
+  };
 
   const settle = (b: Body) => {
     const { flat, top } = flatten(b.q);
@@ -223,17 +253,17 @@ export function simulateThrow(
       const z = b.p.z + r.z;
       const stand = footing(obstacles, x, y, z);
       if (y - (stand ? stand.top : 0) < SLOP) {
-        contacts.push(contact(b, r, UP, FLOOR));
+        meet(b, r, UP, FLOOR);
         if (stand) b.perch = stand;
         else b.onFelt = true;
       }
       if (Math.abs(x) > FIELD_HALF_W - SLOP) {
         normal.set(-Math.sign(x), 0, 0);
-        contacts.push(contact(b, r, normal, RIM));
+        meet(b, r, normal, RIM);
       }
       if (Math.abs(z) > FIELD_HALF_D - SLOP) {
         normal.set(0, 0, -Math.sign(z));
-        contacts.push(contact(b, r, normal, RIM));
+        meet(b, r, normal, RIM);
       }
     }
   };
@@ -269,7 +299,10 @@ export function simulateThrow(
       } else normal.divideScalar(distance);
       b.p.addScaledVector(normal, CHECKER_REACH - distance);
       const into = b.v.dot(normal);
-      if (into < 0) b.v.addScaledVector(normal, -1.4 * into);
+      if (into < 0) {
+        strike(b, -into);
+        b.v.addScaledVector(normal, -1.4 * into);
+      }
     }
   };
 
@@ -294,6 +327,8 @@ export function simulateThrow(
     if (bFree) b.p.addScaledVector(normal, overlap * share);
     const closing = (bFree ? b.v.dot(normal) : 0) - (aFree ? a.v.dot(normal) : 0);
     if (closing >= 0) return;
+    strike(a, -closing);
+    strike(b, -closing);
     const impulse = (-1.5 * closing) / (aFree && bFree ? 2 : 1);
     if (aFree) a.v.addScaledVector(normal, -impulse);
     if (bFree) b.v.addScaledVector(normal, impulse);
@@ -378,6 +413,11 @@ export function simulateThrow(
 
     for (const b of bodies) {
       b.frames.set([b.p.x, b.p.y, b.p.z, b.q.x, b.q.y, b.q.z, b.q.w], steps * 7);
+      if (b.struck >= KNOCK_SPEED && steps - b.knocked >= KNOCK_GAP) {
+        knocks.push({ step: steps, speed: b.struck });
+        b.knocked = steps;
+      }
+      b.struck = 0;
     }
     if (bodies.every((b) => b.state === "rest")) {
       steps++;
@@ -391,5 +431,6 @@ export function simulateThrow(
       frames: b.frames.subarray(0, steps * 7),
       faces: facesFor(b.value, b.top),
     })),
+    knocks,
   };
 }

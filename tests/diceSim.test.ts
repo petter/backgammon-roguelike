@@ -246,6 +246,37 @@ describe("simulateThrow contacts", () => {
   });
 });
 
+describe("simulateThrow knocks", () => {
+  const board = obstaclesOf(initialBoard());
+
+  it("hears every throw land, in order, and nothing once the dice are at rest", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const rng = createRng(seed);
+      const { knocks, steps, dice } = simulateThrow([2, 6], seed % 2 ? 1 : -1, board, rng.next);
+      expect(knocks.length, `seed ${seed}`).toBeGreaterThan(0);
+      const at = knocks.map((knock) => knock.step);
+      expect(at).toEqual(at.toSorted((a, b) => a - b));
+      expect(knocks.every((knock) => knock.speed > 0 && knock.step > 0 && knock.step < steps)).toBe(
+        true,
+      );
+      // Every die is still for its last few steps: no knock may land there.
+      const last = dice.map((die) => lastFrame(die.frames));
+      const still = (step: number) =>
+        dice.every((die, i) => {
+          const now = pose(die.frames, step * 7);
+          const end = last[i];
+          return (
+            end !== undefined && Math.hypot(now.x - end.x, now.y - end.y, now.z - end.z) < 1e-4
+          );
+        });
+      expect(
+        knocks.filter((knock) => still(knock.step - 1)),
+        `seed ${seed}`,
+      ).toEqual([]);
+    }
+  });
+});
+
 describe("facesFor", () => {
   it("shows each value on top for a die lying still", () => {
     for (let value = 1; value <= 6; value++) {
