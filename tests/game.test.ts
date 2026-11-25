@@ -527,6 +527,7 @@ describe("dealing", () => {
     expect(next.phase).toBe("roll");
     expect(next.cards.black.offer).toEqual([]);
     expect(events.some((e) => e.type === "cardsOffered")).toBe(false);
+    expect(events).toContainEqual({ type: "handFull", player: "black" });
   });
 
   it("reshuffles the discard pile when the deck runs out", () => {

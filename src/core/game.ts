@@ -77,6 +77,7 @@ function beginTurn(state: GameState, player: Player): Result {
   }
   const picking = mine.offer.length > 0;
   if (picking) events.push({ type: "cardsOffered", player, cards: [...mine.offer] });
+  else if (mine.hand.length >= HAND_LIMIT) events.push({ type: "handFull", player });
 
   return {
     state: {

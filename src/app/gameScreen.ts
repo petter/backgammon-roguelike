@@ -3,7 +3,7 @@ import { gsap } from "gsap";
 import { sfx } from "../audio/sfx.ts";
 import { initialBoard, type Player, pointAt } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
-import { diceToPlay, type GameEvent, legalMoves, possibleMoves } from "../core/game.ts";
+import { diceToPlay, type GameEvent, HAND_LIMIT, legalMoves, possibleMoves } from "../core/game.ts";
 import type { PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
@@ -365,6 +365,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         else sfx.turnEnded();
       } else if (event.type === "cardsOffered" && event.cards) {
         sfx.cardsDealt(event.cards.length);
+      } else if (event.type === "handFull") {
+        text = `${whose(event.player)} hand is full (${HAND_LIMIT} cards): no pick this turn`;
       } else if (event.type === "cardPicked") {
         sfx.cardFlick();
         if (event.player !== you) text = `${name(event.player)} picked a card`;
