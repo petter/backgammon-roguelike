@@ -9,7 +9,7 @@ import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
 import type { BoardView } from "../render/board.ts";
 import { CheckersView } from "../render/checkers.ts";
-import { type DieSlot, DiceView } from "../render/dice.ts";
+import { type DiceRoll, type DieSlot, DiceView } from "../render/dice.ts";
 import { shake, tossAll } from "../render/effects.ts";
 import { obstaclesOf, slotPosition } from "../render/layout.ts";
 import type { Stage } from "../render/stage.ts";
@@ -22,6 +22,7 @@ import type { TableView } from "../ui/table.ts";
 import { rollsByItself } from "./autoRoll.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
+import { physical, throwFor } from "./diceRolls.ts";
 import { coinReveal, playedReveal, revealFor } from "./reveals.ts";
 
 const byValue = (x: number, y: number) => x - y;
@@ -95,10 +96,6 @@ const REVEAL_STAGGER = 0.25;
 
 const sideOf = (player: Player) => (player === "white" ? 1 : -1);
 
-/** Doubles are four moves but two dice on the table. */
-const physical = (values: number[]) =>
-  values.length === 4 && values.every((value) => value === values[0]) ? values.slice(0, 2) : values;
-
 /**
  * Drives one game: turns session updates into animation and HUD state, and pointer and key
  * input into commands. Returns a function that tears it all down.
@@ -167,14 +164,15 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
    * Throws the dice for a result the server has already decided, `delay` seconds from now,
    * then waits for them. They count as in the air from now on.
    */
-  const throwDice = (values: number[], player: Player, state: PlayerView["board"], delay = 0) => {
+  const throwDice = (roll: DiceRoll, player: Player, state: PlayerView["board"], delay = 0) => {
     pendingThrow?.kill();
     pendingThrow = null;
     rolling = true;
     const go = () => {
       pendingThrow = null;
       sfx.diceThrown();
-      dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
+      const shown = { thrown: physical(roll.thrown), played: physical(roll.played ?? roll.thrown) };
+      dice.throw(shown, sideOf(player), obstaclesOf(state), Math.random, () => {
         rolling = false;
         sfx.diceSettled();
         coaching.landed();
@@ -352,12 +350,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
           tossed = reveal.toss(coin, delay);
           sfx.coin(event.heads, delay, Math.max(tossed - delay, 0.1));
         }
-      } else if (event.type === "diceRolled") {
-        throwDice(event.dice, event.player, next.board);
-      } else if (event.type === "diceChanged") {
-        // A card changed the dice: throw them again, landing on the new values.
-        throwDice(event.dice, event.player, next.board, tossed);
-        if (event.doubled && text) text += ": doubles!";
+      } else if (event.type === "diceRolled" || event.type === "diceChanged") {
+        // A card changing the dice throws them again, once a coin deciding how has landed.
+        const roll = throwFor(events, event);
+        const delay = event.type === "diceChanged" ? tossed : 0;
+        if (roll) throwDice(roll, event.player, next.board, delay);
+        if (event.type === "diceChanged" && event.doubled && text) text += ": doubles!";
       } else if (event.type === "turnEnded") {
         settleDice(null);
         // Online, the wait is over: the player may have looked away.
