@@ -312,6 +312,14 @@ export const sfx = {
     tone(v, { freq: 160, to: 140, gain: 0.14, decay: 0.1, type: "triangle", offset: 0.09 });
   },
 
+  /** A chat line from the opponent: two soft, high bell taps. */
+  chatReceived(): void {
+    const v = voice(0, 0.6);
+    if (!v) return;
+    bell(v, NOTE.E6, 0.035, 0.35);
+    bell(v, NOTE.G6, 0.03, 0.4, { offset: 0.09 });
+  },
+
   /** The opponent has sat down and the match begins: a drum, a bell and a rising call. */
   matchStarted(): void {
     sfx.boardThump(0.6);

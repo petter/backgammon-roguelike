@@ -1,5 +1,7 @@
+import type { ChatMessage } from "../net/protocol.ts";
 import {
   cancelledSeeker,
+  type ChatUpdate,
   emptyPresence,
   type GameStore,
   Listeners,
@@ -51,6 +53,16 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
   const seekers = new Map<string, { seeker: Seeker; expires: number }>();
   /** Open tabs by id: when each was last heard from, and whether it is searching. */
   const visitors = new Map<string, { seen: number; searching: boolean }>();
+  const chats = new Map<string, { lines: ChatMessage[]; last: number; expires: number }>();
+  const chatListeners = new Listeners<ChatUpdate>();
+
+  const liveChat = (roomId: string) => {
+    const entry = chats.get(roomId);
+    if (!entry) return null;
+    if (entry.expires > now()) return entry;
+    chats.delete(roomId);
+    return null;
+  };
 
   const live = (code: string): Room | null => {
     const entry = rooms.get(code);
@@ -237,6 +249,24 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       }
       put(room);
       return { ok: true, presence: structuredClone(current), now: at };
+    },
+    async appendChat(roomId, line, kept) {
+      // Room ids are never reused, so a log nobody reads again is dropped here instead.
+      for (const id of Array.from(chats.keys())) liveChat(id);
+      const entry = liveChat(roomId) ?? { lines: [], last: 0, expires: 0 };
+      const message = { ...structuredClone(line), id: entry.last + 1 };
+      const lines = [...entry.lines, message].slice(-kept);
+      chats.set(roomId, { lines, last: message.id, expires: now() + ttlMs });
+      return structuredClone(message);
+    },
+    async loadChat(roomId) {
+      return structuredClone(liveChat(roomId)?.lines ?? []);
+    },
+    async publishChat(roomId, update) {
+      chatListeners.notify(roomId, update);
+    },
+    async subscribeChat(roomId, listener) {
+      return chatListeners.add(roomId, listener);
     },
     async addSeeker(value) {
       if (seeker(value.id)) return false;

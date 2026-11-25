@@ -1,0 +1,224 @@
+/*
+ * Chat between the two seats of an online game. The panel and the preview sit just above
+ * the HUD's bottom row, at the left where the buttons are, and above the result screen so a
+ * rematch can be talked over.
+ */
+
+#chat-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#chat-toggle[hidden],
+#chat-panel[hidden],
+#chat-preview[hidden],
+#chat-empty[hidden] {
+  display: none;
+}
+
+#chat-toggle svg {
+  display: block;
+}
+
+#chat-toggle[aria-expanded="true"] {
+  border-color: #c9a56b;
+}
+
+.chat-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #c8412b;
+  color: #fff3dc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+#chat-panel,
+#chat-preview {
+  position: fixed;
+  left: 18px;
+  bottom: calc(var(--hud-bottom, 148px) + 4px);
+  z-index: 16;
+  box-sizing: border-box;
+  border: 1px solid #6b5137;
+  border-radius: 10px;
+  background: var(--grain), #1c1612;
+  box-shadow: 0 10px 28px #000c;
+  color: #efe6d2;
+}
+
+#chat-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 36px));
+  height: min(360px, calc(100vh - var(--hud-top, 84px) - var(--hud-bottom, 148px) - 8px));
+  min-height: 180px;
+}
+
+#chat-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 6px 14px;
+  border-bottom: 1px solid #6b513766;
+}
+
+#chat-panel h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d8c39a;
+}
+
+#chat-close {
+  padding: 0 9px;
+  border-color: transparent;
+  background: none;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+#chat-log {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+#chat-log li {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+#chat-log li.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+#chat-log li.theirs {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+#chat-log .who {
+  margin: 6px 4px 2px;
+  font-size: 12px;
+  color: #b9a888;
+}
+
+#chat-log li:first-child .who {
+  margin-top: 0;
+}
+
+#chat-log .text {
+  padding: 6px 10px;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+#chat-log .mine .text {
+  border-bottom-right-radius: 4px;
+  background: #5a3a22;
+}
+
+#chat-log .theirs .text {
+  border-bottom-left-radius: 4px;
+  background: #2f2a24;
+}
+
+#chat-empty {
+  flex: 1;
+  margin: 0;
+  padding: 10px 14px;
+  color: #b9a888;
+  font-size: 13px;
+}
+
+#chat-form {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid #6b513766;
+}
+
+#chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #6b5137;
+  border-radius: 8px;
+  background: #100d0b;
+  color: inherit;
+  /* 16px keeps phones from zooming in on the field. */
+  font:
+    16px / 1.25 system-ui,
+    sans-serif;
+}
+
+#chat-input:focus-visible {
+  outline: 2px solid #c9a56b;
+  outline-offset: 1px;
+}
+
+#chat-preview {
+  display: flex;
+  gap: 8px;
+  max-width: min(320px, calc(100vw - 36px));
+  padding: 8px 14px;
+  text-align: left;
+  animation: chat-preview-in 0.22s ease-out;
+}
+
+#chat-preview strong {
+  flex: none;
+}
+
+#chat-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes chat-preview-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #chat-preview {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  #chat-panel,
+  #chat-preview {
+    left: 12px;
+  }
+
+  #chat-panel {
+    width: calc(100vw - 24px);
+  }
+
+  /* Room for the hand: the label goes, the bubble and the count stay. */
+  #chat-toggle > span:not(.chat-badge) {
+    display: none;
+  }
+}

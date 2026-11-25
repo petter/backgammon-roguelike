@@ -1,5 +1,6 @@
 import { Redis } from "ioredis";
 
+import type { ChatMessage } from "../net/protocol.ts";
 import {
   CLAIM_SEAT,
   CONNECT_SEAT,
@@ -9,6 +10,7 @@ import {
 } from "./redisPresenceScripts.ts";
 import {
   cancelledSeeker,
+  type ChatUpdate,
   type ClaimOutcome,
   type GameStore,
   Listeners,
@@ -128,7 +130,25 @@ if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('PEXPIRE', KEYS[2], ARGV[3
 return { redis.call('ZCARD', KEYS[1]), redis.call('ZCARD', KEYS[2]) }
 `;
 
+/**
+ * Numbers a chat line one past the room's last, appends it and trims the log to the newest
+ * ARGV[2] lines. Both keys live as long as a room does after its last write.
+ */
+const APPEND_CHAT = `
+local id = redis.call('INCR', KEYS[2])
+local line = cjson.decode(ARGV[1])
+line.id = id
+local text = cjson.encode(line)
+redis.call('RPUSH', KEYS[1], text)
+redis.call('LTRIM', KEYS[1], -tonumber(ARGV[2]), -1)
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+redis.call('EXPIRE', KEYS[2], ARGV[3])
+return text
+`;
+
 const key = (code: string) => `room:${code}`;
+const chatKey = (roomId: string) => `chat:${roomId}`;
+const chatSeqKey = (roomId: string) => `chat-seq:${roomId}`;
 const presenceKey = (roomId: string) => `presence:${roomId}`;
 const seekerKey = (id: string) => `seeker:${id}`;
 
@@ -183,8 +203,9 @@ export function createRedisStore(
 
   const listeners = new Listeners();
   const presenceListeners = new Listeners<PresenceUpdate>();
+  const chatListeners = new Listeners<ChatUpdate>();
   const hasListeners = (channel: string) =>
-    listeners.has(channel) || presenceListeners.has(channel);
+    listeners.has(channel) || presenceListeners.has(channel) || chatListeners.has(channel);
   let subscriber: Redis | null = null;
   // A connection in subscribe mode can do nothing else, so it gets its own. One per
   // instance serves every room; ioredis resubscribes by itself after a reconnect.
@@ -197,6 +218,8 @@ export function createRedisStore(
       try {
         if (channel.startsWith("presence:")) {
           presenceListeners.notify(channel, JSON.parse(text) as PresenceUpdate);
+        } else if (channel.startsWith("chat:")) {
+          chatListeners.notify(channel, JSON.parse(text) as ChatUpdate);
         } else {
           listeners.notify(channel, JSON.parse(text) as RoomUpdate);
         }
@@ -376,6 +399,28 @@ export function createRedisStore(
         return { ok: false, reason: "online", presence: decodePresence(pText), now: at };
       }
       return { ok: false, reason: "conflict", now: at };
+    },
+    async appendChat(roomId, line, keep) {
+      const text = (await redis.eval(
+        APPEND_CHAT,
+        2,
+        chatKey(roomId),
+        chatSeqKey(roomId),
+        JSON.stringify(line),
+        keep,
+        ttlSeconds,
+      )) as string;
+      return JSON.parse(text) as ChatMessage;
+    },
+    async loadChat(roomId) {
+      const texts = await redis.lrange(chatKey(roomId), 0, -1);
+      return texts.map((text) => JSON.parse(text) as ChatMessage);
+    },
+    async publishChat(roomId, update) {
+      await redis.publish(chatKey(roomId), JSON.stringify(update));
+    },
+    async subscribeChat(roomId, listener) {
+      return subscribeChannel(chatListeners, chatKey(roomId), listener);
     },
     async addSeeker(seeker) {
       const added = await redis.eval(

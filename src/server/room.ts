@@ -260,6 +260,9 @@ async function announce(store: GameStore, code: string, update: RoomUpdate): Pro
 }
 
 export interface Connection {
+  /** The room this connection belongs to, for its whole life. Never sent to clients. */
+  roomId: string;
+  seat: Player;
   /** Applies a command from this seat. Rule violations come back as error messages. */
   command: (command: Command) => Promise<void>;
   close: () => void;
@@ -510,6 +513,8 @@ export async function openConnection(
   (resync as { unref?: () => void }).unref?.();
 
   return {
+    roomId,
+    seat,
     async command(command) {
       for (let attempt = 0; attempt < SAVE_ATTEMPTS; attempt++) {
         const room = await store.load(code);

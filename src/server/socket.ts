@@ -1,4 +1,5 @@
 import { isRoomCode, parseClientMessage, type ServerMessage } from "../net/protocol.ts";
+import { type ChatLink, openChat } from "./chat.ts";
 import { type Connection, openConnection, RoomError } from "./room.ts";
 import type { GameStore } from "./store.ts";
 
@@ -16,6 +17,7 @@ export interface SocketLike {
  */
 export function serveSocket(store: GameStore, code: string, socket: SocketLike): void {
   let connection: Connection | null = null;
+  let chat: ChatLink | null = null;
   let closed = false;
   let queue: Promise<void> = Promise.resolve();
 
@@ -46,11 +48,22 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
       } catch (error) {
         if (!(error instanceof RoomError)) throw error;
         reject(error.message);
+        return;
+      }
+      // Only for clients that know chat frames. Without its first frame the client knows
+      // there is no chat on this socket, so a failure here costs chat, not the game.
+      if (message.chat === true) {
+        try {
+          chat = await openChat(store, connection.roomId, connection.seat, send);
+        } catch (error) {
+          console.error("Could not open a room's chat", error);
+        }
       }
       return;
     }
 
     if (!connection) return reject("Say hello first");
+    if (message.type === "chat") return chat?.say(message.text);
     await connection.command(message.command);
     // After the outcome, never before it: a client may stop listening once it has this.
     if (message.id !== undefined) send({ type: "done", id: message.id });
@@ -74,6 +87,8 @@ export function serveSocket(store: GameStore, code: string, socket: SocketLike):
     queue = queue.finally(() => {
       connection?.close();
       connection = null;
+      chat?.close();
+      chat = null;
     });
   });
 }

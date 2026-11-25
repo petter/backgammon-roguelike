@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GameEvent } from "../src/core/game.ts";
-import type { OpponentPresence, ServerMessage } from "../src/net/protocol.ts";
+import type { ChatMessage, OpponentPresence, ServerMessage } from "../src/net/protocol.ts";
 import {
   type ClientSocket,
   createRemoteSession,
@@ -92,6 +92,7 @@ function session() {
   const updates: SessionUpdate[] = [];
   const presences: Array<OpponentPresence | null> = [];
   const errors: Array<[string, boolean]> = [];
+  const chats: ChatMessage[][] = [];
   const api = createRemoteSession(
     "AAAAA",
     "token",
@@ -99,6 +100,7 @@ function session() {
       onStatus: (s) => statuses.push(s),
       onUpdate: (u) => updates.push(u),
       onPresence: (p) => presences.push(p),
+      onChat: (messages) => chats.push(messages),
       onError: (message, fatal) => errors.push([message, fatal]),
     },
     () => {
@@ -107,7 +109,7 @@ function session() {
       return socket;
     },
   );
-  return { api, sockets, statuses, updates, presences, errors };
+  return { api, sockets, statuses, updates, presences, errors, chats };
 }
 
 beforeEach(() => {
@@ -122,7 +124,9 @@ describe("remote session", () => {
     const { sockets, statuses, updates } = session();
     expect(statuses).toEqual(["connecting"]);
     sockets[0]!.accept();
-    expect(sockets[0]!.sent).toEqual([{ type: "hello", token: "token", presence: true }]);
+    expect(sockets[0]!.sent).toEqual([
+      { type: "hello", token: "token", presence: true, chat: true },
+    ]);
     sockets[0]!.deliver(state(0));
     expect(statuses).toEqual(["connecting", "connected"]);
     expect(updates).toHaveLength(1);
@@ -813,5 +817,55 @@ describe("remote session", () => {
       events: [],
     });
     expect(presences.at(-1)).toBeNull();
+  });
+});
+
+describe("remote session chat", () => {
+  const line = (id: number): ChatMessage => ({ id, from: "black", text: `line ${id}`, at: 0 });
+  const chatLines = (socket: { sent: Array<Record<string, unknown>> }) =>
+    socket.sent.filter((m) => m.type === "chat").map((m) => m.text);
+
+  it("says nothing until the server has shown it has chat", () => {
+    const { api, sockets, errors } = session();
+    sockets[0]!.come(0);
+    api.say("hi");
+    expect(chatLines(sockets[0]!)).toEqual([]);
+    expect(errors).toEqual([["Chat is not available right now", false]]);
+    sockets[0]!.deliver({ type: "chat", messages: [] });
+    api.say("hi");
+    expect(chatLines(sockets[0]!)).toEqual(["hi"]);
+  });
+
+  it("says it is offline rather than sending into nothing", () => {
+    const { api, errors } = session();
+    api.say("hi");
+    expect(errors).toEqual([["You are offline. Reconnecting…", false]]);
+  });
+
+  it("passes every chat frame on, the empty first one too", () => {
+    const { sockets, chats } = session();
+    sockets[0]!.come(0);
+    sockets[0]!.deliver({ type: "chat", messages: [] });
+    sockets[0]!.deliver({ type: "chat", messages: [line(1)] });
+    expect(chats).toEqual([[], [line(1)]]);
+  });
+
+  it("does not take a chat frame for a state", () => {
+    const { sockets, updates, statuses } = session();
+    sockets[0]!.accept();
+    sockets[0]!.deliver({ type: "chat", messages: [line(1)] });
+    expect(updates).toEqual([]);
+    expect(statuses).toEqual(["connecting"]);
+  });
+
+  it("does not send chat on a replacement whose server has no chat", () => {
+    const { api, sockets, errors } = session();
+    sockets[0]!.come(0);
+    sockets[0]!.deliver({ type: "chat", messages: [] });
+    vi.advanceTimersByTime(ROTATE_MS);
+    sockets[1]!.come(0);
+    api.say("hi");
+    expect(chatLines(sockets[1]!)).toEqual([]);
+    expect(errors).toEqual([["Chat is not available right now", false]]);
   });
 });

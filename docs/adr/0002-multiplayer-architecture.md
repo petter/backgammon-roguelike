@@ -210,3 +210,25 @@ The search screen shows how many players are online and how many of them are sea
   from the back-forward cache says it is here again.
 - A count is of open tabs, so one player with two tabs counts twice. Ids are unauthenticated,
   so the counts are a friendly figure, not something to build on.
+
+## Addendum: in-game chat (2026-11-24)
+
+The two seats of an online game can send each other short text messages.
+
+- **Off the game record.** Chat lines live in their own store keys (`chat:<room.id>`, a
+  list of the newest 50, numbered by `chat-seq:<room.id>`) and travel on their own pub/sub
+  channel, `chat:<room.id>`. They never bump `room.version` or contend with game writes,
+  and expire with the room.
+- **Opt-in both ways.** A client says `chat: true` in `hello`; only then does the server
+  send `chat` frames (older clients would mistake one for a state). The server's first
+  frame on a socket is the kept log, even empty, which is also how the client learns the
+  server has chat. The client sends `{ type: "chat" }` only on a socket that has had that
+  frame, because a server from before chat refuses it as malformed, and that ends the seat.
+- **At-least-once.** The server announces each line best-effort and also checks the log on
+  its 10 s resync; clients merge lines by id, so a repeat does no harm. A line appears for
+  its sender once the server echoes it back.
+- **Plain text, bounded.** The server keeps one line of at most 200 characters, with
+  control and bidirectional-override characters removed; blank lines are dropped quietly.
+  Each connection may send 5 lines at once, then one every 2 s; past that it gets a
+  non-fatal error. Clients render lines as text, never HTML.
+- Not built: moderation, blocking, or chat in hot-seat games (one screen, nobody to chat with).
