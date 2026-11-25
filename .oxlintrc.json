@@ -14,7 +14,7 @@
     "node": true,
     "es2024": true
   },
-  "ignorePatterns": ["dist", "dist-server"],
+  "ignorePatterns": ["dist", "dist-server", ".claude"],
   "rules": {
     "eqeqeq": [
       "error",

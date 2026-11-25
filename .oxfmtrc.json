@@ -3,7 +3,7 @@
   "printWidth": 100,
   "sortImports": true,
   "sortPackageJson": true,
-  "ignorePatterns": ["pnpm-lock.yaml"],
+  "ignorePatterns": ["pnpm-lock.yaml", ".claude"],
   "useTabs": false,
   "tabWidth": 2
 }

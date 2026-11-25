@@ -3,3 +3,7 @@ dist
 *.local
 .DS_Store
 dist-server
+
+# Claude Code: agent worktrees + personal settings
+.claude/worktrees/
+.claude/settings.local.json
