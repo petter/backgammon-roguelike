@@ -32,7 +32,7 @@
   height: 100%;
   animation:
     coin-arc 0.95s var(--delay) cubic-bezier(0.3, 0, 0.7, 1) both,
-    coin-thud 0.3s calc(var(--delay) + 0.95s) ease-out both;
+    coin-thud 0.3s calc(var(--delay) + 0.95s) ease-out forwards;
 }
 
 .coin-spin {
