@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { type OnlineEnvironment, SEARCH_PULSE_MS, trackOnline } from "../src/net/online.ts";
-import { ONLINE_WINDOW_MS, type OnlineCounts, PULSE_MS } from "../src/net/protocol.ts";
+import {
+  type OnlineEnvironment,
+  SEARCH_PULSE_MS,
+  trackOnline,
+  visitorId,
+} from "../src/net/online.ts";
+import { isTicket, ONLINE_WINDOW_MS, type OnlineCounts, PULSE_MS } from "../src/net/protocol.ts";
 import { handleApi } from "../src/server/http.ts";
 import { createMemoryStore } from "../src/server/memoryStore.ts";
 import { onlineLine } from "../src/ui/lobby/onlineLine.ts";
@@ -93,6 +98,13 @@ function fakeBrowser(replies: Reply[]) {
   return { env, requests, beacons, page, settle, pending, tick };
 }
 
+/** Starts tracking and records every count it hears, in order. */
+function track(fake: ReturnType<typeof fakeBrowser>) {
+  const seen: Array<OnlineCounts | null> = [];
+  const online = trackOnline((counts) => seen.push(counts), fake.env);
+  return { online, seen };
+}
+
 describe("trackOnline", () => {
   it("says it is here at once and on a beat, faster while searching", async () => {
     const fake = fakeBrowser([
@@ -100,11 +112,9 @@ describe("trackOnline", () => {
       { online: 3, searching: 1 },
       { online: 4, searching: 1 },
     ]);
-    const online = trackOnline(fake.env);
-    const seen: Array<OnlineCounts | null> = [];
-    online.onCounts((counts) => seen.push(counts));
+    const { online, seen } = track(fake);
     await fake.settle();
-    expect(online.counts()).toEqual({ online: 3, searching: 0 });
+    expect(seen).toEqual([{ online: 3, searching: 0 }]);
     expect(fake.pending().map((t) => t.ms)).toEqual([PULSE_MS]);
 
     // Starting a search is told straight away; the next beat comes sooner.
@@ -126,34 +136,34 @@ describe("trackOnline", () => {
 
   it("uses only the newest answer when an older one comes late", async () => {
     const fake = fakeBrowser(["hang"]);
-    const online = trackOnline(fake.env);
+    const { online, seen } = track(fake);
     online.setSearching(true);
     fake.requests[1]!.answer({ online: 2, searching: 1 });
     await fake.settle();
     fake.requests[0]!.answer({ online: 2, searching: 0 });
     await fake.settle();
-    expect(online.counts()).toEqual({ online: 2, searching: 1 });
+    expect(seen).toEqual([{ online: 2, searching: 1 }]);
   });
 
   it("keeps the beat through a hung request, and takes counts down after two failures", async () => {
     const fake = fakeBrowser([{ online: 2, searching: 0 }, "offline", "hang", "offline"]);
-    const online = trackOnline(fake.env);
+    const { seen } = track(fake);
     await fake.settle();
     fake.tick();
     await fake.settle();
     // One blip keeps the counts.
-    expect(online.counts()).toEqual({ online: 2, searching: 0 });
+    expect(seen).toEqual([{ online: 2, searching: 0 }]);
     fake.tick();
     await fake.settle();
     fake.tick();
     await fake.settle();
     expect(fake.requests).toHaveLength(4);
-    expect(online.counts()).toBeNull();
+    expect(seen).toEqual([{ online: 2, searching: 0 }, null]);
   });
 
   it("leaves by beacon as the page goes, and comes back when it is restored", async () => {
     const fake = fakeBrowser([{ online: 1, searching: 0 }, "hang"]);
-    const online = trackOnline(fake.env);
+    const { online, seen } = track(fake);
     await fake.settle();
     fake.page.hide();
     fake.page.hide();
@@ -167,8 +177,24 @@ describe("trackOnline", () => {
     fake.requests[1]!.answer({ online: 5, searching: 2 });
     await fake.settle();
     expect(fake.requests.map((r) => r.searching)).toEqual([false, true]);
-    expect(online.counts()).toEqual({ online: 5, searching: 2 });
+    expect(seen.at(-1)).toEqual({ online: 5, searching: 2 });
     expect(fake.pending().map((t) => t.ms)).toEqual([SEARCH_PULSE_MS]);
+  });
+});
+
+describe("visitorId", () => {
+  it("works where crypto.randomUUID is missing, as over plain HTTP on a LAN", () => {
+    const real = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array<ArrayBuffer>) => real.getRandomValues(bytes),
+    });
+    try {
+      const id = visitorId();
+      expect(isTicket(id)).toBe(true);
+      expect(id).not.toBe(visitorId());
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

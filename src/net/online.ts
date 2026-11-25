@@ -23,13 +23,15 @@ export interface OnlineEnvironment {
 export interface Online {
   /** Whether this tab is looking for a stranger. A change is told to the server at once. */
   setSearching: (searching: boolean) => void;
-  /**
-   * Calls `listener` with each new answer, or `null` when the counts can no longer be
-   * trusted (the server has not answered for a while). Returns a function that stops it.
-   */
-  onCounts: (listener: (counts: OnlineCounts | null) => void) => () => void;
-  /** The latest counts, or `null` before the first answer or while the server is silent. */
-  counts: () => OnlineCounts | null;
+}
+
+/**
+ * A random id for this tab. Not `crypto.randomUUID()`: that is missing over plain HTTP, as
+ * on another device reaching `pnpm dev --host`, and this runs as the app starts.
+ */
+export function visitorId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 const nothing = () => {};
@@ -40,7 +42,7 @@ const browser: OnlineEnvironment = {
     const timer = setTimeout(run, ms);
     return () => clearTimeout(timer);
   },
-  id: () => crypto.randomUUID(),
+  id: visitorId,
   beacon: (url) => navigator.sendBeacon(url),
   onPage(hide, show) {
     // Restored from the back-forward cache: the tab was taken off on the way out.
@@ -56,12 +58,16 @@ const browser: OnlineEnvironment = {
  * and each answer carries the counts. As the page goes away, a beacon takes it off at once;
  * a tab that just vanishes drops off once `ONLINE_WINDOW_MS` has passed. Runs for the life
  * of the page.
+ *
+ * `onCounts` hears each new answer, or `null` once the counts can no longer be trusted
+ * because the server has not answered for a while.
  */
-export function trackOnline(env: OnlineEnvironment = browser): Online {
+export function trackOnline(
+  onCounts: (counts: OnlineCounts | null) => void,
+  env: OnlineEnvironment = browser,
+): Online {
   const id = env.id();
-  const listeners = new Set<(counts: OnlineCounts | null) => void>();
   let searching = false;
-  let latest: OnlineCounts | null = null;
   let failures = 0;
   /**
    * Bumped by every request and by leaving, so only the newest request's answer is used,
@@ -70,11 +76,6 @@ export function trackOnline(env: OnlineEnvironment = browser): Online {
   let sent = 0;
   let away = false;
   let cancelNext: () => void = nothing;
-
-  const announce = (counts: OnlineCounts | null) => {
-    latest = counts;
-    for (const listener of listeners) listener(counts);
-  };
 
   const pulse = async () => {
     cancelNext();
@@ -93,11 +94,11 @@ export function trackOnline(env: OnlineEnvironment = browser): Online {
       const counts = (await response.json()) as OnlineCounts;
       if (mine !== sent) return;
       failures = 0;
-      announce({ online: counts.online, searching: counts.searching });
+      onCounts({ online: counts.online, searching: counts.searching });
     } catch {
       if (mine !== sent) return;
       failures++;
-      if (failures === STALE_AFTER) announce(null);
+      if (failures === STALE_AFTER) onCounts(null);
     }
   };
 
@@ -127,10 +128,5 @@ export function trackOnline(env: OnlineEnvironment = browser): Online {
       searching = next;
       void pulse();
     },
-    onCounts(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    counts: () => latest,
   };
 }

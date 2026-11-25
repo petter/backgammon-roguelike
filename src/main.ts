@@ -40,7 +40,7 @@ let stopGame: (() => void) | null = null;
 /** The search for a stranger, while one is running. */
 let search: Search | null = null;
 /** Keeps this tab on the count of who is online, and says whether it is searching. */
-const online = trackOnline();
+const online = trackOnline((counts) => lobby.onlineCounts(counts));
 
 function setSearch(next: Search | null): void {
   search = next;
@@ -240,7 +240,6 @@ const lobby = createLobbyUi({
   onSeek: seek,
   onCancelSeek: () => cancelSeek(() => lobby.showMenu()),
 });
-online.onCounts((counts) => lobby.onlineCounts(counts));
 
 /** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
 async function checkInvite(code: string): Promise<void> {
