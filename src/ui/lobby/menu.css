@@ -33,7 +33,7 @@
   letter-spacing: 0;
 }
 
-/* Joining is what most people arriving here want, so it is the gold plate. */
+/* Most people arriving here want a game with a stranger, so Play online is the gold plate. */
 #lobby .choice.primary-choice {
   border-color: var(--metal);
   background: var(--grain), linear-gradient(180deg, #6a4520, #2a180b);
