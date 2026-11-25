@@ -1,7 +1,7 @@
 /*
  * A card shown over the board as it acts: a trap turns face up as it springs, a hex flares
  * as it bites, a card being played is held up for both players to see, and a trap being set
- * is laid face down. Seen, not touched: taps go through to the board.
+ * is laid face down; a coin tossed for a card lands beside it. Seen, not touched: taps go through to the board.
  * Timings match FACE_UP_AT and HOLD in reveal.ts.
  */
 /* At the left edge, clear of the bar in the middle, where a checker it sends must be seen. */
@@ -41,6 +41,16 @@
 .reveal-play {
   --ink: #ffd27a;
   --glow: #f2bf4f;
+}
+
+/* A coin tossed shines in the same gold; what it does is told once it has landed. */
+.reveal-coin {
+  --ink: #ffd27a;
+  --glow: #f2bf4f;
+}
+
+.reveal-coin .reveal-caption {
+  animation-delay: calc(var(--delay) + 0.95s);
 }
 
 /* A trap laid face down keeps the rust of a card back; its owner sees it turn over first. */

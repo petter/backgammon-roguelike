@@ -1,0 +1,186 @@
+/*
+ * A gold coin tossed for Coin Toss: thrown up spinning end over end, it comes down on its
+ * face with a bounce. Its landing matches COIN_LANDS_AT in coin.ts.
+ */
+/* Its toss waits for the reveal it sits in: `--delay` is inherited from it. */
+.coin {
+  --thick: 0.13em;
+  position: relative;
+  display: block;
+  width: 7.5em;
+  height: 7.5em;
+  perspective: 700px;
+}
+
+/* Its shadow on the table below shrinks as it rises and darkens as it comes down. */
+.coin::after {
+  position: absolute;
+  bottom: -0.9em;
+  left: 15%;
+  width: 70%;
+  height: 0.9em;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #000a, transparent);
+  content: "";
+  animation: coin-shadow 0.95s var(--delay) cubic-bezier(0.3, 0, 0.7, 1) both;
+}
+
+.coin-arc {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation:
+    coin-arc 0.95s var(--delay) cubic-bezier(0.3, 0, 0.7, 1) both,
+    coin-thud 0.3s calc(var(--delay) + 0.95s) ease-out both;
+}
+
+.coin-spin {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  animation:
+    coin-spin-heads 0.95s var(--delay) cubic-bezier(0.2, 0.55, 0.45, 1) both,
+    coin-glow 0.9s calc(var(--delay) + 0.95s) ease-out both;
+}
+
+.coin-lands-tails .coin-spin {
+  animation-name: coin-spin-tails, coin-glow;
+}
+
+.coin-face,
+.coin-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.coin-rim {
+  background: linear-gradient(90deg, #6e4a14, #b58a35 45%, #6e4a14);
+  transform: translateZ(var(--z));
+}
+
+.coin-face {
+  display: grid;
+  place-items: center;
+  border: 0.32em solid #c99a3c;
+  background:
+    radial-gradient(circle at 34% 28%, #fff6c8 0, #f5d27a 18%, transparent 46%),
+    radial-gradient(circle at 50% 55%, #e6b54f, #b17d23 70%, #8a5c16);
+  box-shadow:
+    inset 0 0 0 0.12em #7a5212,
+    inset 0 0 0.9em #6b450f;
+  color: #7a4f12;
+  backface-visibility: hidden;
+}
+
+.coin-face svg {
+  width: 58%;
+  height: 58%;
+  filter: drop-shadow(0 0.05em 0 #fff3) drop-shadow(0 -0.04em 0 #0005);
+}
+
+.coin-heads {
+  transform: translateZ(var(--thick));
+}
+
+/* Turned over the same way the coin spins, so it is upright when the coin lands on it. */
+.coin-tails {
+  transform: rotateX(180deg) translateZ(var(--thick));
+}
+
+/* Up and back down onto the spot it left. */
+@keyframes coin-arc {
+  0% {
+    transform: translateY(0) scale(0.7);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  45% {
+    transform: translateY(-3.2em) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes coin-shadow {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  45% {
+    opacity: 0.35;
+    transform: scale(0.55);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* A small bounce as it lands. */
+@keyframes coin-thud {
+  0% {
+    transform: scale(1.06, 0.94);
+  }
+  40% {
+    transform: scale(0.98, 1.03);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* Five turns and it comes down heads up; five and a half for tails. A slight tilt keeps it round. */
+@keyframes coin-spin-heads {
+  from {
+    transform: rotateY(-14deg) rotateX(0deg);
+  }
+  to {
+    transform: rotateY(0deg) rotateX(1800deg);
+  }
+}
+
+@keyframes coin-spin-tails {
+  from {
+    transform: rotateY(-14deg) rotateX(0deg);
+  }
+  to {
+    transform: rotateY(0deg) rotateX(1980deg);
+  }
+}
+
+@keyframes coin-glow {
+  from {
+    box-shadow: 0 0 0 0 var(--glow, #f2bf4f);
+  }
+  30% {
+    box-shadow: 0 0 36px 10px var(--glow, #f2bf4f);
+  }
+  to {
+    box-shadow: 0 0 16px 2px color-mix(in srgb, var(--glow, #f2bf4f) 40%, transparent);
+  }
+}
+
+/* No toss: the coin simply shows how it fell. */
+@media (prefers-reduced-motion: reduce) {
+  .coin::after,
+  .coin-arc {
+    animation: none;
+  }
+
+  .coin-spin,
+  .coin-lands-tails .coin-spin {
+    animation: none;
+  }
+
+  .coin-lands-tails .coin-spin {
+    transform: rotateX(180deg);
+  }
+}

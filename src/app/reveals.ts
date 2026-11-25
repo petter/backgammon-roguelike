@@ -1,7 +1,7 @@
 import type { Player } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import type { GameEvent } from "../core/game.ts";
-import type { Reveal } from "../ui/reveal.ts";
+import type { CoinReveal, Reveal } from "../ui/reveal.ts";
 
 /**
  * The card to show for an event that changes the game from a card not just played: a trap
@@ -63,4 +63,12 @@ export function playedReveal(event: GameEvent, who: (player: Player) => string):
     };
   }
   return null;
+}
+
+/** The coin to toss for a Coin Toss, landing as it fell, with what that does to the roll. */
+export function coinReveal(event: GameEvent, whose: (player: Player) => string): CoinReveal | null {
+  if (event.type !== "coinFlipped") return null;
+  return event.heads
+    ? { heads: true, title: "Heads!", effect: `${whose(event.player)} roll gains a die` }
+    : { heads: false, title: "Tails", effect: `${whose(event.player)} lowest die is lost` };
 }

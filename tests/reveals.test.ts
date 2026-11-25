@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { playedReveal, revealFor } from "../src/app/reveals.ts";
+import { coinReveal, playedReveal, revealFor } from "../src/app/reveals.ts";
 import { emptyBoard, place, type Player } from "../src/core/board.ts";
 import { applyCommand } from "../src/core/game.ts";
 import { game, hand } from "./helpers.ts";
@@ -64,5 +64,28 @@ describe("playedReveal", () => {
 
   it("holds up nothing for an event that is not a card being played", () => {
     expect(playedReveal({ type: "hit", player: "black", point: 8 }, who)).toBeNull();
+  });
+});
+
+describe("coinReveal", () => {
+  it("tosses the coin a Coin Toss flipped, landing as it fell, and says what it does", () => {
+    const outcomes = new Set<boolean>();
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const state = game({ dice: [2, 5], rng: seed, cards: hand("white", "coinToss") });
+      const { events } = applyCommand(state, "white", { type: "playCard", index: 0 });
+      const flip = events.find((event) => event.type === "coinFlipped");
+      if (flip?.type !== "coinFlipped") throw new Error("no flip");
+      outcomes.add(flip.heads);
+      expect(coinReveal(flip, whose)).toEqual(
+        flip.heads
+          ? { heads: true, title: "Heads!", effect: "Your roll gains a die" }
+          : { heads: false, title: "Tails", effect: "Your lowest die is lost" },
+      );
+    }
+    expect(outcomes).toEqual(new Set([true, false]));
+  });
+
+  it("tosses nothing for any other event", () => {
+    expect(coinReveal({ type: "hit", player: "black", point: 8 }, whose)).toBeNull();
   });
 });

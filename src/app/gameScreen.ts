@@ -22,7 +22,7 @@ import type { TableView } from "../ui/table.ts";
 import { rollsByItself } from "./autoRoll.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
-import { playedReveal, revealFor } from "./reveals.ts";
+import { coinReveal, playedReveal, revealFor } from "./reveals.ts";
 
 const byValue = (x: number, y: number) => x - y;
 
@@ -161,19 +161,33 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     autoTimer = undefined;
   };
 
-  /** Throws the dice for a result the server has already decided, then waits for them. */
-  const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
+  /** A throw waiting for something to land first, as a tossed coin that decides the dice. */
+  let pendingThrow: gsap.core.Tween | null = null;
+  /**
+   * Throws the dice for a result the server has already decided, `delay` seconds from now,
+   * then waits for them. They count as in the air from now on.
+   */
+  const throwDice = (values: number[], player: Player, state: PlayerView["board"], delay = 0) => {
+    pendingThrow?.kill();
+    pendingThrow = null;
     rolling = true;
-    sfx.diceThrown();
-    dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
-      rolling = false;
-      sfx.diceSettled();
-      coaching.landed();
-      refresh();
-    });
+    const go = () => {
+      pendingThrow = null;
+      sfx.diceThrown();
+      dice.throw(physical(values), sideOf(player), obstaclesOf(state), Math.random, () => {
+        rolling = false;
+        sfx.diceSettled();
+        coaching.landed();
+        refresh();
+      });
+    };
+    if (delay > 0) pendingThrow = gsap.delayedCall(delay, go);
+    else go();
   };
   /** Takes the dice away, or notes them as already thrown. Either way nothing is in the air. */
   const settleDice = (values: number[] | null) => {
+    pendingThrow?.kill();
+    pendingThrow = null;
     rolling = false;
     if (values && values.length > 0) dice.show(physical(values));
     else dice.clear();
@@ -254,6 +268,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     /** Board events after a revealed card wait until it has turned face up. */
     let after = 0;
     let revealed = 0;
+    /** Dice a card changes wait until the coin that decided how has landed. */
+    let tossed = 0;
     /** Points where a hit has its own sound, so the hitter's landing there is not heard twice. */
     const struck = new Set<number>();
     const whose = (player: Player) =>
@@ -330,12 +346,17 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         sfx.trapSprung(after);
       } else if (event.type === "coinFlipped") {
         text += event.heads ? ": heads!" : ": tails";
-        sfx.coin(event.heads);
+        const coin = coinReveal(event, whose);
+        if (coin) {
+          const delay = REVEAL_STAGGER * revealed++;
+          tossed = reveal.toss(coin, delay);
+          sfx.coin(event.heads, delay, Math.max(tossed - delay, 0.1));
+        }
       } else if (event.type === "diceRolled") {
         throwDice(event.dice, event.player, next.board);
       } else if (event.type === "diceChanged") {
         // A card changed the dice: throw them again, landing on the new values.
-        throwDice(event.dice, event.player, next.board);
+        throwDice(event.dice, event.player, next.board, tossed);
         if (event.doubled && text) text += ": doubles!";
       } else if (event.type === "turnEnded") {
         settleDice(null);

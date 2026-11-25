@@ -269,14 +269,23 @@ export const sfx = {
     bell(v, NOTE.C6, 0.04, 0.8, { offset: 0.12, ratios: [1, 2.76, 5.4] });
   },
 
-  /** A coin flipped and caught: pings while it spins, then heads rings high, tails low. */
-  coin(heads: boolean): void {
-    const v = voice(0, 0.8);
+  /**
+   * A coin flicked up `delay` seconds from now and landing `flight` seconds later: a bright
+   * ping off the thumb, a shimmer fading as it spins away, then heads rings high, tails low.
+   */
+  coin(heads: boolean, delay = 0, flight = 0.32): void {
+    const v = voice(delay, 0.8);
     if (!v) return;
-    for (let i = 0; i < 4; i++) {
-      bell(v, 2400 * vary(0.05), 0.025, 0.12, { offset: i * 0.07, ratios: [1, 1.52] });
+    bell(v, 2600 * vary(0.03), 0.05, 0.18, { ratios: [1, 1.52] });
+    const pings = Math.max(3, Math.round(flight / 0.08));
+    for (let i = 1; i < pings; i++) {
+      const fade = 1 - i / pings;
+      bell(v, 2400 * vary(0.05), 0.022 * fade + 0.006, 0.1, {
+        offset: (i / pings) * flight * 0.8,
+        ratios: [1, 1.52],
+      });
     }
-    bell(v, heads ? 2093 : 1397, 0.07, 0.6, { offset: 0.32, ratios: [1, 1.47, 2.31] });
+    bell(v, heads ? 2093 : 1397, 0.07, 0.6, { offset: flight, ratios: [1, 1.47, 2.31] });
   },
 
   /** The turn passes on: a wooden tock. */
