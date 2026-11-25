@@ -112,7 +112,7 @@ const STEPS: Record<Step, { title: string; lede: string; go: string; swap: strin
 };
 
 /**
- * The start screen. It first asks what the player wants to do, as a menu of three, and only
+ * The start screen. It first asks what the player wants to do, as a short menu, and only
  * then shows the short form for that choice, so a guest never stands next to a host button.
  * An invite link skips the menu and seats the guest straight away.
  */
@@ -134,17 +134,17 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       <div class="lobby-shell">
         <h1 class="lobby-title"><span>Backgammon</span><span>Roguelike</span><small>Dice, cards and a friend across the board</small></h1>
         <nav class="home" aria-label="How do you want to play?">
-          <button type="button" class="choice primary-choice" data-go="join">
+          <button type="button" class="choice primary-choice" data-go="seek">
+            <span class="choice-icon">${ICONS.seek}</span>
+            <span class="choice-text"><b>Play online</b><i>Get matched with a stranger</i></span>${CHEVRON}
+          </button>
+          <button type="button" class="choice" data-go="join">
             <span class="choice-icon">${ICONS.join}</span>
             <span class="choice-text"><b>Join a friend</b><i>I have a game code</i></span>${CHEVRON}
           </button>
           <button type="button" class="choice" data-go="host">
             <span class="choice-icon">${ICONS.host}</span>
             <span class="choice-text"><b>Host a game</b><i>Invite a friend to play</i></span>${CHEVRON}
-          </button>
-          <button type="button" class="choice" data-go="seek">
-            <span class="choice-icon">${ICONS.seek}</span>
-            <span class="choice-text"><b>Play online</b><i>Get matched with a stranger</i></span>${CHEVRON}
           </button>
           <button type="button" class="choice quiet-choice" data-go="local">
             <span class="choice-icon">${ICONS.local}</span>
