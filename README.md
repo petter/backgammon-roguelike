@@ -47,7 +47,8 @@ is its own rules text from `src/core/cards.ts`, so a card change shows up there 
 ## How a turn works
 
 1. Pick one of three cards offered from your deck (skipped when your hand holds five).
-2. Roll.
+2. Roll. The dice are thrown for you a moment after the pick, unless you hold a card that
+   can be played before rolling (a cleansing ward while a hex waits on you); then press Roll.
 3. Move checkers and play cards from your hand, in any order.
 4. End the turn once no checker move is left.
 

@@ -18,6 +18,7 @@ import type { Hud } from "../ui/hud.ts";
 import { marksFor } from "../ui/marks.ts";
 import type { RevealView } from "../ui/reveal.ts";
 import type { TableView } from "../ui/table.ts";
+import { rollsByItself } from "./autoRoll.ts";
 import { createAwayTracker } from "./awayTracker.ts";
 import { createCoaching } from "./coaching.ts";
 import { playedReveal, revealFor } from "./reveals.ts";
@@ -72,6 +73,9 @@ function slotsFor(faces: DOMRect[], count: number): DieSlot[] {
   );
 }
 
+/** Milliseconds from a turn's roll coming up to the dice being thrown for the player. */
+const AUTO_ROLL_MS = 450;
+
 /** When a revealed card turns up: after the move or throw that set it off has landed. */
 const REVEAL_AT = 0.4;
 /** Between cards revealed by one update, which line up side by side. */
@@ -113,6 +117,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       // alone: this runs on the very press that dismissed the card, and a redraw would
       // replace the hand card that press is about to click.
       if (shown.phase === "pick") refresh();
+      // So does a roll the dice would make by themselves.
+      else autoRoll();
     },
     () => rolling,
   );
@@ -132,6 +138,9 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   let heldUntil = 0;
   /** The board's shake when the game is won, waiting for the result screen to land. */
   let finale: gsap.core.Tween | null = null;
+  /** The throw about to be made for the player, and whether this roll has been asked for. */
+  let autoTimer: ReturnType<typeof setTimeout> | undefined;
+  let autoAsked = false;
 
   /** Throws the dice for a result the server has already decided, then waits for them. */
   const throwDice = (values: number[], player: Player, state: PlayerView["board"]) => {
@@ -205,6 +214,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       coaching: coaching.active(),
       opponentOnline: options.local || away.isOnline(),
     });
+    autoRoll();
     // What lies on the table in front of each player, for both of them to see.
     table.render(
       (["white", "black"] as const).map((player) => ({
@@ -269,10 +279,12 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
         const freed = event.cards.map((card) => CARDS[card].name).join(" and ");
         text = `${name(event.player)} is free of ${freed}`;
       } else if (event.type === "trapSet") {
-        holdUp(event);
-        text = event.card
-          ? `${name(event.player)} set ${CARDS[event.card].name}, face down`
-          : `${name(event.player)} set a trap`;
+        // In pass-and-play the other player is about to take the device: the trap stays secret.
+        const set = options.local ? { ...event, card: null } : event;
+        holdUp(set);
+        text = set.card
+          ? `${name(set.player)} set ${CARDS[set.card].name}, face down`
+          : `${name(set.player)} set a trap`;
       } else if (event.type === "trapSprung") {
         text = `${name(event.player)}'s ${CARDS[event.card].name} springs!`;
         after = turnUp(event);
@@ -347,6 +359,10 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     if (starting && !options.local) message = `You are playing ${COLOR_NAMES[update.view.you]}`;
     // Missed or unexpected events: snap to the truth instead of drifting.
     if (!checkers.matches(update.view.board)) checkers.reset(update.view.board);
+    // A pass-and-play handover: a card the last player was studying up close goes away.
+    if (options.local && view && view.current !== update.view.current) table.dismiss();
+    // A roll that has come and gone may be thrown for the player again next time.
+    if (update.view.phase !== "roll") autoAsked = false;
     coaching.update(view, update.view, starting || rematched);
     view = update.view;
     selected = null;
@@ -379,6 +395,20 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   const roll = () => {
     if (myTurn() && view?.phase === "roll") session.send({ type: "roll" });
   };
+  /**
+   * Nothing is decided before the roll unless a card can be played first, so the dice are
+   * thrown for the player a moment after their roll comes up. Not while a guide is up.
+   */
+  function autoRoll() {
+    if (autoTimer !== undefined || autoAsked || !view || coaching.active()) return;
+    if (!rollsByItself(view)) return;
+    autoTimer = setTimeout(() => {
+      autoTimer = undefined;
+      if (autoAsked || !view || coaching.active() || !rollsByItself(view)) return;
+      autoAsked = true;
+      roll();
+    }, AUTO_ROLL_MS);
+  }
   const end = () => {
     if (myTurn() && !rolling && view?.phase === "move") session.send({ type: "endTurn" });
   };
@@ -463,6 +493,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
   );
 
   return () => {
+    clearTimeout(autoTimer);
     away.stop();
     coaching.stop();
     finale?.kill();

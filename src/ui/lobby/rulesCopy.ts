@@ -73,7 +73,7 @@ export const ROGUELIKE_RULES: readonly RulesSection[] = [
       "Cards fold straight into your turn, which runs in four steps:",
       [
         "Pick one card from those offered, usually three (skipped when your hand holds five).",
-        "Roll the dice.",
+        "Roll the dice. They roll by themselves, unless you hold a cleansing ward you could play first.",
         "Move checkers and play cards from your hand, in any order.",
         "End your turn once no checker move is left.",
       ],
@@ -101,14 +101,14 @@ export const ROGUELIKE_RULES: readonly RulesSection[] = [
     ],
   },
   {
-    title: "Table marks",
+    title: "On the table",
     body: [
-      "Each player's name chip tracks what lies in front of them, using the same colour and glyph printed on each card's type line:",
+      "What lies in front of each player sits as cards at their edge of the board, rimmed in its kind's colour. Tap or click one to read it up close.",
       [
         "Violet: hexes waiting to bite.",
         "Silver: wards standing guard.",
-        "Rust: face-down traps in wait.",
-        "Gold: boons aiding your own side.",
+        "Rust: traps, face down. Only their owner can turn one over to look.",
+        "Gold: boons aiding that side.",
       ],
     ],
   },
