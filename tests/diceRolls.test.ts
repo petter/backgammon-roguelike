@@ -50,7 +50,16 @@ describe("rollBitten", () => {
   it("throws a bitten roll once, landing as thrown and then changing", () => {
     const { events, rolled } = rollUnder(["shackles"], ([a, b]) => a !== b);
     const bitten = rollBitten(events, rolled);
-    expect(throwFor(events, rolled)).toEqual({ thrown: rolled.dice, played: bitten?.dice });
+    expect(throwFor(events, rolled)).toEqual({
+      thrown: rolled.dice,
+      played: bitten?.dice,
+      dropped: 0,
+    });
     expect(bitten && throwFor(events, bitten)).toBeNull();
+  });
+
+  it("drops the highest die Cracked Dice throws, when the roll changes", () => {
+    const { events, rolled } = rollUnder(["crackedDice"], (dice) => new Set(dice).size === 3);
+    expect(throwFor(events, rolled)).toMatchObject({ thrown: rolled.dice, dropped: 1 });
   });
 });

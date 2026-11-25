@@ -171,7 +171,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     const go = () => {
       pendingThrow = null;
       sfx.diceThrown();
-      const shown = { thrown: physical(roll.thrown), played: physical(roll.played ?? roll.thrown) };
+      const played = physical(roll.played ?? roll.thrown);
+      const shown = { ...roll, thrown: physical(roll.thrown), played };
       dice.throw(shown, sideOf(player), obstaclesOf(state), Math.random, () => {
         rolling = false;
         sfx.diceSettled();

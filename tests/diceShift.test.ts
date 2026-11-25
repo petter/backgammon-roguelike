@@ -23,7 +23,7 @@ describe("planShift", () => {
   });
 
   it("drops the die Cracked Dice throws away", () => {
-    expect(planShift([6, 3, 2], [2, 3])).toEqual({
+    expect(planShift([6, 3, 2], [2, 3], 1)).toEqual({
       thrown: [null, { faces: [3], end: 1 }, { faces: [2], end: 0 }],
       added: [],
     });
@@ -39,7 +39,32 @@ describe("planShift", () => {
     });
   });
 
-  it("changes nothing when the dice stay as thrown", () => {
-    expect(planShift([3, 5], [3, 5]).thrown.every((die) => die?.faces.length === 1)).toBe(true);
+  it("still rolls a lowered die down when an added die shows what it was thrown as", () => {
+    // Shackles on a 1-6, then Curse Eater adds a 6.
+    expect(planShift([1, 6], [1, 5, 6])).toEqual({
+      thrown: [
+        { faces: [1], end: 0 },
+        { faces: [6, 5], end: 1 },
+      ],
+      added: [2],
+    });
+  });
+
+  it("drops the die Cracked Dice throws away even when an added die matches it", () => {
+    expect(planShift([1, 2, 6], [1, 2, 6], 1)).toEqual({
+      thrown: [{ faces: [1], end: 0 }, { faces: [2], end: 1 }, null],
+      added: [2],
+    });
+  });
+
+  it("rolls a die of lowered doubles down, the other moves of the doubles appearing", () => {
+    // Lead Weight on a rolled 6-6, played as 5-6-6-6.
+    expect(planShift([6, 6], [5, 6, 6, 6])).toEqual({
+      thrown: [
+        { faces: [6, 5], end: 0 },
+        { faces: [6], end: 1 },
+      ],
+      added: [2, 3],
+    });
   });
 });

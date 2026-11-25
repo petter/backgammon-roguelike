@@ -36,7 +36,10 @@ export function bitesRoll(events: GameEvent[], changed: GameEvent): boolean {
  */
 export function throwFor(events: GameEvent[], event: GameEvent): DiceRoll | null {
   if (event.type === "diceRolled") {
-    return { thrown: event.dice, played: rollBitten(events, event)?.dice };
+    const played = rollBitten(events, event)?.dice;
+    // Two dice are kept from a throw: Cracked Dice throws a third and drops the highest.
+    const dropped = played ? Math.max(0, physical(event.dice).length - 2) : 0;
+    return { thrown: event.dice, played, dropped };
   }
   if (event.type === "diceChanged" && !bitesRoll(events, event)) return { thrown: event.dice };
   return null;

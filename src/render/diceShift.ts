@@ -21,48 +21,23 @@ function pipsBetween(from: number, to: number): number[] {
   return faces;
 }
 
-/** Orders indices into `values` by the value there, highest first. */
-const byValue = (values: number[]) => (a: number, b: number) => (values[b] ?? 0) - (values[a] ?? 0);
-
 /**
- * Pairs the thrown dice with the played ones. A die keeps its value where it can; the dice
- * left over are paired highest with highest, so a lowered die rolls down a pip. Thrown dice
- * left after that are dropped, and played dice left after that appear.
+ * Pairs the thrown dice with the played ones, which start with the dice kept from the throw
+ * and end with any dice added. The `dropped` highest thrown dice are dropped, and the rest
+ * kept lowest first, as Cracked Dice keeps them. Otherwise each die keeps its place, so a
+ * lowered die rolls down where it lies.
  */
-export function planShift(thrown: number[], played: number[]): DiceShift {
-  const ends: Array<number | null> = thrown.map(() => null);
-  const taken = new Set<number>();
-  const keep = (i: number, j: number) => {
-    ends[i] = j;
-    taken.add(j);
-  };
-  // A die that keeps its value keeps its place where it can, so no two dice cross.
-  thrown.forEach((value, i) => {
-    if (played[i] === value) keep(i, i);
-  });
-  thrown.forEach((value, i) => {
-    if (ends[i] !== null) return;
-    const j = played.findIndex((other, k) => other === value && !taken.has(k));
-    if (j !== -1) keep(i, j);
-  });
-  const looseThrown = thrown
-    .map((_, i) => i)
-    .filter((i) => ends[i] === null)
-    .toSorted(byValue(thrown));
-  const loosePlayed = played
-    .map((_, j) => j)
-    .filter((j) => !taken.has(j))
-    .toSorted(byValue(played));
-  looseThrown.forEach((i, n) => {
-    const j = loosePlayed[n];
-    if (j !== undefined) ends[i] = j;
-  });
+export function planShift(thrown: number[], played: number[], dropped = 0): DiceShift {
+  const lowestFirst = (a: number, b: number) => (thrown[a] ?? 0) - (thrown[b] ?? 0);
+  let kept = thrown.map((_, i) => i);
+  if (dropped > 0) kept = kept.toSorted(lowestFirst).slice(0, -dropped);
+  const ends = new Map(kept.map((i, end) => [i, end]));
   return {
     thrown: thrown.map((value, i) => {
-      const end = ends[i];
-      if (end === null || end === undefined) return null;
-      return { faces: pipsBetween(value, played[end] ?? value), end };
+      const end = ends.get(i);
+      const to = end === undefined ? undefined : played[end];
+      return end === undefined || to === undefined ? null : { faces: pipsBetween(value, to), end };
     }),
-    added: loosePlayed.slice(looseThrown.length).toSorted((a, b) => a - b),
+    added: played.map((_, end) => end).slice(kept.length),
   };
 }

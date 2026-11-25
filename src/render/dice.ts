@@ -97,6 +97,8 @@ export interface DiceRoll {
   thrown: number[];
   /** The thrown values when nothing changed them. */
   played?: number[] | undefined;
+  /** How many of the highest thrown dice are dropped, as Cracked Dice drops one. */
+  dropped?: number | undefined;
 }
 
 /** World units in front of the camera at which the dice are held up to be read. */
@@ -180,7 +182,7 @@ export class DiceView {
    * shown or thrown again first.
    */
   throw(
-    { thrown: values, played = values }: DiceRoll,
+    { thrown: values, played = values, dropped = 0 }: DiceRoll,
     side: 1 | -1,
     obstacles: Obstacle[],
     random: () => number,
@@ -188,7 +190,7 @@ export class DiceView {
   ): void {
     this.clear();
     const thrown = simulateThrow(values, side, obstacles, random);
-    const shift = planShift(values, played);
+    const shift = planShift(values, played, dropped);
     this.dice = thrown.dice.map((path, i) => {
       const value = must(values[i], `value ${i}`);
       const plan = shift.thrown[i];
@@ -394,7 +396,7 @@ export class DiceView {
         `held+=${SHIFT_AFTER}`,
       );
       // Each pip a die rolls over clicks down on the table's felt.
-      for (let n = 0; n < shiftSteps; n++) {
+      for (let n = 0; n < steps; n++) {
         timeline.call(() => this.onKnock?.(6), [], `held+=${SHIFT_AFTER + (n + 0.5) * SHIFT_STEP}`);
       }
     }
