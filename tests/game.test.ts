@@ -670,9 +670,6 @@ describe("cards", () => {
     ]);
     for (let rng = 0; rng < 50; rng++) {
       expect(
-        play(game({ rng, dice: [3, 3], cards: hand("white", "charm") })).state.dice,
-      ).toHaveLength(3);
-      expect(
         play(game({ rng, dice: [1, 2, 3], cards: hand("white", "reroll") })).state.dice,
       ).toHaveLength(3);
       expect(play(game({ rng, dice: [], cards: hand("white", "charm") })).state.dice).toHaveLength(
@@ -693,9 +690,10 @@ describe("cards", () => {
       const four = play(game({ rng, dice: [1, 2, 3, 4], cards: hand("white", "reroll") }));
       expect(four.state.dice).toHaveLength(4);
       expect(four.events.at(-1)).toMatchObject({ doubled: false });
+      // Lucky Charm's die pairs with a remaining die; the pair already there does not count.
       const three = play(game({ rng, dice: [2, 2, 5], cards: hand("white", "charm") }));
-      expect(three.state.dice).toHaveLength(4);
-      expect(three.events.at(-1)).toMatchObject({ doubled: false });
+      expect(three.events.at(-1)).toMatchObject({ doubled: three.state.dice.length === 6 });
+      expect([4, 6]).toContain(three.state.dice.length);
       const two = play(game({ rng, dice: [1, 2], cards: hand("white", "reroll") }));
       expect(two.events.at(-1)).toMatchObject({ doubled: two.state.dice.length === 4 });
     }
@@ -711,6 +709,27 @@ describe("cards", () => {
     }
     expect(state.dice).toEqual([]);
     expect(state.board.points[17]).toEqual({ owner: "white", count: 4 });
+  });
+
+  it("Lucky Charm's die makes doubles with any matching remaining die", () => {
+    const seen = { pairLow: 0, pairHigh: 0, none: 0 };
+    for (let rng = 0; rng < 200; rng++) {
+      const { state, events } = play(game({ rng, dice: [2, 5], cards: hand("white", "charm") }));
+      const { doubled } = events.at(-1) as { doubled: boolean };
+      if (state.dice.length === 5) {
+        expect(doubled).toBe(true);
+        const pair = state.dice.at(-1);
+        expect(state.dice).toEqual(pair === 2 ? [5, 2, 2, 2, 2] : [2, 5, 5, 5, 5]);
+        seen[pair === 2 ? "pairLow" : "pairHigh"]++;
+      } else {
+        expect(doubled).toBe(false);
+        expect(state.dice).toHaveLength(3);
+        expect(state.dice.slice(0, 2)).toEqual([2, 5]);
+        expect([2, 5]).not.toContain(state.dice[2]);
+        seen.none++;
+      }
+    }
+    for (const count of Object.values(seen)) expect(count).toBeGreaterThan(0);
   });
 
   it("Lucky Charm adds a die, even when none are left", () => {

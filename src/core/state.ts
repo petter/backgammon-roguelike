@@ -77,7 +77,7 @@ export type GameEvent =
   /** Played face up. A trap is never announced this way: see `trapSet`. */
   | { type: "cardPlayed"; player: Player; card: CardId }
   | { type: "diceRolled"; player: Player; dice: number[] }
-  /** A card changed the dice. `doubled`: it left an exact pair, which became four dice. */
+  /** A card changed the dice. `doubled`: it made a pair, which became four dice. */
   | { type: "diceChanged"; player: Player; dice: number[]; doubled: boolean }
   | { type: "shieldRaised"; player: Player }
   /** A hex landed on `player`, to bite at their next roll. */
@@ -143,6 +143,16 @@ export function cloneCards(cards: PlayerCards): PlayerCards {
 export function asDoubles(dice: number[]): number[] {
   const [a, b] = dice;
   return dice.length === 2 && a !== undefined && a === b ? [a, a, a, a] : dice;
+}
+
+/**
+ * The dice after one extra die is rolled into them: when it matches a die already there, that
+ * pair is doubles and plays four times, after the dice left over.
+ */
+export function withPairedDie(dice: number[], rolled: number): number[] {
+  const at = dice.indexOf(rolled);
+  if (at === -1) return [...dice, rolled];
+  return [...dice.toSpliced(at, 1), rolled, rolled, rolled, rolled];
 }
 
 /** The dice with one of the highest lowered by 1, unless the highest is already a 1. */
