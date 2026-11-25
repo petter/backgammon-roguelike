@@ -90,7 +90,9 @@ function build(): AudioContext | null {
 
 function unlock(): void {
   const context = build();
-  if (!context || context.state === "running" || starting) return;
+  if (!context || context.state === "running") return;
+  // Asked again on every press until it runs: not every press is allowed to start sound
+  // (a finger's touch is not, its lift is).
   starting = true;
   void context.resume().finally(() => {
     starting = false;

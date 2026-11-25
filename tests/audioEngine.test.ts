@@ -47,4 +47,20 @@ describe("audio engine", () => {
     target.dispatchEvent(new Event("pointerdown"));
     expect(voice()).not.toBeNull();
   });
+
+  it("asks again on a later press while the context has still not started", async () => {
+    const resume = vi.fn<() => Promise<void>>(() => new Promise<void>(() => {}));
+    vi.stubGlobal("window", {
+      AudioContext: class extends FakeContext {
+        override resume = resume;
+      },
+    });
+    const { unlockAudio } = await import("../src/audio/engine.ts");
+    const target = new EventTarget();
+    unlockAudio(target);
+    // A finger's touch does not allow sound to start; its lift does.
+    target.dispatchEvent(new Event("pointerdown"));
+    target.dispatchEvent(new Event("touchend"));
+    expect(resume).toHaveBeenCalledTimes(2);
+  });
 });
