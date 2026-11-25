@@ -7,6 +7,7 @@ import { unlockAudio } from "./audio/engine.ts";
 import { initialBoard } from "./core/board.ts";
 import { createLocalSession } from "./net/localSession.ts";
 import { findMatch, type Search, settleTicket } from "./net/matchmaking.ts";
+import { trackOnline } from "./net/online.ts";
 import { codeFromPath, type RoomStatus, type SeatGrant } from "./net/protocol.ts";
 import { createRemoteSession } from "./net/remoteSession.ts";
 import { seatMemory } from "./net/seatStorage.ts";
@@ -38,6 +39,15 @@ const deps = { stageEl, stage, board, hud, coach, reveal: createRevealView(), ta
 let stopGame: (() => void) | null = null;
 /** The search for a stranger, while one is running. */
 let search: Search | null = null;
+/** Keeps this tab on the count of who is online, and says whether it is searching. */
+const online = trackOnline();
+
+function setSearch(next: Search | null): void {
+  search = next;
+  // Counts from before the search began would leave this player out of those searching.
+  if (next) lobby.onlineCounts(null);
+  online.setSearching(next !== null);
+}
 
 /** Seat tokens live in sessionStorage: per tab, so two tabs can be two players. */
 const seats = seatMemory();
@@ -131,7 +141,7 @@ function seek(player: PlayerChoice): void {
   const mine = findMatch(player, {
     onSeat: (seat) => {
       if (search !== mine) return;
-      search = null;
+      setSearch(null);
       // Only clear this search's ticket so any distinct legacy ticket still settles if needed.
       unsettled.clear(mine.ticket());
       enterRoom(seat.code, seat.token);
@@ -142,7 +152,7 @@ function seek(player: PlayerChoice): void {
     onLeave: (ticket) => unsettled.set(ticket),
     onSettled: (ticket) => unsettled.clear(ticket),
   });
-  search = mine;
+  setSearch(mine);
 }
 
 /** Whether a cancelled search is still finding out if a stranger was found meanwhile. */
@@ -161,7 +171,7 @@ function cancelSeek(then: () => void): boolean {
   afterCancel = then;
   if (cancelling) return true;
   const running = search;
-  search = null;
+  setSearch(null);
   cancelling = true;
   // Kept until the server answers, so a reload meanwhile still settles it first.
   if (running) unsettled.set(running.ticket());
@@ -230,6 +240,7 @@ const lobby = createLobbyUi({
   onSeek: seek,
   onCancelSeek: () => cancelSeek(() => lobby.showMenu()),
 });
+online.onCounts((counts) => lobby.onlineCounts(counts));
 
 /** Looks up an invite's room as the guest arrives, so a dead link says so straight away. */
 async function checkInvite(code: string): Promise<void> {

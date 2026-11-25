@@ -49,6 +49,8 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
   const listeners = new Listeners();
   const presenceListeners = new Listeners<PresenceUpdate>();
   const seekers = new Map<string, { seeker: Seeker; expires: number }>();
+  /** Open tabs by id: when each was last heard from, and whether it is searching. */
+  const visitors = new Map<string, { seen: number; searching: boolean }>();
 
   const live = (code: string): Room | null => {
     const entry = rooms.get(code);
@@ -275,6 +277,19 @@ export function createMemoryStore(ttlMs = DAY_MS, now: () => number = Date.now):
       const found = seeker(id);
       if (!found?.grant) keep(cancelledSeeker(id));
       return found && structuredClone(found);
+    },
+    async pulse(id, searching, windowMs) {
+      const at = now();
+      for (const [other, entry] of visitors) {
+        if (entry.seen <= at - windowMs) visitors.delete(other);
+      }
+      visitors.set(id, { seen: at, searching });
+      let looking = 0;
+      for (const entry of visitors.values()) if (entry.searching) looking++;
+      return { online: visitors.size, searching: looking };
+    },
+    async leave(id) {
+      visitors.delete(id);
     },
   };
 }

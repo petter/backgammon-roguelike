@@ -1,4 +1,4 @@
-import { isRoomCode, isTicket, normalizeCode } from "../net/protocol.ts";
+import { isRoomCode, isTicket, normalizeCode, ONLINE_WINDOW_MS } from "../net/protocol.ts";
 import { awaitMatch, cancelMatch, type MatchOptions, seekMatch } from "./match.ts";
 import { createRoom, joinRoom, RoomError, type RoomErrorKind, roomStatus } from "./room.ts";
 import type { GameStore } from "./store.ts";
@@ -86,10 +86,34 @@ async function match(
 }
 
 /**
+ * Who is here. `POST /api/online` with `{ id, searching }` says one open tab is still here,
+ * and answers how many are, and how many of them are searching. `POST /api/online/:id/leave`
+ * (a beacon as the tab closes) takes it off at once. The id is one the tab made up, shaped
+ * like a ticket; it is not tied to anything else.
+ */
+async function online(store: GameStore, parts: string[], body: unknown): Promise<ApiResponse> {
+  if (parts.length === 2) {
+    const { id, searching } = (typeof body === "object" && body !== null ? body : {}) as {
+      id?: unknown;
+      searching?: unknown;
+    };
+    if (typeof id !== "string" || !isTicket(id))
+      return { status: 400, body: { error: "That is not a visitor id" } };
+    return { status: 200, body: await store.pulse(id, searching === true, ONLINE_WINDOW_MS) };
+  }
+  const id = parts[2] ?? "";
+  if (parts.length === 4 && parts[3] === "leave" && isTicket(id)) {
+    await store.leave(id);
+    return { status: 200, body: {} };
+  }
+  return { status: 404, body: { error: "Not found" } };
+}
+
+/**
  * The lobby's HTTP API, independent of any server framework.
  * `POST /api/rooms` creates a room; `POST /api/rooms/:code/join` takes the second seat;
  * `GET /api/rooms/:code` says whether that seat is still free. Matchmaking is under
- * `/api/match` (see `match`).
+ * `/api/match` (see `match`); who is online under `/api/online` (see `online`).
  * Takes the raw body text, so a malformed or oversized request is refused before it can
  * take a seat.
  */
@@ -102,7 +126,8 @@ export async function handleApi(
 ): Promise<ApiResponse> {
   const parts = path.split("/").filter(Boolean);
   const area = parts[0] === "api" ? parts[1] : undefined;
-  if (area !== "rooms" && area !== "match") return { status: 404, body: { error: "Not found" } };
+  if (area !== "rooms" && area !== "match" && area !== "online")
+    return { status: 404, body: { error: "Not found" } };
   if (area === "rooms" && method === "GET" && parts.length === 3)
     return status(store, parts[2] ?? "");
   if (method !== "POST") return { status: 405, body: { error: "Method not allowed" } };
@@ -113,6 +138,7 @@ export async function handleApi(
 
   try {
     if (area === "match") return await match(store, parts, body, matchOptions);
+    if (area === "online") return await online(store, parts, body);
     const { name, character, presence } = playerOf(body);
     if (parts.length === 2) {
       return {

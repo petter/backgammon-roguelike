@@ -1,7 +1,7 @@
 import type { Player } from "../core/board.ts";
 import type { CharacterId } from "../core/characters.ts";
 import type { GameEvent, GameState } from "../core/game.ts";
-import type { SeatGrant } from "../net/protocol.ts";
+import type { OnlineCounts, SeatGrant } from "../net/protocol.ts";
 
 export interface Seat {
   /** Secret that proves a connection owns this seat. */
@@ -278,6 +278,15 @@ export interface GameStore {
    * still be collected. Returns the record as it was.
    */
   removeSeeker: (id: string) => Promise<Seeker | null>;
+
+  /**
+   * Marks a visitor (one open tab) as here now, searching or not, and forgets every visitor
+   * last heard from `windowMs` or more ago, on the store clock. Returns the counts as they
+   * then stand, this visitor included.
+   */
+  pulse: (id: string, searching: boolean, windowMs: number) => Promise<OnlineCounts>;
+  /** Forgets a visitor at once, as their tab closes. */
+  leave: (id: string) => Promise<void>;
 }
 
 /**

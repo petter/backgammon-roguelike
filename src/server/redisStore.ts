@@ -101,6 +101,33 @@ redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4])
 return 1
 `;
 
+/**
+ * Marks a visitor as here now and forgets everyone not heard from within the window, on
+ * Redis's own clock unless a test fixes it. KEYS: every visitor, those searching. Both are
+ * sorted sets scored by when each was last heard from, and both vanish when nobody is left.
+ */
+const PULSE = `
+local now
+if ARGV[4] ~= '' then
+  now = tonumber(ARGV[4])
+else
+  local t = redis.call('TIME')
+  now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
+end
+local cutoff = now - tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', cutoff)
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', cutoff)
+redis.call('ZADD', KEYS[1], now, ARGV[1])
+if ARGV[2] == '1' then
+  redis.call('ZADD', KEYS[2], now, ARGV[1])
+else
+  redis.call('ZREM', KEYS[2], ARGV[1])
+end
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('PEXPIRE', KEYS[2], ARGV[3]) end
+return { redis.call('ZCARD', KEYS[1]), redis.call('ZCARD', KEYS[2]) }
+`;
+
 const key = (code: string) => `room:${code}`;
 const presenceKey = (roomId: string) => `presence:${roomId}`;
 const seekerKey = (id: string) => `seeker:${id}`;
@@ -125,6 +152,9 @@ function decodePresence(text: string): RoomPresence {
  * record has run out is dropped when the queue is next read.
  */
 const QUEUE = "seekers";
+/** Open tabs, and the ones among them searching; see `PULSE`. */
+const VISITORS = "visitors";
+const VISITORS_SEARCHING = "visitors:searching";
 
 export interface RedisStoreOptions {
   /** Put before every key, so tests sharing one Redis cannot see each other's data. */
@@ -403,6 +433,22 @@ export function createRedisStore(
         SEEKER_TTL_SECONDS,
       );
       return typeof text === "string" ? (JSON.parse(text) as Seeker) : null;
+    },
+    async pulse(id, searching, windowMs) {
+      const [online, looking] = (await redis.eval(
+        PULSE,
+        2,
+        VISITORS,
+        VISITORS_SEARCHING,
+        id,
+        searching ? "1" : "0",
+        windowMs,
+        nowArg(),
+      )) as [number, number];
+      return { online, searching: looking };
+    },
+    async leave(id) {
+      await redis.multi().zrem(VISITORS, id).zrem(VISITORS_SEARCHING, id).exec();
     },
     async close() {
       const quits = subscriber ? [redis.quit(), subscriber.quit()] : [redis.quit()];

@@ -101,6 +101,17 @@
   text-align: left;
 }
 
+.online-counts {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font: italic 15px / 1.4 var(--serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.online-counts.unknown {
+  visibility: hidden;
+}
+
 .search-trouble {
   margin: -6px 0 0;
   color: var(--error);
