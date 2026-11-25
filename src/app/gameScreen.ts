@@ -366,7 +366,8 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
       } else if (event.type === "cardsOffered" && event.cards) {
         sfx.cardsDealt(event.cards.length);
       } else if (event.type === "handFull") {
-        text = `${whose(event.player)} hand is full (${HAND_LIMIT} cards): no pick this turn`;
+        // A notice, not the message line: the roll that follows by itself would clear that.
+        hud.notify(`${whose(event.player)} hand is full (${HAND_LIMIT} cards): no pick this turn`);
       } else if (event.type === "cardPicked") {
         sfx.cardFlick();
         if (event.player !== you) text = `${name(event.player)} picked a card`;
