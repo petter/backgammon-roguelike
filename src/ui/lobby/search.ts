@@ -1,5 +1,7 @@
 import { CHARACTERS } from "../../core/characters.ts";
+import type { OnlineCounts } from "../../net/protocol.ts";
 import { characterArt } from "../characterArt.ts";
+import { onlineLine } from "./onlineLine.ts";
 import { html, part, type PlayerChoice } from "./parts.ts";
 
 /** "0:07", "1:42", "12:05": how long the player has been looking. */
@@ -17,6 +19,8 @@ export function searchRoom(onCancel: () => void): {
   element: HTMLElement;
   show: (player: PlayerChoice) => void;
   trouble: (problem: string | null) => void;
+  /** Shows who else is about, or nothing while that is not known. */
+  counts: (counts: OnlineCounts | null) => void;
   /** Says the search is being called off, until the next view; Cancel has been pressed. */
   cancelling: () => void;
   /** Stops the clock. */
@@ -35,6 +39,7 @@ export function searchRoom(onCancel: () => void): {
         <figure class="seat-open"><span class="medallion"><span class="ring"></span>?</span><figcaption>Anyone</figcaption></figure>
       </div>
       <p class="waiting-status" role="status"><span class="pulse-dot"></span><span class="search-state">Searching</span><time class="clock">0:00</time></p>
+      <p class="online-counts unknown">&nbsp;</p>
       <p class="search-trouble" role="alert" hidden></p>
       <button type="button" class="link cancel">Cancel</button>
     `),
@@ -44,6 +49,7 @@ export function searchRoom(onCancel: () => void): {
   const clock = part(element, ".clock");
   const troubleLine = part(element, ".search-trouble");
   const state = part(element, ".search-state");
+  const countsLine = part(element, ".online-counts");
   const cancel = part(element, ".cancel", HTMLButtonElement);
   cancel.addEventListener("click", onCancel);
   let timer = 0;
@@ -73,6 +79,11 @@ export function searchRoom(onCancel: () => void): {
       clock.hidden = true;
       troubleLine.hidden = true;
       cancel.disabled = true;
+    },
+    counts(counts) {
+      // Its line is kept while the counts are unknown, so nothing below it jumps when they come.
+      countsLine.textContent = counts ? onlineLine(counts) : "\u00a0";
+      countsLine.classList.toggle("unknown", !counts);
     },
     trouble(problem) {
       troubleLine.textContent = problem ?? "";

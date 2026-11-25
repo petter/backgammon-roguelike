@@ -78,6 +78,23 @@ export interface MatchReply {
   seat: SeatGrant | null;
 }
 
+/**
+ * Response of `POST /api/online`: open tabs heard from lately, and how many of them are
+ * looking for a stranger. Each count includes the tab that asked.
+ */
+export interface OnlineCounts {
+  online: number;
+  searching: number;
+}
+
+/** How often an open tab tells the server it is still here (`POST /api/online`). */
+export const PULSE_MS = 30_000;
+/**
+ * How long a tab counts as online after it was last heard from. Room for a background tab,
+ * whose timers the browser may hold back to once a minute, and for a slow request.
+ */
+export const ONLINE_WINDOW_MS = 90_000;
+
 /** Whether a value could be a matchmaking ticket: the shape the server hands out. */
 export function isTicket(value: string): boolean {
   return /^[A-Za-z0-9-]{1,100}$/.test(value);

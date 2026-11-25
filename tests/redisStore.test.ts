@@ -58,6 +58,8 @@ function isolated(store: RedisStore, prefix: string): RedisStore {
     pairSeekers: (a, b, freshAfter) => store.pairSeekers(a, b, freshAfter),
     pruneSeeker: (id, seenBefore) => store.pruneSeeker(id, seenBefore),
     removeSeeker: (id) => store.removeSeeker(id),
+    pulse: (id, searching, windowMs) => store.pulse(id, searching, windowMs),
+    leave: (id) => store.leave(id),
     close: () => store.close(),
   };
 }

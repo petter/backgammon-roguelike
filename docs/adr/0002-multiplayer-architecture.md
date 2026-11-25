@@ -191,3 +191,22 @@ When a player disconnects or leaves mid-game, the remaining player is never stra
   button; the game never auto-ends. Clicking it sends `{ type: "claimVictory" }`, ending the
   game with `winReason: "abandoned"` (returning any offered cards to discard). If the
   opponent reconnects first, the banner disappears and play resumes normally.
+
+## Addendum: who is online (2026-11-24)
+
+The search screen shows how many players are online and how many of them are searching.
+
+- **Counted from a beat, not from connections.** A player on the menu or in solo play has no
+  connection to the server, and the ones that exist (WebSockets, held match requests) are
+  spread over function instances that cannot see each other. So every open tab makes up an
+  id and sends `POST /api/online` with `{ id, searching }` every 30 s (every 10 s while
+  searching, and at once when a search starts or ends). The answer carries both counts.
+- **A rolling window in Redis.** Two sorted sets, every visitor and those searching, scored by
+  when each was last heard from on Redis's own clock. One Lua step drops anyone not heard from
+  for 90 s, records the visitor, and counts both sets. The window allows a background tab
+  whose timers the browser holds back to once a minute. Both sets expire when nobody is left.
+- **Leaving is a beacon.** As the page goes away, `POST /api/online/:id/leave` takes the tab
+  off at once; a tab that just vanishes drops off when its window runs out. A page restored
+  from the back-forward cache says it is here again.
+- A count is of open tabs, so one player with two tabs counts twice. Ids are unauthenticated,
+  so the counts are a friendly figure, not something to build on.

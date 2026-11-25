@@ -1,6 +1,6 @@
 import "@fontsource/cinzel/700.css";
 import "@fontsource/cinzel/900.css";
-import { CODE_LENGTH } from "../../net/protocol.ts";
+import { CODE_LENGTH, type OnlineCounts } from "../../net/protocol.ts";
 import { el } from "../dom.ts";
 
 import "./lobby.css";
@@ -52,6 +52,8 @@ export interface LobbyUi {
   showSearching: (player: PlayerChoice) => void;
   /** Says the server cannot be reached while searching, or `null` once it can again. */
   searchTrouble: (problem: string | null) => void;
+  /** Shows how many are online and searching, or nothing while that is not known. */
+  onlineCounts: (counts: OnlineCounts | null) => void;
   /** Says the search is being called off, while the server answers. */
   searchCancelling: () => void;
   setBusy: (busy: boolean) => void;
@@ -355,6 +357,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       });
     },
     searchTrouble: (problem) => searching.trouble(problem),
+    onlineCounts: (counts) => searching.counts(counts),
     searchCancelling: () => searching.cancelling(),
     setBusy(busy) {
       for (const button of buttons) button.disabled = busy;

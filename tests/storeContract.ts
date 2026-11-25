@@ -556,6 +556,35 @@ export function storeContract(name: string, makeStore: (now?: () => number) => G
       );
     });
 
+    it("counts visitors heard from within the window, and those searching", async () => {
+      let now = 1000;
+      const store = makeStore(() => now);
+      expect(await store.pulse("a", false, 90_000)).toEqual({ online: 1, searching: 0 });
+      expect(await store.pulse("b", true, 90_000)).toEqual({ online: 2, searching: 1 });
+      // Asking again is not a second visitor; stopping the search takes them out of it.
+      expect(await store.pulse("b", true, 90_000)).toEqual({ online: 2, searching: 1 });
+      expect(await store.pulse("b", false, 90_000)).toEqual({ online: 2, searching: 0 });
+      now = 2000;
+      expect(await store.pulse("c", true, 90_000)).toEqual({ online: 3, searching: 1 });
+      // "a" was last heard from at 1000: still here just inside the window, gone at its edge.
+      now = 90_999;
+      expect(await store.pulse("b", false, 90_000)).toEqual({ online: 3, searching: 1 });
+      now = 91_000;
+      expect(await store.pulse("b", false, 90_000)).toEqual({ online: 2, searching: 1 });
+      // A searching visitor who goes quiet leaves the search count too.
+      now = 200_000;
+      expect(await store.pulse("b", false, 90_000)).toEqual({ online: 1, searching: 0 });
+    });
+
+    it("forgets a visitor who leaves, searching or not", async () => {
+      const store = makeStore(() => 1000);
+      await store.pulse("a", true, 90_000);
+      await store.pulse("b", false, 90_000);
+      await store.leave("a");
+      await store.leave("nobody");
+      expect(await store.pulse("b", false, 90_000)).toEqual({ online: 1, searching: 0 });
+    });
+
     it("hands out copies of presence, never shared references", async () => {
       const store = makeStore(() => 1000);
       await store.connectSeat("room-c", "white", "w1", 25_000);
