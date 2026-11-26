@@ -21,6 +21,7 @@
     "@vercel/analytics": "^2.0.1",
     "gsap": "^3.15.1",
     "ioredis": "^6.0.0",
+    "posthog-js": "1.447.6",
     "three": "^0.187.0"
   },
   "devDependencies": {

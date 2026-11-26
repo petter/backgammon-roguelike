@@ -1,5 +1,6 @@
 import "@fontsource/cinzel/700.css";
 import "@fontsource/cinzel/900.css";
+import { type Events, type JoinVia, track } from "../../app/analytics.ts";
 import { CODE_LENGTH, type OnlineCounts } from "../../net/protocol.ts";
 import { el } from "../dom.ts";
 
@@ -24,7 +25,8 @@ export type { PlayerChoice } from "./parts.ts";
 
 export interface LobbyActions {
   onCreate: (player: PlayerChoice) => void;
-  onJoin: (code: string, player: PlayerChoice) => void;
+  /** `via` says whether the guest typed the code or came by invite link. */
+  onJoin: (code: string, player: PlayerChoice, via: JoinVia) => void;
   onLocal: () => void;
   /** The host gives up waiting and goes back to the start screen. */
   onCancel: () => void;
@@ -61,6 +63,17 @@ export interface LobbyUi {
 }
 
 type Step = "host" | "join" | "seek" | "invited" | "expired" | "full";
+type MenuChoice = Events["menu_choice"]["choice"];
+
+const MENU_CHOICES: readonly string[] = [
+  "seek",
+  "join",
+  "host",
+  "local",
+  "rules",
+] satisfies MenuChoice[];
+const isMenuChoice = (go: string | undefined): go is MenuChoice =>
+  go !== undefined && MENU_CHOICES.includes(go);
 type View = "home" | "rules" | Step;
 
 const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l8.5 5.5-8.5 5.5z"/></svg>`;
@@ -278,6 +291,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   for (const choice of home.querySelectorAll<HTMLButtonElement>("[data-go]")) {
     choice.addEventListener("click", () => {
       const target = choice.dataset.go;
+      if (isMenuChoice(target)) track("menu_choice", { choice: target });
       if (target === "local") actions.onLocal();
       else if (target === "rules") navigate("rules");
       else if (target === "join" || target === "host" || target === "seek") navigate(target);
@@ -319,7 +333,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       code.input.focus();
       return;
     }
-    actions.onJoin(wanted, you.read());
+    actions.onJoin(wanted, you.read(), view === "invited" ? "invite_link" : "code");
   });
 
   return {

@@ -1,5 +1,12 @@
 import "./style.css";
-import { startAnalytics } from "./app/analytics.ts";
+import {
+  type GameMode,
+  type JoinVia,
+  secondsSince,
+  startAnalytics,
+  track,
+} from "./app/analytics.ts";
+import { gameReporter } from "./app/gameAnalytics.ts";
 import { runGame } from "./app/gameScreen.ts";
 import { seedFromQuery } from "./app/seed.ts";
 import { tableGeometry } from "./app/tableGeometry.ts";
@@ -24,7 +31,7 @@ import { createRevealView } from "./ui/reveal.ts";
 import { createSoundToggle } from "./ui/soundToggle.ts";
 import { createTable } from "./ui/table.ts";
 
-startAnalytics();
+void startAnalytics();
 unlockAudio();
 
 const stageEl = el("stage");
@@ -53,6 +60,8 @@ function setSearch(next: Search | null): void {
 
 /** Seat tokens live in sessionStorage: per tab, so two tabs can be two players. */
 const seats = seatMemory();
+/** How this tab came to each room, for analytics. Forgotten on reload: then just "online". */
+const modes = new Map<string, GameMode>();
 
 function leaveGame(): void {
   chat.stop();
@@ -70,6 +79,7 @@ function toMenu(): void {
 
 function startRemote(code: string, token: string): void {
   leaveGame();
+  const report = gameReporter(modes.get(code) ?? "online");
   stopGame = runGame(deps, {
     local: false,
     connect: (handlers) => {
@@ -78,11 +88,16 @@ function startRemote(code: string, token: string): void {
         ...handlers,
         onUpdate: (update) => {
           chat.setLobby(update.lobby);
+          report(update);
           handlers.onUpdate(update);
         },
         onChat: chat.receive,
       });
-      chat.start(session.say);
+      chat.start((text) => {
+        const sent = session.say(text);
+        if (sent) track("chat_sent", {});
+        return sent;
+      });
       return session;
     },
     onWaiting: () => lobby.showWaiting(code, `${location.origin}/g/${code}`),
@@ -103,9 +118,20 @@ function startRemote(code: string, token: string): void {
 function startLocal(): void {
   leaveGame();
   const seed = seedFromQuery(location.search, Date.now());
+  const report = gameReporter("local");
   stopGame = runGame(deps, {
     local: true,
-    connect: (handlers) => createLocalSession(handlers, seed),
+    connect: (handlers) =>
+      createLocalSession(
+        {
+          ...handlers,
+          onUpdate: (update) => {
+            report(update);
+            handlers.onUpdate(update);
+          },
+        },
+        seed,
+      ),
     onWaiting: () => {},
     onStarted: () => {
       lobby.hide();
@@ -117,8 +143,9 @@ function startLocal(): void {
 }
 
 /** Takes a seat the server has handed out, and goes to its room. */
-function enterRoom(code: string, token: string): void {
+function enterRoom(code: string, token: string, mode: GameMode): void {
   seats.set(code, token);
+  modes.set(code, mode);
   history.pushState(null, "", `/g/${code}`);
   startRemote(code, token);
 }
@@ -144,6 +171,8 @@ const unsettled = {
 };
 /** Whether that is being done right now. */
 let settling = false;
+/** When the running search began. */
+let searchStart = 0;
 
 function seek(player: PlayerChoice): void {
   if (search || cancelling || settling) return;
@@ -153,13 +182,16 @@ function seek(player: PlayerChoice): void {
     return;
   }
   lobby.showSearching(player);
+  track("search_started", { character: player.character });
+  searchStart = Date.now();
   const mine = findMatch(player, {
     onSeat: (seat) => {
       if (search !== mine) return;
       setSearch(null);
       // Only clear this search's ticket so any distinct legacy ticket still settles if needed.
       unsettled.clear(mine.ticket());
-      enterRoom(seat.code, seat.token);
+      track("match_found", { waited_s: secondsSince(searchStart) });
+      enterRoom(seat.code, seat.token, "matched");
     },
     onTrouble: (problem) => {
       if (search === mine) lobby.searchTrouble(problem);
@@ -199,8 +231,15 @@ async function settle(running: Search | null): Promise<void> {
   const outcome = running ? await running.cancel() : null;
   cancelling = false;
   if (outcome?.settled && running) unsettled.clear(running.ticket());
-  if (outcome?.seat) enterRoom(outcome.seat.code, outcome.seat.token);
-  else afterCancel();
+  // Found just before the cancel: the player is seated all the same.
+  const waited_s = secondsSince(searchStart);
+  if (outcome?.seat) {
+    track("match_found", { waited_s });
+    enterRoom(outcome.seat.code, outcome.seat.token, "matched");
+  } else {
+    if (running) track("search_cancelled", { waited_s });
+    afterCancel();
+  }
 }
 
 /** Settles the ticket left over from an unanswered cancel, then searches if nobody waits. */
@@ -216,15 +255,18 @@ async function settleThenSeek(ticket: string, player: PlayerChoice): Promise<voi
   }
   unsettled.clear(ticket);
   // Matched after all: that stranger has been waiting, so the player joins them.
-  if (outcome.seat) enterRoom(outcome.seat.code, outcome.seat.token);
+  if (outcome.seat) enterRoom(outcome.seat.code, outcome.seat.token, "matched");
   else seek(player);
 }
 
 /** Refusals that are about the code itself: no game has it, or its game is full. */
 const CODE_ERRORS: Partial<Record<number, "missing" | "full">> = { 404: "missing", 409: "full" };
 
-/** Asks the server for a seat, then enters the room. */
-async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
+/** Asks the server for a seat, then enters the room. `via` is how a guest got the code. */
+async function takeSeat(path: string, player: PlayerChoice, via?: JoinVia): Promise<void> {
+  const failed = (reason: "missing" | "full" | "unreachable") => {
+    if (via) track("room_join_failed", { via, reason });
+  };
   lobby.setBusy(true);
   try {
     const response = await fetch(path, {
@@ -236,11 +278,15 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
     if (!response.ok || !body.code || !body.token) {
       // No such game, or it is full: the code is what to look at again.
       const codeError = CODE_ERRORS[response.status];
+      failed(codeError ?? "unreachable");
       lobby.showMenu({ error: body.error ?? "Could not reach the game server", codeError });
       return;
     }
-    enterRoom(body.code, body.token);
+    if (via) track("room_joined", { via, character: player.character });
+    else track("room_created", { character: player.character });
+    enterRoom(body.code, body.token, "friend");
   } catch {
+    failed("unreachable");
     lobby.showMenu({ error: "Could not reach the game server" });
   } finally {
     lobby.setBusy(false);
@@ -249,7 +295,7 @@ async function takeSeat(path: string, player: PlayerChoice): Promise<void> {
 
 const lobby = createLobbyUi({
   onCreate: (player) => void takeSeat("/api/rooms", player),
-  onJoin: (code, player) => void takeSeat(`/api/rooms/${code}/join`, player),
+  onJoin: (code, player, via) => void takeSeat(`/api/rooms/${code}/join`, player, via),
   onLocal: startLocal,
   onCancel: toMenu,
   onSeek: seek,
@@ -260,10 +306,16 @@ const lobby = createLobbyUi({
 async function checkInvite(code: string): Promise<void> {
   try {
     const response = await fetch(`/api/rooms/${code}`);
-    if (response.status === 404) return lobby.inviteClosed("missing");
+    if (response.status === 404) {
+      track("invite_dead", { why: "missing" });
+      return lobby.inviteClosed("missing");
+    }
     if (!response.ok) return;
     const { status } = (await response.json()) as { status?: RoomStatus };
-    if (status === "full") lobby.inviteClosed("full");
+    if (status === "full") {
+      track("invite_dead", { why: "full" });
+      lobby.inviteClosed("full");
+    }
   } catch {
     // Offline or unreachable: joining will say so when they try.
   }
@@ -293,7 +345,10 @@ function show(): void {
   if (code && token) startRemote(code, token);
   else {
     lobby.showMenu({ code: code ?? undefined });
-    if (code) void checkInvite(code);
+    if (code) {
+      track("invite_opened", {});
+      void checkInvite(code);
+    }
   }
 }
 
