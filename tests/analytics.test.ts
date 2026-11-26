@@ -49,6 +49,7 @@ test("no room code reaches PostHog, in any property it adds", () => {
       $pathname: "/g/abcde",
       $referrer: "https://example.com/g/fghij",
       game: 2,
+      nested: { paths: ["/g/abcde", { url: "https://example.com/g/abcde" }] },
     },
     $set_once: { $initial_pathname: "/g/abcde" },
   } as CaptureResult;
@@ -60,6 +61,7 @@ test("no room code reaches PostHog, in any property it adds", () => {
       $pathname: "/g/[code]",
       $referrer: "https://example.com/g/[code]",
       game: 2,
+      nested: { paths: ["/g/[code]", { url: "https://example.com/g/[code]" }] },
     },
     $set_once: { $initial_pathname: "/g/[code]" },
   });

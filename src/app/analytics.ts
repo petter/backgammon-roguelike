@@ -54,12 +54,17 @@ function redactRoomCodes(text: string): string {
   return text.replaceAll(/\/g\/[^/?#\s]+/g, "/g/[code]");
 }
 
+/** Redacts every string in a value, however deeply it sits in arrays and objects. */
+function scrubValue(value: unknown): unknown {
+  if (typeof value === "string") return redactRoomCodes(value);
+  if (Array.isArray(value)) return value.map(scrubValue);
+  if (value && typeof value === "object") return scrub(value);
+  return value;
+}
+
 function scrub(properties: Properties): Properties {
   return Object.fromEntries(
-    Object.entries(properties).map(([key, value]) => [
-      key,
-      typeof value === "string" ? redactRoomCodes(value) : value,
-    ]),
+    Object.entries(properties).map(([key, value]) => [key, scrubValue(value)]),
   );
 }
 

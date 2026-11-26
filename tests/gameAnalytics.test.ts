@@ -83,3 +83,19 @@ test("a finished game says who won from this seat, and a rematch is reported", (
     ["rematch_started", { mode: "matched" }],
   ]);
 });
+
+test("a pick after a reload reports the offer the snapshot showed", () => {
+  const picking = viewFor(
+    game({
+      phase: "pick",
+      cards: { ...game().cards, white: { ...game().cards.white, offer: ["shield", "quake"] } },
+    }),
+    "white",
+  );
+  const report = gameReporter("matched");
+  report(update(picking));
+  report(update(underWay, [{ type: "cardPicked", player: "white", card: "quake" }]));
+  expect(tracked.mock.calls).toEqual([
+    ["card_picked", { mode: "matched", card: "quake", offered: ["shield", "quake"] }],
+  ]);
+});

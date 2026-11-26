@@ -48,5 +48,7 @@ export function gameReporter(mode: GameMode): (update: SessionUpdate) => void {
         track("rematch_started", { mode });
       }
     }
+    // A snapshot, after a reload say, carries the offer without the event that dealt it.
+    if (view.offer.length > 0) offers[view.you] = view.offer;
   };
 }
