@@ -18,6 +18,7 @@ import {
   touch,
   waitingRoom,
 } from "./parts.ts";
+import { privacyPage } from "./privacy.ts";
 import { rulesPage } from "./rules.ts";
 import { searchRoom } from "./search.ts";
 
@@ -74,7 +75,7 @@ const MENU_CHOICES: readonly string[] = [
 ] satisfies MenuChoice[];
 const isMenuChoice = (go: string | undefined): go is MenuChoice =>
   go !== undefined && MENU_CHOICES.includes(go);
-type View = "home" | "rules" | Step;
+type View = "home" | "rules" | "privacy" | Step;
 
 const PLAY = `<svg class="chevron play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l8.5 5.5-8.5 5.5z"/></svg>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>`;
@@ -184,6 +185,9 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         <div class="plaque waiting-plaque" hidden></div>
         <div class="plaque searching-plaque" hidden></div>
         <p class="lobby-error" role="alert"></p>
+        <footer class="lobby-footer">
+          <button type="button" class="link privacy-link">Privacy</button>
+        </footer>
       </div>
       <footer class="lobby-footer">
         <a href="https://github.com/petter/backgammon-roguelike" target="_blank" rel="noopener noreferrer">${ICONS.github}Source on GitHub</a>
@@ -214,10 +218,21 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const rules = rulesPage(() => navigate("home", () => rulesLink.focus({ focusVisible: false })));
   rules.element.hidden = true;
   error.before(rules.element);
+  const footer = part(root, ".lobby-footer");
+  const privacyLink = part(footer, ".privacy-link", HTMLButtonElement);
+  const privacy = privacyPage(() =>
+    navigate("home", () => privacyLink.focus({ focusVisible: false })),
+  );
+  privacy.element.hidden = true;
+  error.before(privacy.element);
   const searchingPlaque = part(root, ".searching-plaque");
   const searching = searchRoom(actions.onCancelSeek);
   searchingPlaque.append(searching.element);
-  const buttons = [...home.querySelectorAll("button"), ...step.querySelectorAll("button")];
+  const buttons = [
+    ...home.querySelectorAll("button"),
+    ...step.querySelectorAll("button"),
+    privacyLink,
+  ];
   let view: View = "home";
   /** Bumped by every change of view, so a view transition that has been overtaken does nothing. */
   let shown = 0;
@@ -239,8 +254,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     view = next;
     root.dataset.view = next;
     home.hidden = next !== "home";
+    footer.hidden = next !== "home";
     rules.element.hidden = next !== "rules";
-    step.hidden = next === "home" || next === "rules";
+    privacy.element.hidden = next !== "privacy";
+    step.hidden = next === "home" || next === "rules" || next === "privacy";
     waitingPlaque.hidden = true;
     searchingPlaque.hidden = true;
     searching.stop();
@@ -251,6 +268,11 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.scrollTop = 0;
       rules.reset();
       if (focus) rules.back.focus({ focusVisible: false });
+      return;
+    }
+    if (next === "privacy") {
+      root.scrollTop = 0;
+      if (focus) privacy.back.focus({ focusVisible: false });
       return;
     }
     const text = STEPS[next];
@@ -297,6 +319,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       else if (target === "join" || target === "host" || target === "seek") navigate(target);
     });
   }
+  privacyLink.addEventListener("click", () => navigate("privacy"));
   back.addEventListener("click", () =>
     navigate("home", () => part(home, "[data-go]").focus({ focusVisible: false })),
   );
@@ -351,8 +374,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.hidden = false;
       root.dataset.view = "waiting";
       home.hidden = true;
+      footer.hidden = true;
       step.hidden = true;
       rules.element.hidden = true;
+      privacy.element.hidden = true;
       searchingPlaque.hidden = true;
       searching.stop();
       say("");
@@ -367,8 +392,10 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         root.hidden = false;
         root.dataset.view = "searching";
         home.hidden = true;
+        footer.hidden = true;
         step.hidden = true;
         rules.element.hidden = true;
+        privacy.element.hidden = true;
         waitingPlaque.hidden = true;
         say("");
         searchingPlaque.hidden = false;
@@ -403,8 +430,8 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       if (problem) say(`${problem}. Check the code with your friend.`, true);
       if (!touch.matches) code.selectAll();
     } else {
-      // The rules page has no place for an error: it is said on the menu instead.
-      show(problem && view !== "rules" ? view : "home", false);
+      // The rules and privacy pages have no place for an error: it is said on the menu instead.
+      show(problem && view !== "rules" && view !== "privacy" ? view : "home", false);
       if (problem) say(problem);
     }
   }
