@@ -1,10 +1,10 @@
 import { gsap } from "gsap";
 
 import { sfx } from "../audio/sfx.ts";
-import { initialBoard, type Player, pointAt } from "../core/board.ts";
+import { type Player, pointAt } from "../core/board.ts";
 import { CARDS } from "../core/cards.ts";
 import { diceToPlay, type GameEvent, HAND_LIMIT, legalMoves, possibleMoves } from "../core/game.ts";
-import type { PlayerView } from "../core/view.ts";
+import { isUntouched, type PlayerView } from "../core/view.ts";
 import type { LobbyView } from "../net/protocol.ts";
 import type { Session, SessionHandlers, SessionUpdate } from "../net/session.ts";
 import type { BoardView } from "../render/board.ts";
@@ -33,17 +33,6 @@ function sameDice(a: number[], b: number[]): boolean {
 }
 
 const COLOR_NAMES = { white: "White", black: "Black" } as const;
-
-const OPENING = JSON.stringify(initialBoard());
-
-/** A game nobody has moved in yet: joining it is the start of the match, not a return to it. */
-function untouched(view: PlayerView): boolean {
-  return (
-    view.wins.white + view.wins.black === 0 &&
-    view.phase !== "over" &&
-    JSON.stringify(view.board) === OPENING
-  );
-}
 
 export interface GameScreenDeps {
   stageEl: HTMLElement;
@@ -405,7 +394,7 @@ export function runGame(deps: GameScreenDeps, options: GameScreenOptions): () =>
     }
     const starting = !view;
     // The opponent sitting down, or a fresh game begun here; not a return to one under way.
-    if (starting && (waited || update.events.length > 0 || untouched(update.view))) {
+    if (starting && (waited || update.events.length > 0 || isUntouched(update.view))) {
       sfx.matchStarted();
     }
     // A game that was over and now is not has been replaced by a rematch, even when the

@@ -1,0 +1,51 @@
+/*
+ * The Privacy link in the start screen's footer and the short privacy note it opens.
+ * Matches the walnut plaque and serif reading style of "How to play".
+ */
+
+/* A button among the footer's links: it drops the lobby's button lettering to match them. */
+#lobby .lobby-footer .privacy-link {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: 13px / 1 var(--serif);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+/* Wide screens: a comfortable reading column, matching "How to play". */
+@media (min-width: 700px) {
+  #lobby[data-view="privacy"] .lobby-shell {
+    width: 600px;
+  }
+}
+
+.privacy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--text);
+  font: 16px / 1.5 var(--serif);
+}
+
+.privacy p,
+.privacy ul {
+  margin: 0;
+}
+
+.privacy-points {
+  padding-left: 1.2em;
+}
+
+.privacy-points li + li {
+  margin-top: 8px;
+}
+
+.privacy-points li::marker {
+  color: var(--metal);
+}
+
+.privacy-points strong {
+  color: var(--metal-light);
+  font-weight: 600;
+}

@@ -1,4 +1,4 @@
-import type { BoardState, Player } from "./board.ts";
+import { type BoardState, initialBoard, type Player } from "./board.ts";
 import type { CardId, HexId, TrapId, WardId } from "./cards.ts";
 import type { GameEvent, GameState, Phase, WinReason } from "./game.ts";
 
@@ -75,4 +75,15 @@ export function redactEvent(event: GameEvent, viewer: Player): GameEvent {
   if (event.type === "cardsOffered" && event.player !== viewer) return { ...event, cards: null };
   if (event.type === "cardPicked" && event.player !== viewer) return { ...event, card: null };
   return event;
+}
+
+const OPENING = JSON.stringify(initialBoard());
+
+/** A game nobody has moved in yet: joining it is the start of the match, not a return to it. */
+export function isUntouched(view: PlayerView): boolean {
+  return (
+    view.wins.white + view.wins.black === 0 &&
+    view.phase !== "over" &&
+    JSON.stringify(view.board) === OPENING
+  );
 }
