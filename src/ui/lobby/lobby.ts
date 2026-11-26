@@ -185,13 +185,11 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         <div class="plaque waiting-plaque" hidden></div>
         <div class="plaque searching-plaque" hidden></div>
         <p class="lobby-error" role="alert"></p>
-        <footer class="lobby-footer">
-          <button type="button" class="link privacy-link">Privacy</button>
-        </footer>
       </div>
       <footer class="lobby-footer">
         <a href="https://github.com/petter/backgammon-roguelike" target="_blank" rel="noopener noreferrer">${ICONS.github}Source on GitHub</a>
         <a href="https://x.com/pettersmoen" target="_blank" rel="noopener noreferrer">${ICONS.x}@pettersmoen</a>
+        <button type="button" class="privacy-link">Privacy</button>
       </footer>
     `),
   );
@@ -218,8 +216,7 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
   const rules = rulesPage(() => navigate("home", () => rulesLink.focus({ focusVisible: false })));
   rules.element.hidden = true;
   error.before(rules.element);
-  const footer = part(root, ".lobby-footer");
-  const privacyLink = part(footer, ".privacy-link", HTMLButtonElement);
+  const privacyLink = part(root, ".privacy-link", HTMLButtonElement);
   const privacy = privacyPage(() =>
     navigate("home", () => privacyLink.focus({ focusVisible: false })),
   );
@@ -254,7 +251,6 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
     view = next;
     root.dataset.view = next;
     home.hidden = next !== "home";
-    footer.hidden = next !== "home";
     rules.element.hidden = next !== "rules";
     privacy.element.hidden = next !== "privacy";
     step.hidden = next === "home" || next === "rules" || next === "privacy";
@@ -374,7 +370,6 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
       root.hidden = false;
       root.dataset.view = "waiting";
       home.hidden = true;
-      footer.hidden = true;
       step.hidden = true;
       rules.element.hidden = true;
       privacy.element.hidden = true;
@@ -392,7 +387,6 @@ export function createLobbyUi(actions: LobbyActions): LobbyUi {
         root.hidden = false;
         root.dataset.view = "searching";
         home.hidden = true;
-        footer.hidden = true;
         step.hidden = true;
         rules.element.hidden = true;
         privacy.element.hidden = true;
